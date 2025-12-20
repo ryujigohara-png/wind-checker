@@ -8,10 +8,9 @@ import os
 import io
 import base64
 import warnings
+import re
 from datetime import datetime
 import matplotlib.dates as mdates
-from streamlit_folium import st_folium
-import folium
 
 # ==========================================
 # ★設定エリア★
@@ -38,35 +37,47 @@ warnings.simplefilter('ignore', UserWarning)
 
 st.markdown(f'<h1 style="font-size:{TITLE_SIZE}px;">⛵ 風況チェッカー</h1>', unsafe_allow_html=True)
 
-# --- 場所の管理（セッションを使って座標を保持） ---
+# --- 場所の設定ロジック ---
 if 'lat' not in st.session_state:
-    st.session_state.lat = 31.34  # 高須沖
+    st.session_state.lat = 31.34
     st.session_state.lon = 130.79
+    st.session_state.place_name = "高須沖(鹿児島県)"
 
-# --- サイドメニュー ---
 st.sidebar.header("場所の設定")
-use_map = st.sidebar.checkbox("地図から場所を選択する")
+use_google_link = st.sidebar.checkbox("Googleマップのリンクで指定")
 
-if use_map:
-    st.info("地図上の好きな場所を【クリック】してください。その地点の予報に切り替わります。")
-    # 地図の作成
-    m = folium.Map(location=[st.session_state.lat, st.session_state.lon], zoom_start=11)
-    # 現在地にピンを立てる
-    folium.Marker([st.session_state.lat, st.session_state.lon]).add_to(m)
+if use_google_link:
+    st.sidebar.info("Googleマップの「共有リンク」を下に貼り付けてください。")
+    map_url = st.sidebar.text_input("共有リンクをペースト", placeholder="https://maps.app.goo.gl/...")
     
-    # 地図を表示し、クリック位置を取得
-    # スクロールを邪魔しないよう、マウスホイールズームを無効化
-    out = st_folium(m, width=700, height=400, scrolling=False)
+    if map_url:
+        try:
+            # 短縮URLを展開して座標を抜き出す処理
+            response = requests.get(map_url, allow_redirects=True)
+            final_url = response.url
+            # URL内の座標パターン (@31.34,130.79 or ll=31.34,130.79) を探す
+            match = re.search(r'(@|ll=)([0-9]+\.[0-9]+),([0-9]+\.[0-9]+)', final_url)
+            if match:
+                st.session_state.lat = float(match.group(2))
+                st.session_state.lon = float(match.group(3))
+                st.session_state.place_name = f"指定地点 ({st.session_state.lat:.2f}, {st.session_state.lon:.2f})"
+                st.sidebar.success("場所を特定しました！")
+            else:
+                st.sidebar.warning("URLから座標が見つかりませんでした。別の地点を試してください。")
+        except:
+            st.sidebar.error("リンクの解析に失敗しました。")
     
-    # 地図がクリックされたら座標を更新
-    if out and out.get("last_clicked"):
-        st.session_state.lat = out["last_clicked"]["lat"]
-        st.session_state.lon = out["last_clicked"]["lng"]
-        st.rerun() # 座標が変わったら即座に再描画
+    # 確認用地図
+    st.sidebar.map(pd.DataFrame({'lat': [st.session_state.lat], 'lon': [st.session_state.lon]}))
+else:
+    st.session_state.lat = 31.34
+    st.session_state.lon = 130.79
+    st.session_state.place_name = "高須沖(鹿児島県)"
 
 lat, lon = st.session_state.lat, st.session_state.lon
-place_display = f"指定地点 ({lat:.2f}, {lon:.2f})" if use_map else "高須沖(鹿児島県)"
+place_display = st.session_state.place_name
 
+st.sidebar.markdown("---")
 days = st.sidebar.slider("表示日数", 1, 7, 7)
 danger_v = st.sidebar.number_input("危険風速(m/s)", value=10)
 
