@@ -67,7 +67,6 @@ def process_wind_data(df, lat, lon, danger_v):
 
 def create_graph(df, days, danger_v, wind_step, time_step):
     fig_w = max(10, days * 3.5)
-    # ⑤ 風速グラフの高さを2倍、⑥ 気温グラフを半分に調整 (height_ratios)
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(fig_w, 8), dpi=CONFIG["DPI"], 
                                    gridspec_kw={'height_ratios': [4, 1]})
     plt.subplots_adjust(hspace=0.8)
@@ -77,7 +76,6 @@ def create_graph(df, days, danger_v, wind_step, time_step):
         dt = mdates.num2date(x)
         return dt.strftime('%m/%d') + f'\n({jp_weeks[dt.weekday()]})\n' + dt.strftime('%H:%M')
 
-    # --- 上段：風速グラフ ---
     bars = ax1.bar(df['time'], df['wind_speed_10m'], color=df['color'], alpha=0.8, width=0.03)
     ax1.axhline(y=danger_v, color='red', linestyle='--', alpha=0.4)
     ax1.set_ylabel('風速 (m/s)', fontsize=CONFIG["LABEL_SIZE"])
@@ -87,11 +85,10 @@ def create_graph(df, days, danger_v, wind_step, time_step):
     now_jst = datetime.now(jst).replace(tzinfo=None)
     ax1.axvline(now_jst, color='blue', linestyle='-', alpha=0.5, linewidth=2.5)
 
-    # 軸の設定
     for ax in [ax1, ax2]:
         ax.xaxis.set_major_locator(mdates.HourLocator(interval=time_step))
         ax.xaxis.set_major_formatter(plt.FuncFormatter(formatter))
-        ax.set_xlim(df['time'].iloc[0], df['time'].iloc[-1]) # 左端空白なし
+        ax.set_xlim(df['time'].iloc[0], df['time'].iloc[-1])
         ax.grid(True, linestyle=':', alpha=0.5)
         plt.setp(ax.get_xticklabels(), ha='center')
 
@@ -102,7 +99,6 @@ def create_graph(df, days, danger_v, wind_step, time_step):
             txt = f"{df['mark'].iloc[i]}\n{df['dir_name'].iloc[i]}\n{df['arrow'].iloc[i]}\n{v}m"
             ax1.text(bar.get_x() + bar.get_width()/2., h + 0.3, txt, ha='center', va='bottom', fontweight='bold')
 
-    # --- 下段：気温グラフ ---
     ax2.plot(df['time'], df['temperature_2m'], color='#666666', linewidth=1.5)
     ax2.set_ylabel('気温 (℃)', fontsize=CONFIG["LABEL_SIZE"])
 
@@ -114,19 +110,27 @@ def main():
     setup_font()
     st.markdown(f'<h1 style="font-size:{CONFIG["TITLE_SIZE"]}px;">⛵ 風況チェッカー</h1>', unsafe_allow_html=True)
 
-    # --- ① 場所選択コンボボックスの復活 ---
+    # 初期座標の設定
+    if 'lat' not in st.session_state:
+        st.session_state.lat, st.session_state.lon = 31.340, 130.790
+
     st.sidebar.header("設定")
     basho = st.sidebar.selectbox("場所", ["高須沖(鹿児島県)", "錦江湾(鹿児島県)", "地図から指定"])
     
+    current_place_name = basho
     if basho == "高須沖(鹿児島県)":
-        st.session_state.lat, st.session_state.lon = 31.34, 130.79
+        st.session_state.lat, st.session_state.lon = 31.340, 130.790
     elif basho == "錦江湾(鹿児島県)":
-        st.session_state.lat, st.session_state.lon = 31.59, 130.60
+        st.session_state.lat, st.session_state.lon = 31.590, 130.600
     
     use_map = st.sidebar.checkbox("地図で微調整する", value=False)
 
     if use_map or basho == "地図から指定":
-        # ④ 地図ボックス外側の目印線を追加するCSS
+        if basho != "地図から指定":
+            current_place_name = f"{basho}(微調整中)"
+        else:
+            current_place_name = "地図指定地点"
+
         st.markdown(f"""
             <style>
             .map-container {{
@@ -134,22 +138,20 @@ def main():
                 width: {CONFIG["MAP_WIDTH"]}px;
                 height: {CONFIG["MAP_HEIGHT"]}px;
                 border: 2px solid #ddd;
+                overflow: hidden; /* ボックス内からはみ出さないように修正 */
+                margin-bottom: 20px;
             }}
-            /* 上下の目印 */
             .guide-v {{ position: absolute; left: 50%; width: 2px; height: 10px; background: red; z-index: 1001; }}
-            .guide-t {{ top: -10px; }} .guide-b {{ bottom: -10px; }}
-            /* 左右の目印 */
+            .guide-t {{ top: 0px; }} .guide-b {{ bottom: 0px; }}
             .guide-h {{ position: absolute; top: 50%; height: 2px; width: 10px; background: red; z-index: 1001; }}
-            .guide-l {{ left: -10px; }} .guide-r {{ right: -10px; }}
+            .guide-l {{ left: 0px; }} .guide-r {{ right: 0px; }}
             </style>
         """, unsafe_allow_html=True)
 
         st.info("地図の中心に合わせて予報地点を決定します。")
-        st.markdown('<div class="map-container"><div class="guide-v guide-t"></div><div class="guide-v guide-b"></div><div class="guide-h guide-l"></div><div class="guide-h guide-r"></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="map-container"><div class="guide-v guide-t"></div><div class="guide-v guide-b"></div><div class="guide-h guide-l"></div><div class="guide-h guide-r"></div>', unsafe_allow_html=True)
         
         m = folium.Map(location=[st.session_state.lat, st.session_state.lon], zoom_start=12)
-        
-        # ② 地図内の中心にポインタ（赤い十）を表示
         folium.Marker(
             [st.session_state.lat, st.session_state.lon],
             icon=folium.DivIcon(html=f'<div style="font-size: 24pt; color: red; font-weight: bold; text-align: center; width: 50px; margin-left: -25px; margin-top: -25px;">╋</div>')
@@ -176,7 +178,8 @@ def main():
         img_base64 = create_graph(df, days, danger_v, w_step, t_step)
 
         st.markdown(f'<p style="font-size:14px;"><span style="color:gold;">■</span>最高 <span style="color:orange;">■</span>良好 <span style="color:skyblue;">■</span>ジャスト <span style="color:crimson;">■</span>危険 <span style="color:blue; font-weight:bold;">―</span>現在時刻</p>', unsafe_allow_html=True)
-        st.markdown(f'<p style="font-weight:bold;">地点: ({st.session_state.lat:.3f}, {st.session_state.lon:.3f})</p>', unsafe_allow_html=True)
+        # 指定の形式「地点: 名称 (緯度, 経度)」で表示
+        st.markdown(f'<p style="font-weight:bold; font-size:16px;">地点: {current_place_name} ({st.session_state.lat:.3f}, {st.session_state.lon:.3f})</p>', unsafe_allow_html=True)
         
         st.markdown(f"""
             <div style="overflow-x: auto; white-space: nowrap; background: white; border-radius: 8px; border: 1px solid #eee;">
