@@ -17,7 +17,7 @@ import folium
 CONFIG = {
     "TITLE_SIZE": 20,
     "SUBTITLE_SIZE": 16,
-    "GRAPH_FONT_SIZE": 14,
+    "GRAPH_FONT_SIZE": 14,  # ① 14ポイントに変更
     "LABEL_SIZE": 14,
     "DPI": 300,
     "MAP_WIDTH": 700,
@@ -60,14 +60,11 @@ def fetch_weather_data(lat, lon, days):
 #=================================================================================================
 def get_weather_info(code):
 #=================================================================================================
+    # ③ 天気カラーを3系統に整理
     if code is None: return "", "black"
-    if code <= 1: return "晴", "orange"
-    if code <= 2: return "晴/曇", "orange"
-    if code <= 3: return "曇", "gray"
-    if code <= 48: return "霧", "gray"
-    if code <= 61: return "小雨", "blue"
-    if code <= 65: return "雨", "blue"
-    if code <= 99: return "大雨", "darkblue"
+    if code <= 2: return "晴", "#FF8C00"       # 晴系（濃いオレンジ）
+    if code <= 48: return "曇", "#696969"      # 曇・霧系（ダークグレー）
+    if code <= 99: return "雨", "#0000FF"      # 雨系（純粋な青）
     return "？", "black"
 
 #=================================================================================================
@@ -93,22 +90,17 @@ def process_wind_data(df, lat, lon, danger_v):
         if pd.isna(speed): return "none", ""
         direction = row['dir_name']
         
-        # 判定ロジックの変更
-        # 1. オーバー：10m以上
         if speed >= 10: 
             return "crimson", ""
         
-        # 2. ジャスト・アンダーの対象風向判定
         target_dirs = ["南" ,"南南西" ,"南西", "西南西", "西", "西北西", "北西", "北北西"]
-        # ジャスト：6m〜10m かつ 指定風向
         if 6 <= speed < 10 and direction in target_dirs:
             return "orange", ""
         
-        # アンダー：3m〜6m かつ 指定風向
         if 3 <= speed < 6 and direction in target_dirs:
             return "skyblue", ""
             
-        return "lightgray", ""
+        return "#D3D3D3", "" # 少し薄いグレー
     
     res_all = df.apply(judge, axis=1)
     df['color'] = [r[0] for r in res_all]
@@ -131,33 +123,40 @@ def create_graph(df, days, danger_v, wind_step, time_step):
         else:
             return dt.strftime('%H:%M')
 
-    bars = ax1.bar(df['time'], df['wind_speed_10m'], color=df['color'], alpha=0.8, width=0.03)
-    ax1.axhline(y=danger_v, color='red', linestyle='--', alpha=0.4)
-    ax1.set_ylabel('風速 (m/s)', fontsize=CONFIG["LABEL_SIZE"])
-    ax1.set_ylim(0, max(df['wind_speed_10m'].dropna().max() if not df['wind_speed_10m'].dropna().empty else 0, danger_v) + 9) 
+    bars = ax1.bar(df['time'], df['wind_speed_10m'], color=df['color'], alpha=0.9, width=0.03)
+    ax1.axhline(y=danger_v, color='red', linestyle='--', alpha=0.6)
+    ax1.set_ylabel('風速 (m/s)', fontsize=CONFIG["LABEL_SIZE"], color='black')
+    ax1.set_ylim(0, max(df['wind_speed_10m'].dropna().max() if not df['wind_speed_10m'].dropna().empty else 0, danger_v) + 11) 
     
     jst = timezone(timedelta(hours=9))
     now_jst = datetime.now(jst).replace(tzinfo=None)
-    ax1.axvline(now_jst, color='blue', linestyle='-', alpha=0.5, linewidth=2.5)
+    ax1.axvline(now_jst, color='blue', linestyle='-', alpha=0.6, linewidth=2.5)
 
     for ax in [ax1, ax2]:
         ax.xaxis.set_major_locator(mdates.HourLocator(byhour=range(0, 24, time_step)))
         ax.xaxis.set_major_formatter(plt.FuncFormatter(formatter))
         ax.set_xlim(df['time'].iloc[0], df['time'].iloc[-1])
-        ax.grid(True, linestyle=':', alpha=0.5)
-        plt.setp(ax.get_xticklabels(), ha='center')
+        # ④ 軸と文字の色を黒にして鮮明化
+        ax.grid(True, linestyle=':', alpha=0.4, color='#000000')
+        ax.tick_params(colors='black', labelsize=CONFIG["GRAPH_FONT_SIZE"])
+        for spine in ax.spines.values():
+            spine.set_edgecolor('black')
+            spine.set_linewidth(1.0)
+        plt.setp(ax.get_xticklabels(), ha='center', color='black')
 
     for i, bar in enumerate(bars):
         if not pd.isna(df['wind_speed_10m'].iloc[i]) and i % wind_step == 0:
             h = bar.get_height()
             v = round(df['wind_speed_10m'].iloc[i])
-            ax1.text(bar.get_x() + bar.get_width()/2., h + 3.5, df['w_text'].iloc[i], 
-                    ha='center', va='bottom', color=df['w_color'].iloc[i], fontweight='bold', fontsize=10)
+            # ② 天気文字(w_text)をさらに上に配置して重なりを回避
+            ax1.text(bar.get_x() + bar.get_width()/2., h + 5.5, df['w_text'].iloc[i], 
+                    ha='center', va='bottom', color=df['w_color'].iloc[i], fontweight='bold', fontsize=12)
+            
             txt = f"{df['dir_name'].iloc[i]}\n{df['arrow'].iloc[i]}\n{v}m"
-            ax1.text(bar.get_x() + bar.get_width()/2., h + 0.3, txt, ha='center', va='bottom', fontweight='bold')
+            ax1.text(bar.get_x() + bar.get_width()/2., h + 0.3, txt, ha='center', va='bottom', fontweight='bold', color='black')
 
-    ax2.plot(df['time'], df['temperature_2m'], color='#666666', linewidth=1.5)
-    ax2.set_ylabel('気温 (℃)', fontsize=CONFIG["LABEL_SIZE"])
+    ax2.plot(df['time'], df['temperature_2m'], color='black', linewidth=1.5) # 気温線も黒に
+    ax2.set_ylabel('気温 (℃)', fontsize=CONFIG["LABEL_SIZE"], color='black')
 
     buf = io.BytesIO()
     fig.savefig(buf, format="png", bbox_inches='tight', pad_inches=0.1)
@@ -238,9 +237,17 @@ def main():
         df = process_wind_data(df, st.session_state.lat, st.session_state.lon, danger_v)
         img_base64 = create_graph(df, days, danger_v, w_step, t_step)
 
-        # 凡例ラベルの文言をご指定に合わせて更新
-        st.markdown(f'<p style="font-size:14px;"><span style="color:orange;">■</span>ジャスト(6-10m/南-北北西) <span style="color:skyblue;">■</span>アンダー(3-6m/南-北北西) &nbsp;&nbsp;&nbsp; <span style="color:crimson; font-weight:bold;">---</span> オーバー {danger_v}m/s以上 &nbsp;&nbsp;&nbsp; <span style="color:blue; font-weight:bold;">―</span>現在時刻</p>', unsafe_allow_html=True)
-        st.markdown(f'<p style="font-weight:bold; font-size:16px;">地点: {current_place_name}</p>', unsafe_allow_html=True)
+        # ⑤ 凡例の順序を「アンダー、ジャスト、オーバー、現在時刻」に変更
+        st.markdown(f'''
+            <p style="font-size:16px; font-weight:bold;">
+                <span style="color:skyblue;">■</span>アンダー(3-6m) 
+                <span style="color:orange;">■</span>ジャスト(6-10m) &nbsp;&nbsp;&nbsp; 
+                <span style="color:crimson;">---</span> オーバー {danger_v}m/s以上 &nbsp;&nbsp;&nbsp; 
+                <span style="color:blue;">―</span>現在時刻
+            </p>
+            ''', unsafe_allow_html=True)
+        
+        st.markdown(f'<p style="font-weight:bold; font-size:16px; color:black;">地点: {current_place_name}</p>', unsafe_allow_html=True)
         
         st.markdown(f"""
             <div style="overflow-x: auto; white-space: nowrap; background: white; border-radius: 8px; border: 1px solid #eee;">
