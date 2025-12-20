@@ -92,11 +92,23 @@ def process_wind_data(df, lat, lon, danger_v):
         speed = row['wind_speed_10m']
         if pd.isna(speed): return "none", ""
         direction = row['dir_name']
-        if speed > danger_v: return "crimson", ""
-        is_takasu = (31.0 <= lat <= 31.5 and 130.5 <= lon <= 131.0)
-        if is_takasu and 5 <= speed <= 10 and direction == "北西": return "gold", ""
-        if 5 <= speed <= 10 and direction in ["西", "南西"]: return "orange", ""
-        if 5 <= speed <= 10: return "skyblue", ""
+        
+        # 判定ロジックの変更
+        # 1. オーバー：10m以上
+        if speed >= 10: 
+            return "crimson", ""
+        
+        # 2. ジャスト・アンダーの対象風向判定
+        target_dirs = ["南西", "西南西", "西", "西北西", "北西"]
+        
+        # ジャスト：6m〜10m かつ 指定風向
+        if 6 <= speed < 10 and direction in target_dirs:
+            return "orange", ""
+        
+        # アンダー：3m〜6m かつ 指定風向
+        if 3 <= speed < 6 and direction in target_dirs:
+            return "skyblue", ""
+            
         return "lightgray", ""
     
     res_all = df.apply(judge, axis=1)
@@ -191,7 +203,6 @@ def main():
         "錦江湾(鹿児島県)", "地図で指定"
     ])
     
-    # ① コンボボックスの座標修正とズーム(13)の設定
     if st.session_state.last_basho != basho:
         if basho == "高須沖(鹿児島県)":
             st.session_state.lat, st.session_state.lon = 31.337, 130.795
@@ -214,7 +225,6 @@ def main():
     current_place_name = basho
     use_map = st.sidebar.checkbox("地図で指定する", value=False)
     
-    # ② 地名表示のロジック修正
     if use_map or basho == "地図で指定":
         current_place_name = f"地図指定地点 ({st.session_state.lat:.3f}, {st.session_state.lon:.3f})"
         display_map_selector()
@@ -229,7 +239,8 @@ def main():
         df = process_wind_data(df, st.session_state.lat, st.session_state.lon, danger_v)
         img_base64 = create_graph(df, days, danger_v, w_step, t_step)
 
-        st.markdown(f'<p style="font-size:14px;"><span style="color:gold;">■</span>最高 <span style="color:orange;">■</span>良好 <span style="color:skyblue;">■</span>ジャスト &nbsp;&nbsp;&nbsp; <span style="color:crimson; font-weight:bold;">---</span> 危険風速 {danger_v}m/s &nbsp;&nbsp;&nbsp; <span style="color:blue; font-weight:bold;">―</span>現在時刻</p>', unsafe_allow_html=True)
+        # 凡例ラベルの文言をご指定に合わせて更新
+        st.markdown(f'<p style="font-size:14px;"><span style="color:orange;">■</span>ジャスト(6-10m/SW-NW) <span style="color:skyblue;">■</span>アンダー(3-6m/SW-NW) &nbsp;&nbsp;&nbsp; <span style="color:crimson; font-weight:bold;">---</span> オーバー {danger_v}m/s以上 &nbsp;&nbsp;&nbsp; <span style="color:blue; font-weight:bold;">―</span>現在時刻</p>', unsafe_allow_html=True)
         st.markdown(f'<p style="font-weight:bold; font-size:16px;">地点: {current_place_name}</p>', unsafe_allow_html=True)
         
         st.markdown(f"""
