@@ -2,5 +2,3 @@ streamlit
 requests
 pandas
 matplotlib
-streamlit-folium
-folium
