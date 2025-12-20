@@ -5,6 +5,8 @@ import matplotlib.pyplot as plt
 import matplotlib.font_manager as fm
 import urllib.request
 import os
+import io
+import base64
 import warnings
 from datetime import datetime
 import matplotlib.dates as mdates
@@ -66,23 +68,22 @@ best_times = df[df['cond_name'] == "最高"]
 if not best_times.empty:
     st.success(f"🏆 【狙い目！最高コンディション】\n" + ", ".join(best_times['time'].dt.strftime('%m/%d(%a) %H:%M')))
 
-# --- グラフの描画部分のみ差し替え ---
+# --- グラフ作成 ---
+# 1日あたり400ピクセル以上の幅を確保
+graph_width_px = max(1000, days * 400)
+# matplotlibのサイズ計算 (1インチ=100ピクセル想定)
+fig_w = graph_width_px / 100
 
-# 1日あたり8インチの幅。1週間なら56インチ。
-dynamic_width = max(12, days * 8) 
-
-fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(dynamic_width, 8), dpi=200, 
-                               sharex=True, gridspec_kw={'height_ratios': [3, 1]})
+fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(fig_w, 8), dpi=150, sharex=True, gridspec_kw={'height_ratios': [3, 1]})
 plt.subplots_adjust(hspace=0.2)
 
-# 風速バーの描画
+# 風速
 bars = ax1.bar(df['time'], df['wind_speed_10m'], color=df['color'], alpha=0.8)
 ax1.axhline(y=danger_v, color='red', linestyle='--', alpha=0.5)
 ax1.set_ylabel('風速 (m/s)', fontsize=14)
 ax1.set_ylim(0, max(df['wind_speed_10m'].max(), danger_v) + 5)
 ax1.grid(True, axis='y', linestyle=':', alpha=0.5)
 
-# 文字の書き込み
 step = 1 if days <= 2 else 2
 for i, bar in enumerate(bars):
     if i % step == 0:
@@ -91,43 +92,24 @@ for i, bar in enumerate(bars):
                  f"{df['mark'].iloc[i]}\n{df['dir_name'].iloc[i]}\n{df['arrow'].iloc[i]}", 
                  ha='center', va='bottom', fontsize=9, fontweight='bold')
 
-# 気温の描画
+# 気温
 ax2.plot(df['time'], df['temperature_2m'], color='#444444', linewidth=2)
-ax2.fill_between(df['time'], df['temperature_2m'], color='gray', alpha=0.1)
 ax2.set_ylabel('気温 (℃)', fontsize=12)
 ax2.xaxis.set_major_formatter(mdates.DateFormatter('%m/%d(%a)\n%H:%M'))
 ax2.xaxis.set_major_locator(mdates.HourLocator(byhour=[0, 6, 12, 18]))
 
-# --- 【ここがポイント】横スクロール枠を強制的に作成 ---
-# HTMLとCSSを使って、幅2000px以上の「横に長い箱」の中にグラフを閉じ込めます
-import streamlit.components.v1 as components
+# --- 【重要】グラフを画像データに変換して、スクロール枠で表示 ---
+buf = io.BytesIO()
+fig.savefig(buf, format="png", bbox_inches='tight')
+base64_img = base64.b64encode(buf.getvalue()).decode()
 
-st.write("### 週間予報（右にスワイプして確認）")
-
-# グラフを一度画像として保存せず、そのままスクロール可能なdivの中に入れる設定
-# overflow-x: auto でスクロールを発生させます
-st.markdown(
-    """
-    <style>
-    .scroll-container {
-        overflow-x: auto;
-        white-space: nowrap;
-        width: 100%;
-    }
-    .scroll-container img {
-        max-width: none !important; /* ブラウザの自動縮小を禁止 */
-        width: auto !important;
-    }
-    </style>
-    """,
-    unsafe_allow_html=True
-)
-
-with st.container():
-    # スクロール用の箱を作成
-    st.markdown('<div class="scroll-container">', unsafe_allow_html=True)
-    # ここでグラフを表示（use_container_width=Falseが必須）
-    st.pyplot(fig, use_container_width=False)
-    st.markdown('</div>', unsafe_allow_html=True)
+# スクロールさせるHTML/CSS
+st.write("### 週間予報（右にスワイプ）")
+html_code = f"""
+<div style="overflow-x: auto; overflow-y: hidden; width: 100%; border: 1px solid #ddd; border-radius: 8px;">
+    <img src="data:image/png;base64,{base64_img}" style="width: {graph_width_px}px; max-width: none;">
+</div>
+"""
+st.markdown(html_code, unsafe_allow_html=True)
 
 st.write(f"凡例: 金色=最高(北西) / 橙色=良好(西・南西) / 赤色=危険({danger_v}m/s超)")
