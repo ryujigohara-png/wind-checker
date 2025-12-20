@@ -10,6 +10,8 @@ import base64
 import warnings
 from datetime import datetime
 import matplotlib.dates as mdates
+from streamlit_folium import st_folium
+import folium
 
 # ==========================================
 # ★設定エリア★
@@ -31,39 +33,40 @@ if not os.path.exists(FONT_PATH):
 fm.fontManager.addfont(FONT_PATH)
 plt.rc('font', family='Noto Sans JP', size=GRAPH_FONT_SIZE)
 
-st.set_page_config(page_title="高須沖・風況チェッカー", layout="wide")
+st.set_page_config(page_title="風況チェッカー", layout="wide")
 warnings.simplefilter('ignore', UserWarning)
 
 st.markdown(f'<h1 style="font-size:{TITLE_SIZE}px;">⛵ 風況チェッカー</h1>', unsafe_allow_html=True)
 
-# --- 場所の選択ロジック ---
+# --- 場所の管理（セッションを使って座標を保持） ---
+if 'lat' not in st.session_state:
+    st.session_state.lat = 31.34  # 高須沖
+    st.session_state.lon = 130.79
+
+# --- サイドメニュー ---
 st.sidebar.header("場所の設定")
-
-# 初期値は「高須沖」
-lat, lon = 31.34, 130.79
-place_name = "高須沖(鹿児島県)"
-
-# 「地図から選ぶ」モードの切り替え
 use_map = st.sidebar.checkbox("地図から場所を選択する")
 
 if use_map:
-    # 地図を表示して座標を指定
-    st.info("地図上のポイントを動かして場所を指定してください。")
-    # 地図用のデータフレーム（現在の地点を表示）
-    map_df = pd.DataFrame({'lat': [lat], 'lon': [lon]})
-    # クリックではなく、スライダーや数値入力で微調整する形がStreamlit標準では最も安定します
-    lat = st.sidebar.number_input("緯度", value=lat, format="%.4f")
-    lon = st.sidebar.number_input("経度", value=lon, format="%.4f")
-    st.map(pd.DataFrame({'lat': [lat], 'lon': [lon]}))
-    place_name = f"指定地点 ({lat:.2f}, {lon:.2f})"
-else:
-    # 通常モード（プリセットから選択）
-    selected_place = st.sidebar.selectbox("プリセット地点", ["高須沖(鹿児島県)", "錦江湾(鹿児島県)"])
-    if selected_place == "錦江湾(鹿児島県)":
-        lat, lon = 31.59, 130.60
-        place_name = selected_place
+    st.info("地図上の好きな場所を【クリック】してください。その地点の予報に切り替わります。")
+    # 地図の作成
+    m = folium.Map(location=[st.session_state.lat, st.session_state.lon], zoom_start=11)
+    # 現在地にピンを立てる
+    folium.Marker([st.session_state.lat, st.session_state.lon]).add_to(m)
+    
+    # 地図を表示し、クリック位置を取得
+    # スクロールを邪魔しないよう、マウスホイールズームを無効化
+    out = st_folium(m, width=700, height=400, scrolling=False)
+    
+    # 地図がクリックされたら座標を更新
+    if out and out.get("last_clicked"):
+        st.session_state.lat = out["last_clicked"]["lat"]
+        st.session_state.lon = out["last_clicked"]["lng"]
+        st.rerun() # 座標が変わったら即座に再描画
 
-st.sidebar.markdown("---")
+lat, lon = st.session_state.lat, st.session_state.lon
+place_display = f"指定地点 ({lat:.2f}, {lon:.2f})" if use_map else "高須沖(鹿児島県)"
+
 days = st.sidebar.slider("表示日数", 1, 7, 7)
 danger_v = st.sidebar.number_input("危険風速(m/s)", value=10)
 
@@ -75,7 +78,6 @@ df = pd.DataFrame(data["hourly"])
 df['time'] = pd.to_datetime(df['time'])
 df = df.head(24 * days).reset_index(drop=True)
 
-# 曜日マッピング
 jp_weeks = ["月", "火", "水", "木", "金", "土", "日"]
 
 def get_wind_info(deg):
@@ -92,7 +94,6 @@ def judge_condition(row):
     speed = row['wind_speed_10m']
     direction = row['dir_name']
     if speed > danger_v: return "crimson", "⚠️", "危険"
-    # 高須沖付近の場合のみ「最高」判定を有効にする（他地点での誤解を避けるため）
     is_takasu = (31.0 <= lat <= 31.5 and 130.5 <= lon <= 131.0)
     if is_takasu and 5 <= speed <= 10 and direction == "北西": return "gold", "★", "最高"
     if 5 <= speed <= 10 and direction in ["西", "南西"]: return "orange", "○", "良好"
@@ -104,15 +105,14 @@ df['color'] = [r[0] for r in res_all]
 df['mark'] = [r[1] for r in res_all]
 df['cond_name'] = [r[2] for r in res_all]
 
-# 狙い目表示（高須沖かつ最高コンディションがある場合のみ）
+# 狙い目表示
 best_times = df[df['cond_name'] == "最高"]
 if not best_times.empty:
-    st.success(f"🏆 【{place_name} 狙い目！】\n" + ", ".join(best_times['time'].dt.strftime('%m/%d(%a) %H:%M')))
+    st.success(f"🏆 【{place_display} 狙い目！】\n" + ", ".join(best_times['time'].dt.strftime('%m/%d(%a) %H:%M')))
 
 # --- グラフ作成 ---
 graph_width_px = max(800, days * 350)
 fig_w = graph_width_px / 100
-
 fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(fig_w, 8), dpi=DPI_QUALITY, sharex=True, gridspec_kw={'height_ratios': [3.5, 1.5]})
 plt.subplots_adjust(hspace=0.6)
 
@@ -121,7 +121,6 @@ ax1.axhline(y=danger_v, color='red', linestyle='--', alpha=0.5)
 ax1.set_ylabel('風速 (m/s)', fontsize=LABEL_SIZE)
 ax1.set_ylim(0, max(df['wind_speed_10m'].max(), danger_v) + 6.5)
 ax1.grid(True, axis='both', linestyle=':', alpha=0.5)
-
 ax1.axvline(datetime.now(), color='blue', linestyle='-', alpha=0.4, linewidth=2)
 ax1.set_xlim(df['time'].iloc[0], df['time'].iloc[-1])
 
@@ -163,7 +162,7 @@ st.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
-st.markdown(f'<p style="font-size:{SUBTITLE_SIZE}px; font-weight:bold; margin-bottom:0;">{place_name} 週間予報</p>', unsafe_allow_html=True)
+st.markdown(f'<p style="font-size:{SUBTITLE_SIZE}px; font-weight:bold; margin-bottom:0;">{place_display} 週間予報</p>', unsafe_allow_html=True)
 
 html_code = f"""
 <div style="overflow-x: auto; width: 100%; border-radius: 8px; border: 1px solid #eee; background-color: white;">
