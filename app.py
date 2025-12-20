@@ -22,23 +22,6 @@ warnings.simplefilter('ignore', UserWarning)
 
 st.title("⛵ 高須沖・風況チェッカー")
 
-# --- 【重要】ここから：横スクロールを強制するCSS ---
-st.markdown("""
-    <style>
-    .stPlotlyChart {
-        overflow-x: scroll;
-    }
-    [data-testid="stHorizontalBlock"] {
-        overflow-x: scroll;
-    }
-    .stpyplot {
-        overflow-x: scroll;
-        min-width: 1200px; /* ここで最低の横幅を固定します */
-    }
-    </style>
-    """, unsafe_allow_html=True)
-# --- ここまで ---
-
 # サイドメニュー
 st.sidebar.header("設定")
 basho = st.sidebar.selectbox("場所", ["高須沖(鹿児島県)", "錦江湾(鹿児島県)"])
@@ -83,36 +66,41 @@ best_times = df[df['cond_name'] == "最高"]
 if not best_times.empty:
     st.success(f"🏆 【狙い目！最高コンディション】\n" + ", ".join(best_times['time'].dt.strftime('%m/%d(%a) %H:%M')))
 
-# グラフ描画
-# 表示日数に応じて、1日あたり400px（7日で2800px相当）の巨大なグラフを作成
-dynamic_width = max(10, days * 5) 
+# --- グラフ描画（究極のクッキリ＆スクロール設定） ---
+# 1日あたり8インチの幅を持たせる（7日で56インチ＝超巨大）
+# これにより、画面に収まりきらず必ずスクロールが発生します
+dynamic_width = max(12, days * 8) 
 
-fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(dynamic_width, 8), dpi=200, 
-                               sharex=True, gridspec_kw={'height_ratios': [4, 1]})
+# dpi=300 で印刷品質の画質を確保
+fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(dynamic_width, 10), dpi=300, 
+                               sharex=True, gridspec_kw={'height_ratios': [3, 1]})
 plt.subplots_adjust(hspace=0.2)
 
-bars = ax1.bar(df['time'], df['wind_speed_10m'], color=df['color'], alpha=0.8)
+bars = ax1.bar(df['time'], df['wind_speed_10m'], color=df['color'], alpha=0.8, width=0.03)
 ax1.axhline(y=danger_v, color='red', linestyle='--', alpha=0.5)
-ax1.set_ylabel('風速 (m/s)', fontsize=14)
+ax1.set_ylabel('風速 (m/s)', fontsize=16)
 ax1.set_ylim(0, max(df['wind_speed_10m'].max(), danger_v) + 5)
 ax1.grid(True, axis='y', linestyle=':', alpha=0.5)
 
-step = 1 if days <= 1 else (2 if days <= 3 else 3)
+# 文字を大きく読みやすく
+step = 1 if days <= 2 else 2
 for i, bar in enumerate(bars):
     if i % step == 0:
         h = bar.get_height()
         ax1.text(bar.get_x() + bar.get_width()/2., h + 0.3, 
                  f"{df['mark'].iloc[i]}\n{df['dir_name'].iloc[i]}\n{df['arrow'].iloc[i]}", 
-                 ha='center', va='bottom', fontsize=9, fontweight='bold')
+                 ha='center', va='bottom', fontsize=10, fontweight='bold')
 
-ax2.plot(df['time'], df['temperature_2m'], color='gray', alpha=0.5)
+ax2.plot(df['time'], df['temperature_2m'], color='#444444', linewidth=3)
 ax2.fill_between(df['time'], df['temperature_2m'], color='gray', alpha=0.1)
-ax2.set_ylabel('気温 (℃)', fontsize=12)
+ax2.set_ylabel('気温 (℃)', fontsize=14)
 
 ax2.xaxis.set_major_formatter(mdates.DateFormatter('%m/%d(%a)\n%H:%M'))
 ax2.xaxis.set_major_locator(mdates.HourLocator(byhour=[0, 6, 12, 18]))
+plt.xticks(fontsize=12)
 
-# 表示。use_container_width=Falseが重要
+# 【重要】use_container_width=False にすることで
+# ブラウザの幅に関係なく、figsizeで指定した巨大なサイズで表示させます
 st.pyplot(fig, use_container_width=False)
 
 st.write(f"凡例: 金色=最高(北西) / 橙色=良好(西・南西) / 赤色=危険({danger_v}m/s超)")
