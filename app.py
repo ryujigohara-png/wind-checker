@@ -118,42 +118,20 @@ def create_graph(df, days, danger_v, wind_step, time_step):
 def display_map_selector():
 #=================================================================================================
     st.info("地図をドラッグすると、中心に合わせてポインターが移動します。")
-    
-    # 1. 描画用の座標を確定させる
-    view_lat = st.session_state.lat
-    view_lon = st.session_state.lon
-    
-    # 2. 地図の作成（現在の緯度経度を初期位置に）
-    m = folium.Map(location=[view_lat, view_lon], zoom_start=12)
-    
-    # 3. マーカーを設置
+    m = folium.Map(location=[st.session_state.lat, st.session_state.lon], zoom_start=12)
     folium.Marker(
-        [view_lat, view_lon],
+        [st.session_state.lat, st.session_state.lon],
         icon=folium.DivIcon(html=f'<div style="font-size: 24pt; color: red; font-weight: bold; text-align: center; width: 50px; margin-left: -25px; margin-top: -25px;">╋</div>')
     ).add_to(m)
 
-    # 4. 地図を表示
-    map_out = st_folium(
-        m, 
-        width=CONFIG["MAP_WIDTH"], 
-        height=CONFIG["MAP_HEIGHT"], 
-        key="map_selector", # キーを固定して状態を維持
-        returned_objects=["center"] # 中心座標のみを監視対象にして高速化
-    )
+    map_out = st_folium(m, width=CONFIG["MAP_WIDTH"], height=CONFIG["MAP_HEIGHT"], key="map_selector")
 
-    # 5. 地図の中心が動いた場合の処理
-    if map_out and "center" in map_out and map_out["center"]:
-        # map_out["center"] は {'lat': ..., 'lng': ...} の形式
-        new_lat = map_out["center"]["lat"]
-        new_lon = map_out["center"]["lng"]
-        
-        # 厳密に比較 (変化があれば即時更新)
-        if (new_lat != st.session_state.lat) or (new_lon != st.session_state.lon):
-            st.session_state.lat = new_lat
-            st.session_state.lon = new_lon
-            # rerunの前に、場所の選択肢を「地図から指定」に強制的に書き換えることで
-            # selectboxによる座標の引き戻しを防止する（これが重要です）
-            # st.session_state.basho_index = 2 # 必要に応じて追加
+    if map_out and map_out.get("center"):
+        c = map_out["center"]
+        # 地図の座標とセッションの座標を比較（小数点第8位レベルで厳密に）
+        if abs(st.session_state.lat - c["lat"]) > 0.00000001 or abs(st.session_state.lon - c["lng"]) > 0.00000001:
+            st.session_state.lat = c["lat"]
+            st.session_state.lon = c["lng"]
             st.rerun()
 
 #=================================================================================================
@@ -171,13 +149,12 @@ def main():
     st.sidebar.header("設定")
     basho = st.sidebar.selectbox("場所", ["高須沖(鹿児島県)", "錦江湾(鹿児島県)", "地図から指定"])
     
-    # 【重要】場所が変更された時だけ、座標をプリセット値に上書きする
+    # セレクトボックスが操作されたときだけ座標をプリセット値にする
     if st.session_state.last_basho != basho:
         if basho == "高須沖(鹿児島県)":
             st.session_state.lat, st.session_state.lon = 31.340, 130.790
         elif basho == "錦江湾(鹿児島県)":
             st.session_state.lat, st.session_state.lon = 31.590, 130.600
-        # 「地図から指定」の場合は座標を上書きせず、現在の座標を維持する
         st.session_state.last_basho = basho
 
     current_place_name = basho
@@ -189,7 +166,6 @@ def main():
         else:
             current_place_name = "地図指定地点"
         
-        # 地図表示サブルーチンの呼び出し
         display_map_selector()
 
     days = st.sidebar.slider("表示日数", 1, 7, 7)
@@ -198,14 +174,12 @@ def main():
     w_step = 1 if days == 1 else (2 if days == 2 else 3)
     t_step = 3 if days == 1 else 6
 
-    # 最新のセッション座標を使用してデータ取得
     df = fetch_weather_data(st.session_state.lat, st.session_state.lon, days)
     if df is not None:
         df = process_wind_data(df, st.session_state.lat, st.session_state.lon, danger_v)
         img_base64 = create_graph(df, days, danger_v, w_step, t_step)
 
         st.markdown(f'<p style="font-size:14px;"><span style="color:gold;">■</span>最高 <span style="color:orange;">■</span>良好 <span style="color:skyblue;">■</span>ジャスト <span style="color:crimson;">■</span>危険 <span style="color:blue; font-weight:bold;">―</span>現在時刻</p>', unsafe_allow_html=True)
-        # 修正された座標を表示に反映
         st.markdown(f'<p style="font-weight:bold; font-size:16px;">地点: {current_place_name} ({st.session_state.lat:.3f}, {st.session_state.lon:.3f})</p>', unsafe_allow_html=True)
         
         st.markdown(f"""
@@ -213,3 +187,6 @@ def main():
                 <img src="data:image/png;base64,{img_base64}" style="height: 550px; max-width: none;">
             </div>
         """, unsafe_allow_html=True)
+
+if __name__ == "__main__":
+    main()
