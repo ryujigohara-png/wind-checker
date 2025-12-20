@@ -99,9 +99,7 @@ def process_wind_data(df, lat, lon, danger_v):
             return "crimson", ""
         
         # 2. ジャスト・アンダーの対象風向判定
-        target_dirs = ["南西", "西南西", "西", "西北西", "北西"]
-        
-        # ジャスト：6m〜10m かつ 指定風向
+        target_dirs = ["南" ,"南南西" ,"南西", "西南西", "西", "西北西", "北西", "北北西"]"み""南南西" ,"南西", "西# ジャスト：6m〜10m かつ 指定風向
         if 6 <= speed < 10 and direction in target_dirs:
             return "orange", ""
         
@@ -240,7 +238,7 @@ def main():
         img_base64 = create_graph(df, days, danger_v, w_step, t_step)
 
         # 凡例ラベルの文言をご指定に合わせて更新
-        st.markdown(f'<p style="font-size:14px;"><span style="color:orange;">■</span>ジャスト(6-10m/SW-NW) <span style="color:skyblue;">■</span>アンダー(3-6m/SW-NW) &nbsp;&nbsp;&nbsp; <span style="color:crimson; font-weight:bold;">---</span> オーバー {danger_v}m/s以上 &nbsp;&nbsp;&nbsp; <span style="color:blue; font-weight:bold;">―</span>現在時刻</p>', unsafe_allow_html=True)
+        st.markdown(f'<p style="font-size:14px;"><span style="color:orange;">■</span>ジャスト(6-10m/南-北北西) <span style="color:skyblue;">■</span>アンダー(3-6m/南-北北西) &nbsp;&nbsp;&nbsp; <span style="color:crimson; font-weight:bold;">---</span> オーバー {danger_v}m/s以上 &nbsp;&nbsp;&nbsp; <span style="color:blue; font-weight:bold;">―</span>現在時刻</p>', unsafe_allow_html=True)
         st.markdown(f'<p style="font-weight:bold; font-size:16px;">地点: {current_place_name}</p>', unsafe_allow_html=True)
         
         st.markdown(f"""
