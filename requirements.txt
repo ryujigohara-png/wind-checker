@@ -2,3 +2,5 @@ streamlit
 requests
 pandas
 matplotlib
+streamlit-folium==0.11.1
+folium==0.14.0
