@@ -37,7 +37,8 @@ def setup_font():
 #=================================================================================================
 def fetch_weather_data(lat, lon, days):
 #=================================================================================================
-    url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&hourly=temperature_2m,wind_speed_10m,wind_direction_10m&timezone=Asia%2FTokyo&wind_speed_unit=ms&forecast_days=8"
+    # weather_code を取得項目に追加
+    url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&hourly=temperature_2m,wind_speed_10m,wind_direction_10m,weather_code&timezone=Asia%2FTokyo&wind_speed_unit=ms&forecast_days=8"
     try:
         data = requests.get(url).json()
         df = pd.DataFrame(data["hourly"])
@@ -46,6 +47,19 @@ def fetch_weather_data(lat, lon, days):
     except Exception as e:
         st.error(f"データ取得エラー: {e}")
         return None
+
+#=================================================================================================
+def get_weather_emoji(code):
+#=================================================================================================
+    # WMO天気コードを絵文字に変換
+    if code <= 1: return "☀️"         # 晴れ
+    if code <= 2: return "🌤️"         # 時々晴れ
+    if code <= 3: return "☁️"         # 曇り
+    if code <= 48: return "🌫️"        # 霧（曇り扱い）
+    if code <= 61: return "🌦️"        # 時々雨
+    if code <= 65: return "☔"         # 雨
+    if code <= 99: return "⛈️"         # 大雨・雷雨
+    return "❓"
 
 #=================================================================================================
 def process_wind_data(df, lat, lon, danger_v):
@@ -58,6 +72,10 @@ def process_wind_data(df, lat, lon, danger_v):
     df['res'] = df['wind_direction_10m'].apply(get_info)
     df['dir_name'] = df['res'].apply(lambda x: x[0])
     df['arrow'] = df['res'].apply(lambda x: x[1])
+    
+    # 天気絵文字の付与
+    df['w_emoji'] = df['weather_code'].apply(get_weather_emoji)
+
     def judge(row):
         speed, direction = row['wind_speed_10m'], row['dir_name']
         if speed > danger_v: return "crimson", "⚠️"
@@ -75,7 +93,6 @@ def process_wind_data(df, lat, lon, danger_v):
 def create_graph(df, days, danger_v, wind_step, time_step):
 #=================================================================================================
     fig_w = max(10, days * 3.5)
-    # ⑤風速グラフ高さ2倍、⑥気温グラフ高さ1/2
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(fig_w, 8), dpi=CONFIG["DPI"], 
                                    gridspec_kw={'height_ratios': [4, 1]})
     plt.subplots_adjust(hspace=0.8)
@@ -88,7 +105,7 @@ def create_graph(df, days, danger_v, wind_step, time_step):
     bars = ax1.bar(df['time'], df['wind_speed_10m'], color=df['color'], alpha=0.8, width=0.03)
     ax1.axhline(y=danger_v, color='red', linestyle='--', alpha=0.4)
     ax1.set_ylabel('風速 (m/s)', fontsize=CONFIG["LABEL_SIZE"])
-    ax1.set_ylim(0, max(df['wind_speed_10m'].max(), danger_v) + 7)
+    ax1.set_ylim(0, max(df['wind_speed_10m'].max(), danger_v) + 8) # 天気表示用に少し高く設定
     
     jst = timezone(timedelta(hours=9))
     now_jst = datetime.now(jst).replace(tzinfo=None)
@@ -105,7 +122,8 @@ def create_graph(df, days, danger_v, wind_step, time_step):
         if i % wind_step == 0:
             h = bar.get_height()
             v = round(df['wind_speed_10m'].iloc[i])
-            txt = f"{df['mark'].iloc[i]}\n{df['dir_name'].iloc[i]}\n{df['arrow'].iloc[i]}\n{v}m"
+            # 天気絵文字 + 判定マーク + 風向 + 矢印 + 風速 の順に表示
+            txt = f"{df['w_emoji'].iloc[i]}\n{df['mark'].iloc[i]}\n{df['dir_name'].iloc[i]}\n{df['arrow'].iloc[i]}\n{v}m"
             ax1.text(bar.get_x() + bar.get_width()/2., h + 0.3, txt, ha='center', va='bottom', fontweight='bold')
 
     ax2.plot(df['time'], df['temperature_2m'], color='#666666', linewidth=1.5)
@@ -118,25 +136,19 @@ def create_graph(df, days, danger_v, wind_step, time_step):
 #=================================================================================================
 def display_map_selector():
 #=================================================================================================
-    st.info("地図をドラッグして「╋」を目的の場所に合わせ、「この地点で確定」を押してください。")
-    
-    # セッション内の現在の値を表示位置に設定
+    st.info("ドラッグして地図を動かし、下のボタン「場所は、地図中央地点で確定」を押してください。")
     m = folium.Map(location=[st.session_state.lat, st.session_state.lon], zoom_start=st.session_state.zoom)
     folium.Marker(
         [st.session_state.lat, st.session_state.lon],
         icon=folium.DivIcon(html=f'<div style="font-size: 24pt; color: red; font-weight: bold; text-align: center; width: 50px; margin-left: -25px; margin-top: -25px;">╋</div>')
     ).add_to(m)
 
-    # 決定ボタン方式：ここで rerun はせず、情報の受け取りだけを行う
     map_out = st_folium(m, width=CONFIG["MAP_WIDTH"], height=CONFIG["MAP_HEIGHT"], key="map_selector")
 
     if map_out and map_out.get("center"):
-        # 一時的に現在の地図の中心座標を記録しておく（ボタンが押されるまで session_state には反映させない）
         c = map_out["center"]
         z = map_out["zoom"]
-        
-        # 決定ボタンを配置
-        if st.button("この地点で確定（グラフ更新）", use_container_width=True):
+        if st.button("場所は、地図中央地点で確定（グラフ更新）", use_container_width=True):
             st.session_state.lat = c["lat"]
             st.session_state.lon = c["lng"]
             st.session_state.zoom = z
@@ -146,37 +158,46 @@ def display_map_selector():
 def main():
 #=================================================================================================
     setup_font()
-    st.markdown(f'<h1 style="font-size:{CONFIG["TITLE_SIZE"]}px;">⛵ 風況チェッカー</h1>', unsafe_allow_html=True)
+    st.markdown(f'<h1 style="font-size:{CONFIG["TITLE_SIZE"]}px;">⛵ 風チェッカー</h1>', unsafe_allow_html=True)
 
     if 'lat' not in st.session_state:
-        st.session_state.lat, st.session_state.lon = 31.340, 130.790
+        st.session_state.lat, st.session_state.lon = 31.337, 130.795
     if 'zoom' not in st.session_state:
         st.session_state.zoom = 12
     if 'last_basho' not in st.session_state:
         st.session_state.last_basho = "高須沖(鹿児島県)"
 
     st.sidebar.header("設定")
-    basho = st.sidebar.selectbox("場所", ["高須沖(鹿児島県)", "錦江湾(鹿児島県)", "地図から指定"])
+    basho = st.sidebar.selectbox("場所", [
+        "高須沖(鹿児島県)", "錦江湾(鹿児島県)", "柏原沖(鹿児島県)", 
+        "垂水港(鹿児島県)", "海潟(鹿児島県)", "磯海岸沖(鹿児島県)", 
+        "江口浜沖(鹿児島県)", "地図で指定"
+    ])
     
-    # コンボボックス操作時のみプリセット座標を反映
     if st.session_state.last_basho != basho:
         if basho == "高須沖(鹿児島県)":
-            st.session_state.lat, st.session_state.lon = 31.340, 130.790
-            st.session_state.zoom = 12
+            st.session_state.lat, st.session_state.lon = 31.337, 130.795
+        elif basho == "柏原沖(鹿児島県)":
+            st.session_state.lat, st.session_state.lon = 31.380, 130.020
+        elif basho == "垂水港(鹿児島県)":
+            st.session_state.lat, st.session_state.lon = 31.748, 130.668
+        elif basho == "海潟(鹿児島県)":
+            st.session_state.lat, st.session_state.lon = 31.539, 130.706
+        elif basho == "磯海岸沖(鹿児島県)":
+            st.session_state.lat, st.session_state.lon = 31.614, 130.577
+        elif basho == "江口浜沖(鹿児島県)":
+            st.session_state.lat, st.session_state.lon = 31.643, 130.322
         elif basho == "錦江湾(鹿児島県)":
             st.session_state.lat, st.session_state.lon = 31.590, 130.600
-            st.session_state.zoom = 12
+        
+        st.session_state.zoom = 12
         st.session_state.last_basho = basho
 
     current_place_name = basho
-    use_map = st.sidebar.checkbox("地図で微調整する", value=False)
+    use_map = st.sidebar.checkbox("地図で指定する", value=False)
 
-    if use_map or basho == "地図から指定":
-        if basho != "地図から指定":
-            current_place_name = f"{basho}(微調整中)"
-        else:
-            current_place_name = "地図指定地点"
-        
+    if use_map or basho == "地図で指定":
+        current_place_name = f"{basho}(調整中)" if basho != "地図で指定" else "地図指定地点"
         display_map_selector()
 
     days = st.sidebar.slider("表示日数", 1, 7, 7)
