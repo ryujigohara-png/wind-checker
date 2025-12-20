@@ -16,10 +16,11 @@ import matplotlib.dates as mdates
 # ==========================================
 TITLE_SIZE = 20       # メインタイトルの大きさ
 SUBTITLE_SIZE = 16    # 「週間予報」などの見出しの大きさ
-GRAPH_FONT_SIZE = 10  # グラフ内の文字（風向・矢印・日時）
+GRAPH_FONT_SIZE = 10  # グラフ内の文字
 LABEL_SIZE = 12       # 縦軸ラベルの大きさ
-DPI_QUALITY = 300     # 画質（300が最高品質）
-WIND_STEP = 3         # 風向・矢印を表示する間隔（3なら3時間おき）
+DPI_QUALITY = 300     # 画質
+WIND_STEP = 3         # 風情報の表示間隔（3時間おき）
+TIME_LABEL_STEP = 6   # 風グラフ側の日時ラベル表示間隔（6時間おきなど）
 # ==========================================
 
 # --- 日本語フォント設定 ---
@@ -42,15 +43,15 @@ basho = st.sidebar.selectbox("場所", ["高須沖(鹿児島県)", "錦江湾(�
 days = st.sidebar.slider("表示日数", 1, 7, 7)
 danger_v = st.sidebar.number_input("危険風速(m/s)", value=10)
 
-# --- データ取得 ---
+# --- データ取得と整形（空白解消） ---
 lat, lon = (31.34, 130.79) if basho == "高須沖(鹿児島県)" else (31.59, 130.60)
-url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&hourly=temperature_2m,wind_speed_10m,wind_direction_10m&timezone=Asia%2FTokyo&wind_speed_unit=ms&past_days=1"
+url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&hourly=temperature_2m,wind_speed_10m,wind_direction_10m&timezone=Asia%2FTokyo&wind_speed_unit=ms"
 data = requests.get(url).json()
 
 df = pd.DataFrame(data["hourly"])
 df['time'] = pd.to_datetime(df['time'])
 
-# 今日の0時以降を抽出
+# 今日の0時を起点にする（昨日のデータを含めないことで左端の空白を削除）
 today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
 df = df[df['time'] >= today_start].head(24 * days)
 
@@ -84,45 +85,45 @@ if not best_times.empty:
     st.success(f"🏆 【狙い目！最高コンディション】\n" + ", ".join(best_times['time'].dt.strftime('%m/%d(%a) %H:%M')))
 
 # --- グラフ作成 ---
-graph_width_px = max(800, days * 350) # 横幅を少し広げて重なりを緩和
+graph_width_px = max(800, days * 350)
 fig_w = graph_width_px / 100
 
 fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(fig_w, 8), dpi=DPI_QUALITY, sharex=True, gridspec_kw={'height_ratios': [4, 1]})
-plt.subplots_adjust(hspace=0.4) # 上下の間隔を少し広げる
+plt.subplots_adjust(hspace=0.5)
 
 # 風速グラフ
 bars = ax1.bar(df['time'], df['wind_speed_10m'], color=df['color'], alpha=0.8, width=0.03)
 ax1.axhline(y=danger_v, color='red', linestyle='--', alpha=0.5)
 ax1.set_ylabel('風速 (m/s)', fontsize=LABEL_SIZE)
-ax1.set_ylim(0, max(df['wind_speed_10m'].max(), danger_v) + 6)
+ax1.set_ylim(0, max(df['wind_speed_10m'].max(), danger_v) + 6.5) # 上部に余裕を持たせる
 ax1.grid(True, axis='both', linestyle=':', alpha=0.5)
 
 # 現在時刻の線
 now = datetime.now()
 ax1.axvline(now, color='blue', linestyle='-', alpha=0.4, linewidth=2)
 
-# 風向・矢印・日時テキスト
+# テキストの描画
 for i, bar in enumerate(bars):
+    # 風向情報の表示（重なり防止：WIND_STEP間隔）
     if i % WIND_STEP == 0:
         h = bar.get_height()
-        t = df['time'].iloc[i]
-        # 日時を3行（日付、曜日、時刻）で作成
-        time_str = t.strftime('%m/%d\n(%a)\n%H:%M')
-        # 風情報のラベル
         ax1.text(bar.get_x() + bar.get_width()/2., h + 0.5, 
                  f"{df['mark'].iloc[i]}\n{df['dir_name'].iloc[i]}\n{df['arrow'].iloc[i]}", 
                  ha='center', va='bottom', fontsize=GRAPH_FONT_SIZE, fontweight='bold')
-        # 日時をグラフ上部（または下部）に追加
-        ax1.text(bar.get_x() + bar.get_width()/2., -1.5, # 棒の下側に配置
-                 time_str, ha='center', va='top', fontsize=GRAPH_FONT_SIZE - 1)
+    
+    # 風グラフ側の日時表示（間隔を広げて間引く：TIME_LABEL_STEP間隔）
+    if i % TIME_LABEL_STEP == 0:
+        t = df['time'].iloc[i]
+        time_str = t.strftime('%m/%d\n(%a)\n%H:%M')
+        ax1.text(bar.get_x() + bar.get_width()/2., -0.5, 
+                 time_str, ha='center', va='top', fontsize=GRAPH_FONT_SIZE - 1, color='#555555')
 
 # 気温グラフ
 ax2.plot(df['time'], df['temperature_2m'], color='#444444', linewidth=2)
 ax2.set_ylabel('気温 (℃)', fontsize=LABEL_SIZE)
 ax2.grid(True, linestyle=':', alpha=0.5)
 
-# X軸の目盛り設定（下段）
-# ここでも3行（日付、曜日、時刻）で表示
+# X軸（気温グラフ側の日時：こちらは標準の目盛りなので見やすさを維持）
 ax2.xaxis.set_major_formatter(mdates.DateFormatter('%m/%d\n(%a)\n%H:%M'))
 ax2.xaxis.set_major_locator(mdates.HourLocator(byhour=[0, 6, 12, 18]))
 plt.xticks(fontsize=GRAPH_FONT_SIZE)
