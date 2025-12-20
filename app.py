@@ -117,21 +117,38 @@ def create_graph(df, days, danger_v, wind_step, time_step):
 #=================================================================================================
 def display_map_selector():
 #=================================================================================================
-    st.info("地図をドラッグすると、中心に合わせてポインターが移動します。")
-    m = folium.Map(location=[st.session_state.lat, st.session_state.lon], zoom_start=12)
+    st.info("地図を拡大・ドラッグすると、中心に合わせてポインターが移動します。")
+    
+    # セッションに保存された現在の緯度、経度、ズームレベルを使用して地図を作成
+    m = folium.Map(
+        location=[st.session_state.lat, st.session_state.lon], 
+        zoom_start=st.session_state.zoom,  # ここを固定値12からセッション変数に変更
+        control_scale=True
+    )
+    
+    # 中心にポインターを設置
     folium.Marker(
         [st.session_state.lat, st.session_state.lon],
         icon=folium.DivIcon(html=f'<div style="font-size: 24pt; color: red; font-weight: bold; text-align: center; width: 50px; margin-left: -25px; margin-top: -25px;">╋</div>')
     ).add_to(m)
 
+    # 地図の描画
     map_out = st_folium(m, width=CONFIG["MAP_WIDTH"], height=CONFIG["MAP_HEIGHT"], key="map_selector")
 
-    if map_out and map_out.get("center"):
+    # 地図の状態（中心、ズーム）が変化したかチェック
+    if map_out and map_out.get("center") and map_out.get("zoom"):
         c = map_out["center"]
-        # 地図の座標とセッションの座標を比較（小数点第8位レベルで厳密に）
-        if abs(st.session_state.lat - c["lat"]) > 0.00000001 or abs(st.session_state.lon - c["lng"]) > 0.00000001:
+        z = map_out["zoom"]
+        
+        # 座標またはズームレベルに変化があった場合のみセッションを更新して再起動
+        dx = abs(st.session_state.lat - c["lat"])
+        dy = abs(st.session_state.lon - c["lng"])
+        dz = abs(st.session_state.zoom - z)
+        
+        if dx > 0.00000001 or dy > 0.00000001 or dz > 0.1:
             st.session_state.lat = c["lat"]
             st.session_state.lon = c["lng"]
+            st.session_state.zoom = z  # 現在のズームレベルを記憶
             st.rerun()
 
 #=================================================================================================
@@ -143,20 +160,26 @@ def main():
     # セッション状態の初期化
     if 'lat' not in st.session_state:
         st.session_state.lat, st.session_state.lon = 31.340, 130.790
+    if 'zoom' not in st.session_state:
+        st.session_state.zoom = 12  # 初回のズームレベルを12に設定
     if 'last_basho' not in st.session_state:
         st.session_state.last_basho = "高須沖(鹿児島県)"
 
     st.sidebar.header("設定")
     basho = st.sidebar.selectbox("場所", ["高須沖(鹿児島県)", "錦江湾(鹿児島県)", "地図から指定"])
     
-    # セレクトボックスが操作されたときだけ座標をプリセット値にする
+    # セレクトボックスが操作されたときは座標とズームをデフォルトに戻す
     if st.session_state.last_basho != basho:
         if basho == "高須沖(鹿児島県)":
             st.session_state.lat, st.session_state.lon = 31.340, 130.790
+            st.session_state.zoom = 12
         elif basho == "錦江湾(鹿児島県)":
             st.session_state.lat, st.session_state.lon = 31.590, 130.600
+            st.session_state.zoom = 12
         st.session_state.last_basho = basho
 
+    # (以下、以前のコードと同じため省略)
+    
     current_place_name = basho
     use_map = st.sidebar.checkbox("地図で微調整する", value=False)
 
