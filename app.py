@@ -44,7 +44,6 @@ def fetch_weather_data(lat, lon, days):
         df['time'] = pd.to_datetime(df['time'])
         df = df.head(24 * days).reset_index(drop=True)
         
-        # ① 軸付近の余白（3時間分）を追加
         first_time = df['time'].iloc[0]
         padding = pd.DataFrame({
             'time': [first_time - timedelta(hours=i) for i in range(3, 0, -1)],
@@ -186,20 +185,20 @@ def main():
         st.session_state.last_basho = "高須沖(鹿児島県)"
 
     st.sidebar.header("設定")
-    # ② コンボボックスの順番を入れ替え
     basho = st.sidebar.selectbox("場所", [
         "高須沖(鹿児島県)", "柏原沖(鹿児島県)", "垂水港(鹿児島県)", 
         "海潟(鹿児島県)", "磯海岸沖(鹿児島県)", "江口浜沖(鹿児島県)", 
         "錦江湾(鹿児島県)", "地図で指定"
     ])
     
+    # ① コンボボックスの座標修正とズーム(13)の設定
     if st.session_state.last_basho != basho:
         if basho == "高須沖(鹿児島県)":
             st.session_state.lat, st.session_state.lon = 31.337, 130.795
         elif basho == "柏原沖(鹿児島県)":
-            st.session_state.lat, st.session_state.lon = 31.380, 130.020
+            st.session_state.lat, st.session_state.lon = 31.380, 131.020
         elif basho == "垂水港(鹿児島県)":
-            st.session_state.lat, st.session_state.lon = 31.748, 130.668
+            st.session_state.lat, st.session_state.lon = 31.478, 130.668
         elif basho == "海潟(鹿児島県)":
             st.session_state.lat, st.session_state.lon = 31.539, 130.706
         elif basho == "磯海岸沖(鹿児島県)":
@@ -208,13 +207,16 @@ def main():
             st.session_state.lat, st.session_state.lon = 31.643, 130.322
         elif basho == "錦江湾(鹿児島県)":
             st.session_state.lat, st.session_state.lon = 31.590, 130.600
-        st.session_state.zoom = 12
+        
+        st.session_state.zoom = 13
         st.session_state.last_basho = basho
 
     current_place_name = basho
     use_map = st.sidebar.checkbox("地図で指定する", value=False)
+    
+    # ② 地名表示のロジック修正
     if use_map or basho == "地図で指定":
-        current_place_name = f"{basho}(調整中)" if basho != "地図で指定" else "地図指定地点"
+        current_place_name = f"地図指定地点 ({st.session_state.lat:.3f}, {st.session_state.lon:.3f})"
         display_map_selector()
 
     days = st.sidebar.slider("表示日数", 1, 8, 8)
@@ -228,7 +230,7 @@ def main():
         img_base64 = create_graph(df, days, danger_v, w_step, t_step)
 
         st.markdown(f'<p style="font-size:14px;"><span style="color:gold;">■</span>最高 <span style="color:orange;">■</span>良好 <span style="color:skyblue;">■</span>ジャスト &nbsp;&nbsp;&nbsp; <span style="color:crimson; font-weight:bold;">---</span> 危険風速 {danger_v}m/s &nbsp;&nbsp;&nbsp; <span style="color:blue; font-weight:bold;">―</span>現在時刻</p>', unsafe_allow_html=True)
-        st.markdown(f'<p style="font-weight:bold; font-size:16px;">地点: {current_place_name} ({st.session_state.lat:.3f}, {st.session_state.lon:.3f})</p>', unsafe_allow_html=True)
+        st.markdown(f'<p style="font-weight:bold; font-size:16px;">地点: {current_place_name}</p>', unsafe_allow_html=True)
         
         st.markdown(f"""
             <div style="overflow-x: auto; white-space: nowrap; background: white; border-radius: 8px; border: 1px solid #eee;">
