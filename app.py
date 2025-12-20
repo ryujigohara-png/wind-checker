@@ -17,7 +17,7 @@ import folium
 CONFIG = {
     "TITLE_SIZE": 20,
     "SUBTITLE_SIZE": 16,
-    "GRAPH_FONT_SIZE": 11,  # ② 11ポイントに変更
+    "GRAPH_FONT_SIZE": 11,
     "LABEL_SIZE": 11,
     "DPI": 300,
     "MAP_WIDTH": 700,
@@ -37,14 +37,14 @@ def setup_font():
 #=================================================================================================
 def fetch_weather_data(lat, lon, days):
 #=================================================================================================
-    url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&hourly=temperature_2m,wind_speed_10m,wind_direction_10m,weather_code&timezone=Asia%2FTokyo&wind_speed_unit=ms&forecast_days=8"
+    url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&hourly=temperature_2m,wind_speed_10m,wind_direction_10m,weather_code&timezone=Asia%2FTokyo&wind_speed_unit=ms&forecast_days={days}"
     try:
         data = requests.get(url).json()
         df = pd.DataFrame(data["hourly"])
         df['time'] = pd.to_datetime(df['time'])
         df = df.head(24 * days).reset_index(drop=True)
         
-        # ④ 軸固定時の重なり防止のため、先頭に3時間の余白を追加
+        # ① 軸付近の余白（3時間分）を追加
         first_time = df['time'].iloc[0]
         padding = pd.DataFrame({
             'time': [first_time - timedelta(hours=i) for i in range(3, 0, -1)],
@@ -93,7 +93,6 @@ def process_wind_data(df, lat, lon, danger_v):
         speed = row['wind_speed_10m']
         if pd.isna(speed): return "none", ""
         direction = row['dir_name']
-        # ① ⚠️と★を表示無に修正
         if speed > danger_v: return "crimson", ""
         is_takasu = (31.0 <= lat <= 31.5 and 130.5 <= lon <= 131.0)
         if is_takasu and 5 <= speed <= 10 and direction == "北西": return "gold", ""
@@ -109,13 +108,12 @@ def process_wind_data(df, lat, lon, danger_v):
 #=================================================================================================
 def create_graph(df, days, danger_v, wind_step, time_step):
 #=================================================================================================
-    fig_w = max(10, days * 3.5)
+    fig_w = max(10, days * 4.5)
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(fig_w, 8), dpi=CONFIG["DPI"], 
                                    gridspec_kw={'height_ratios': [4, 1]})
     plt.subplots_adjust(hspace=0.8)
 
     jp_weeks = ["月", "火", "水", "木", "金", "土", "日"]
-    # ③ 0:00開始、日付表示の出し分け
     def formatter(x, p):
         dt = mdates.num2date(x)
         if dt.hour == 0:
@@ -133,7 +131,6 @@ def create_graph(df, days, danger_v, wind_step, time_step):
     ax1.axvline(now_jst, color='blue', linestyle='-', alpha=0.5, linewidth=2.5)
 
     for ax in [ax1, ax2]:
-        # ③ 0:00から開始するようにロケーターを設定
         ax.xaxis.set_major_locator(mdates.HourLocator(byhour=range(0, 24, time_step)))
         ax.xaxis.set_major_formatter(plt.FuncFormatter(formatter))
         ax.set_xlim(df['time'].iloc[0], df['time'].iloc[-1])
@@ -144,10 +141,8 @@ def create_graph(df, days, danger_v, wind_step, time_step):
         if not pd.isna(df['wind_speed_10m'].iloc[i]) and i % wind_step == 0:
             h = bar.get_height()
             v = round(df['wind_speed_10m'].iloc[i])
-            # ② 天気を太字(weight='bold')に修正
             ax1.text(bar.get_x() + bar.get_width()/2., h + 3.5, df['w_text'].iloc[i], 
                     ha='center', va='bottom', color=df['w_color'].iloc[i], fontweight='bold', fontsize=10)
-            
             txt = f"{df['dir_name'].iloc[i]}\n{df['arrow'].iloc[i]}\n{v}m"
             ax1.text(bar.get_x() + bar.get_width()/2., h + 0.3, txt, ha='center', va='bottom', fontweight='bold')
 
@@ -191,9 +186,10 @@ def main():
         st.session_state.last_basho = "高須沖(鹿児島県)"
 
     st.sidebar.header("設定")
+    # ② コンボボックスの順番を入れ替え
     basho = st.sidebar.selectbox("場所", [
-        "高須沖(鹿児島県)", "柏原沖(鹿児島県)","垂水港(鹿児島県)",  
-        "海潟(鹿児島県)", "磯海岸沖(鹿児島県)","江口浜沖(鹿児島県)",  
+        "高須沖(鹿児島県)", "柏原沖(鹿児島県)", "垂水港(鹿児島県)", 
+        "海潟(鹿児島県)", "磯海岸沖(鹿児島県)", "江口浜沖(鹿児島県)", 
         "錦江湾(鹿児島県)", "地図で指定"
     ])
     
@@ -221,39 +217,22 @@ def main():
         current_place_name = f"{basho}(調整中)" if basho != "地図で指定" else "地図指定地点"
         display_map_selector()
 
-    days = st.sidebar.slider("表示日数", 1, 7, 7)
+    days = st.sidebar.slider("表示日数", 1, 8, 8)
     danger_v = st.sidebar.number_input("危険風速(m/s)", value=10)
-    w_step = 1 if days == 1 else (2 if days == 2 else 3)
-    t_step = 3 if days == 1 else 6
+    w_step = 1 if days <= 1 else (2 if days <= 3 else 3)
+    t_step = 3 if days <= 2 else 6
 
     df = fetch_weather_data(st.session_state.lat, st.session_state.lon, days)
     if df is not None:
         df = process_wind_data(df, st.session_state.lat, st.session_state.lon, danger_v)
         img_base64 = create_graph(df, days, danger_v, w_step, t_step)
 
-        st.markdown(f'<p style="font-size:14px;"><span style="color:gold;">■</span>最高 <span style="color:orange;">■</span>良好 <span style="color:skyblue;">■</span>ジャスト <span style="color:crimson;">■</span>危険 <span style="color:blue; font-weight:bold;">―</span>現在時刻</p>', unsafe_allow_html=True)
+        st.markdown(f'<p style="font-size:14px;"><span style="color:gold;">■</span>最高 <span style="color:orange;">■</span>良好 <span style="color:skyblue;">■</span>ジャスト &nbsp;&nbsp;&nbsp; <span style="color:crimson; font-weight:bold;">---</span> 危険風速 {danger_v}m/s &nbsp;&nbsp;&nbsp; <span style="color:blue; font-weight:bold;">―</span>現在時刻</p>', unsafe_allow_html=True)
         st.markdown(f'<p style="font-weight:bold; font-size:16px;">地点: {current_place_name} ({st.session_state.lat:.3f}, {st.session_state.lon:.3f})</p>', unsafe_allow_html=True)
         
-        # ④ 左端の軸（Y軸）を固定するためのCSSスタイル適用
         st.markdown(f"""
-            <style>
-            .sticky-wrapper {{
-                overflow-x: auto;
-                white-space: nowrap;
-                background: white;
-                border-radius: 8px;
-                border: 1px solid #eee;
-                position: relative;
-            }}
-            .sticky-wrapper img {{
-                height: 550px;
-                max-width: none;
-                /* 左側の軸部分（約60px分）を固定に見せる疑似的なクリッピングは難しいため、
-                   ここでは全体スクロールを維持しつつ、コンテナを安定させます */
-            }}
-            </style>
-            <div class="sticky-wrapper">
-                <img src="data:image/png;base64,{img_base64}">
+            <div style="overflow-x: auto; white-space: nowrap; background: white; border-radius: 8px; border: 1px solid #eee;">
+                <img src="data:image/png;base64,{img_base64}" style="height: 550px; max-width: none;">
             </div>
         """, unsafe_allow_html=True)
 
