@@ -115,6 +115,33 @@ def create_graph(df, days, danger_v, wind_step, time_step):
     return base64.b64encode(buf.getvalue()).decode()
 
 #=================================================================================================
+def display_map_selector():
+#=================================================================================================
+    st.info("地図をドラッグすると、中心に合わせてポインターが移動します。")
+    
+    # 現在のセッション座標を基準に地図を作成
+    m = folium.Map(location=[st.session_state.lat, st.session_state.lon], zoom_start=12)
+    
+    # マーカーを地図の中心に設置
+    folium.Marker(
+        [st.session_state.lat, st.session_state.lon],
+        icon=folium.DivIcon(html=f'<div style="font-size: 24pt; color: red; font-weight: bold; text-align: center; width: 50px; margin-left: -25px; margin-top: -25px;">╋</div>')
+    ).add_to(m)
+
+    # 地図を表示。width, heightはCONFIGから取得
+    map_out = st_folium(m, width=CONFIG["MAP_WIDTH"], height=CONFIG["MAP_HEIGHT"], key="map")
+
+    # ドラッグ終了時、地図の新しい中心(center)を取得し、座標が動いていれば更新してリロード
+    if map_out and map_out.get("center"):
+        new_lat = map_out["center"]["lat"]
+        new_lon = map_out["center"]["lng"]
+        # 小数点第4位まで見て変化があれば更新
+        if abs(st.session_state.lat - new_lat) > 0.0001 or abs(st.session_state.lon - new_lon) > 0.0001:
+            st.session_state.lat = new_lat
+            st.session_state.lon = new_lon
+            st.rerun()
+
+#=================================================================================================
 def main():
 #=================================================================================================
     setup_font()
@@ -139,27 +166,9 @@ def main():
             current_place_name = f"{basho}(微調整中)"
         else:
             current_place_name = "地図指定地点"
-
-        st.info("地図をドラッグすると、中心に合わせてポインターが移動します。")
         
-        # 地図の土台を作成
-        m = folium.Map(location=[st.session_state.lat, st.session_state.lon], zoom_start=12)
-        
-        # ③ ポインタを地図の中心（現在のセッション座標）に設置
-        folium.Marker(
-            [st.session_state.lat, st.session_state.lon],
-            icon=folium.DivIcon(html=f'<div style="font-size: 24pt; color: red; font-weight: bold; text-align: center; width: 50px; margin-left: -25px; margin-top: -25px;">╋</div>')
-        ).add_to(m)
-
-        # ② 枠(container)を排除し、直接 st_folium を呼び出す
-        map_out = st_folium(m, width=CONFIG["MAP_WIDTH"], height=CONFIG["MAP_HEIGHT"], key="map")
-
-        # 地図移動後の中心取得・再描画
-        if map_out and map_out.get("center"):
-            c = map_out["center"]
-            if abs(st.session_state.lat - c["lat"]) > 0.001 or abs(st.session_state.lon - c["lng"]) > 0.001:
-                st.session_state.lat, st.session_state.lon = c["lat"], c["lng"]
-                st.rerun()
+        # ② 地図表示とポインター移動の制御をサブルーチン化して実行
+        display_map_selector()
 
     days = st.sidebar.slider("表示日数", 1, 7, 7)
     danger_v = st.sidebar.number_input("危険風速(m/s)", value=10)
