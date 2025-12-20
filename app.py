@@ -66,9 +66,10 @@ def process_wind_data(df, lat, lon, danger_v):
     return df
 
 def create_graph(df, days, danger_v, wind_step, time_step):
-    # 横方向のサイズを日数に応じて大きく確保（スクロール用）
     fig_w = max(10, days * 3.5)
-    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(fig_w, 8), dpi=CONFIG["DPI"])
+    # ⑤ 風速グラフの高さを2倍、⑥ 気温グラフを半分に調整 (height_ratios)
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(fig_w, 8), dpi=CONFIG["DPI"], 
+                                   gridspec_kw={'height_ratios': [4, 1]})
     plt.subplots_adjust(hspace=0.8)
 
     jp_weeks = ["月", "火", "水", "木", "金", "土", "日"]
@@ -113,52 +114,53 @@ def main():
     setup_font()
     st.markdown(f'<h1 style="font-size:{CONFIG["TITLE_SIZE"]}px;">⛵ 風況チェッカー</h1>', unsafe_allow_html=True)
 
-    if 'lat' not in st.session_state:
-        st.session_state.lat, st.session_state.lon = 31.3420, 130.7870
-
+    # --- ① 場所選択コンボボックスの復活 ---
     st.sidebar.header("設定")
-    use_map = st.sidebar.checkbox("地図から場所を選択", value=False)
+    basho = st.sidebar.selectbox("場所", ["高須沖(鹿児島県)", "錦江湾(鹿児島県)", "地図から指定"])
+    
+    if basho == "高須沖(鹿児島県)":
+        st.session_state.lat, st.session_state.lon = 31.34, 130.79
+    elif basho == "錦江湾(鹿児島県)":
+        st.session_state.lat, st.session_state.lon = 31.59, 130.60
+    
+    use_map = st.sidebar.checkbox("地図で微調整する", value=False)
 
-    if use_map:
-        # 地図のコンテナに対して十字を絶対配置するCSS
+    if use_map or basho == "地図から指定":
+        # ④ 地図ボックス外側の目印線を追加するCSS
         st.markdown(f"""
             <style>
-            .map-wrapper {{
+            .map-container {{
                 position: relative;
                 width: {CONFIG["MAP_WIDTH"]}px;
                 height: {CONFIG["MAP_HEIGHT"]}px;
+                border: 2px solid #ddd;
             }}
-            .crosshair {{
-                position: absolute;
-                top: 50%;
-                left: 50%;
-                width: 40px;
-                height: 40px;
-                margin-top: -20px;
-                margin-left: -20px;
-                z-index: 1000;
-                pointer-events: none;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-            }}
-            .v-line {{ position: absolute; width: 2px; height: 100%; background: red; }}
-            .h-line {{ position: absolute; width: 100%; height: 2px; background: red; }}
+            /* 上下の目印 */
+            .guide-v {{ position: absolute; left: 50%; width: 2px; height: 10px; background: red; z-index: 1001; }}
+            .guide-t {{ top: -10px; }} .guide-b {{ bottom: -10px; }}
+            /* 左右の目印 */
+            .guide-h {{ position: absolute; top: 50%; height: 2px; width: 10px; background: red; z-index: 1001; }}
+            .guide-l {{ left: -10px; }} .guide-r {{ right: -10px; }}
             </style>
         """, unsafe_allow_html=True)
+
+        st.info("地図の中心に合わせて予報地点を決定します。")
+        st.markdown('<div class="map-container"><div class="guide-v guide-t"></div><div class="guide-v guide-b"></div><div class="guide-h guide-l"></div><div class="guide-h guide-r"></div>', unsafe_allow_html=True)
         
-        st.info("地図の中央（赤い十字）に調べたい場所を合わせてください。")
-        
-        # コンテナの中に地図と十字を入れる
-        st.markdown('<div class="map-wrapper">', unsafe_allow_html=True)
         m = folium.Map(location=[st.session_state.lat, st.session_state.lon], zoom_start=12)
-        map_out = st_folium(m, width=CONFIG["MAP_WIDTH"], height=CONFIG["MAP_HEIGHT"], key="map")
-        st.markdown('<div class="crosshair"><div class="v-line"></div><div class="h-line"></div></div>', unsafe_allow_html=True)
+        
+        # ② 地図内の中心にポインタ（赤い十）を表示
+        folium.Marker(
+            [st.session_state.lat, st.session_state.lon],
+            icon=folium.DivIcon(html=f'<div style="font-size: 24pt; color: red; font-weight: bold; text-align: center; width: 50px; margin-left: -25px; margin-top: -25px;">╋</div>')
+        ).add_to(m)
+
+        map_out = st_folium(m, width=CONFIG["MAP_WIDTH"]-4, height=CONFIG["MAP_HEIGHT"]-4, key="map")
         st.markdown('</div>', unsafe_allow_html=True)
 
         if map_out and map_out.get("center"):
             c = map_out["center"]
-            if abs(st.session_state.lat - c["lat"]) > 0.0001 or abs(st.session_state.lon - c["lng"]) > 0.0001:
+            if abs(st.session_state.lat - c["lat"]) > 0.001 or abs(st.session_state.lon - c["lng"]) > 0.001:
                 st.session_state.lat, st.session_state.lon = c["lat"], c["lng"]
                 st.rerun()
 
@@ -176,7 +178,6 @@ def main():
         st.markdown(f'<p style="font-size:14px;"><span style="color:gold;">■</span>最高 <span style="color:orange;">■</span>良好 <span style="color:skyblue;">■</span>ジャスト <span style="color:crimson;">■</span>危険 <span style="color:blue; font-weight:bold;">―</span>現在時刻</p>', unsafe_allow_html=True)
         st.markdown(f'<p style="font-weight:bold;">地点: ({st.session_state.lat:.3f}, {st.session_state.lon:.3f})</p>', unsafe_allow_html=True)
         
-        # overflow-x: auto を付与して横スクロールを有効化
         st.markdown(f"""
             <div style="overflow-x: auto; white-space: nowrap; background: white; border-radius: 8px; border: 1px solid #eee;">
                 <img src="data:image/png;base64,{img_base64}" style="height: 550px; max-width: none;">
