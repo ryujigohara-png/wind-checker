@@ -13,9 +13,7 @@ import matplotlib.dates as mdates
 from streamlit_folium import st_folium
 import folium
 
-#=================================================================================================
 # --- 設定 ---
-#=================================================================================================
 CONFIG = {
     "TITLE_SIZE": 20,
     "SUBTITLE_SIZE": 16,
@@ -122,7 +120,6 @@ def main():
     setup_font()
     st.markdown(f'<h1 style="font-size:{CONFIG["TITLE_SIZE"]}px;">⛵ 風況チェッカー</h1>', unsafe_allow_html=True)
 
-    # 初期座標の設定
     if 'lat' not in st.session_state:
         st.session_state.lat, st.session_state.lon = 31.340, 130.790
 
@@ -136,76 +133,33 @@ def main():
         st.session_state.lat, st.session_state.lon = 31.590, 130.600
     
     use_map = st.sidebar.checkbox("地図で微調整する", value=False)
-#=================================================================================================
-        # --- 地図表示条件：微調整チェックが入っているか、場所が「地図から指定」の場合 ---
+
     if use_map or basho == "地図から指定":
-        
-        # 名称表示のロジック：プリセット場所の微調整中か、新規地点かを判定
         if basho != "地図から指定":
-            current_place_name = f"{basho}(微調整中)"  # 「高須沖(微調整中)」などの表示
+            current_place_name = f"{basho}(微調整中)"
         else:
-            current_place_name = "地図指定地点"       # 完全にフリーな地点の場合
-    
-        # --- CSS定義：地図を囲む枠(map-container)と、その四辺の中央にあるガイド線(guide)のスタイル ---
-        st.markdown(f"""
-            <style>
-            .map-wrapper {{ 
-                position: relative;             /* 子要素（ガイド線）の配置基準にする */
-                width: {CONFIG["MAP_WIDTH"]}px; /* 設定された幅に固定 */
-                border: 2px solid #ddd;         # 枠線を表示
-                line-height: 0;                # 中の要素（地図）との隙間を詰める
-            }}
-            /* 共通設定：ガイド線を最前面(z-index: 1001)に配置し、マウス操作を透過させる(pointer-events: none) */
-            .guide {{ position: absolute; background: red; z-index: 1001; pointer-events: none; }}
-            
-            /* 垂直ガイド線：左右中央(50%)に配置 */
-            .guide-v {{ left: 50%; width: 2px; height: 15px; transform: translateX(-50%); }}
-            .guide-t {{ top: 0; }}              /* 上端に配置 */
-            .guide-b {{ bottom: 0; }}           /* 下端に配置 */
-            
-            /* 水平ガイド線：上下中央(50%)に配置 */
-            .guide-h {{ top: 50%; height: 2px; width: 15px; transform: translateY(-50%); }}
-            .guide-l {{ left: 0; }}             /* 左端に配置 */
-            .guide-r {{ right: 0; }}            /* 右端に配置 */
-            </style>
-        """, unsafe_allow_html=True)
-    
-        st.info("地図の中心に合わせて予報地点を決定します。")
-    
-        # --- ガイド線を描画するためのHTML要素 (地図の「上に」重なるパーツ) ---
-        # 注：Streamlitの仕様上、<div>の中にst_foliumを入れることは難しいため、
-        # 枠とガイド線だけの「重なり」をCSSで制御します。
-        st.markdown('''
-            <div class="map-wrapper">
-                <div class="guide guide-v guide-t"></div>
-                <div class="guide guide-v guide-b"></div>
-                <div class="guide guide-h guide-l"></div>
-                <div class="guide guide-h guide-r"></div>
-            </div>''', unsafe_allow_html=True)
+            current_place_name = "地図指定地点"
+
+        st.info("地図をドラッグすると、中心に合わせてポインターが移動します。")
         
-        # --- 地図オブジェクトの作成 ---
-        # location: 現在のセッション状態(緯度経度)を初期表示位置にする
+        # 地図の土台を作成
         m = folium.Map(location=[st.session_state.lat, st.session_state.lon], zoom_start=12)
         
-        # 地図の「中心そのもの」に赤い「╋」マーカーを設置
-        # DivIconを使うことで、標準のピンではなく任意の文字(╋)を表示
+        # ③ ポインタを地図の中心（現在のセッション座標）に設置
         folium.Marker(
             [st.session_state.lat, st.session_state.lon],
             icon=folium.DivIcon(html=f'<div style="font-size: 24pt; color: red; font-weight: bold; text-align: center; width: 50px; margin-left: -25px; margin-top: -25px;">╋</div>')
         ).add_to(m)
-    
-        # --- 地図を画面に表示 (st_folium) ---
-        # 上記のガイド線の下（物理的には地図の描画エリア）に表示される
-        map_out = st_folium(m, width=CONFIG["MAP_WIDTH"]-4, height=CONFIG["MAP_HEIGHT"]-4, key="map")
-    
-        # --- 地図が動かされた（ドラッグ終了）時の処理 ---
+
+        # ② 枠(container)を排除し、直接 st_folium を呼び出す
+        map_out = st_folium(m, width=CONFIG["MAP_WIDTH"], height=CONFIG["MAP_HEIGHT"], key="map")
+
+        # 地図移動後の中心取得・再描画
         if map_out and map_out.get("center"):
-            c = map_out["center"] # 地図の新しい中心座標を取得
-            # 0.001度以上の変化があれば、セッション状態を更新してアプリを再起動(rerun)
+            c = map_out["center"]
             if abs(st.session_state.lat - c["lat"]) > 0.001 or abs(st.session_state.lon - c["lng"]) > 0.001:
                 st.session_state.lat, st.session_state.lon = c["lat"], c["lng"]
                 st.rerun()
-#=================================================================================================
 
     days = st.sidebar.slider("表示日数", 1, 7, 7)
     danger_v = st.sidebar.number_input("危険風速(m/s)", value=10)
@@ -219,7 +173,6 @@ def main():
         img_base64 = create_graph(df, days, danger_v, w_step, t_step)
 
         st.markdown(f'<p style="font-size:14px;"><span style="color:gold;">■</span>最高 <span style="color:orange;">■</span>良好 <span style="color:skyblue;">■</span>ジャスト <span style="color:crimson;">■</span>危険 <span style="color:blue; font-weight:bold;">―</span>現在時刻</p>', unsafe_allow_html=True)
-        # 指定の形式「地点: 名称 (緯度, 経度)」で表示
         st.markdown(f'<p style="font-weight:bold; font-size:16px;">地点: {current_place_name} ({st.session_state.lat:.3f}, {st.session_state.lon:.3f})</p>', unsafe_allow_html=True)
         
         st.markdown(f"""
