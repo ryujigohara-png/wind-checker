@@ -46,23 +46,24 @@ st.sidebar.header("設定")
 use_map = st.sidebar.checkbox("地図から場所を選択")
 
 if use_map:
-    # 十字を地図枠の真ん中に固定するCSS
+    # 十字を地図枠の真ん中に固定するCSS（より確実に中央へ）
     st.markdown("""
         <style>
         .map-box {
             position: relative;
             width: 100%;
-            height: 400px;
+            max-width: 700px;
+            margin-bottom: 20px;
         }
         .center-cross {
             position: absolute;
             top: 50%;
             left: 50%;
-            width: 30px;
-            height: 30px;
+            width: 40px;
+            height: 40px;
             transform: translate(-50%, -50%);
             pointer-events: none;
-            z-index: 9999;
+            z-index: 1000;
         }
         .center-cross::before {
             content: '';
@@ -80,10 +81,10 @@ if use_map:
     """, unsafe_allow_html=True)
 
     with st.container():
-        # 地図と十字を重ねるための箱
+        st.info("地図をドラッグして、中央の【╋】に合わせると予報が切り替わります。")
         st.markdown('<div class="map-box">', unsafe_allow_html=True)
         m = folium.Map(location=[st.session_state.lat, st.session_state.lon], zoom_start=12)
-        map_out = st_folium(m, width="100%", height=400, key="fixed_map")
+        map_out = st_folium(m, width=700, height=400, key="fixed_map")
         st.markdown('<div class="center-cross"></div>', unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
@@ -101,15 +102,15 @@ place_display = f"指定地点 ({lat:.3f}, {lon:.3f})" if use_map else "高須�
 days = st.sidebar.slider("表示日数", 1, 7, 7)
 danger_v = st.sidebar.number_input("危険風速(m/s)", value=10)
 
-# --- 【修正②】日数に応じた間引き数の設定 ---
+# --- 日数に応じた間引き数の設定 ---
 if days == 1:
-    WIND_STEP = 1      # 1日表示のときは1時間おき（すべて表示）
-    TIME_STEP = 3      # 時間ラベルは3時間おき
+    WIND_STEP = 1      # 全時間表示
+    TIME_STEP = 3      # ラベルは3時間ごと
 elif days <= 3:
-    WIND_STEP = 2      # 2〜3日は2時間おき
+    WIND_STEP = 2      # 2時間ごと
     TIME_STEP = 6
 else:
-    WIND_STEP = 3      # 4日以上は3時間おき
+    WIND_STEP = 3      # 3時間ごと
     TIME_STEP = 12
 
 # --- データ取得 ---
@@ -147,7 +148,7 @@ df['color'] = [r[0] for r in res_all]
 df['mark'] = [r[1] for r in res_all]
 
 # --- グラフ作成 ---
-graph_width_px = max(800, days * 450) # 1日表示の密度を上げるため少し幅を広げ
+graph_width_px = max(900, days * 400) 
 fig_w = graph_width_px / 100
 fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(fig_w, 8), dpi=DPI_QUALITY, sharex=True, gridspec_kw={'height_ratios': [3.5, 1.5]})
 plt.subplots_adjust(hspace=0.6)
@@ -160,7 +161,7 @@ ax1.grid(True, axis='both', linestyle=':', alpha=0.5)
 ax1.axvline(datetime.now(), color='blue', linestyle='-', alpha=0.4, linewidth=2)
 ax1.set_xlim(df['time'].iloc[0], df['time'].iloc[-1])
 
-# --- 【修正①】情報の描画（風速数値を追加） ---
+# --- テキストの描画 ---
 for i, bar in enumerate(bars):
     t = df['time'].iloc[i]
     w_str = jp_weeks[t.weekday()]
@@ -168,10 +169,11 @@ for i, bar in enumerate(bars):
     if i % WIND_STEP == 0:
         h = bar.get_height()
         speed_val = round(df['wind_speed_10m'].iloc[i])
-        # 記号 + 方位 + 矢印 + 風速(m)
+        # label_textの作成
         label_text = f"{df['mark'].iloc[i]}\n{df['dir_name'].iloc[i]}\n{df['arrow'].iloc[i]}\n{speed_val}m"
+        # 修正：lineheightを削除し、linespacing(デフォルト1.2)で調整
         ax1.text(bar.get_x() + bar.get_width()/2., h + 0.3, 
-                 label_text, ha='center', va='bottom', fontsize=GRAPH_FONT_SIZE, fontweight='bold', lineheight=1.2)
+                 label_text, ha='center', va='bottom', fontsize=GRAPH_FONT_SIZE, fontweight='bold')
     
     if i % TIME_STEP == 0:
         time_str = t.strftime('%m/%d') + f"\n({w_str})\n" + t.strftime('%H:%M')
@@ -188,6 +190,7 @@ buf = io.BytesIO()
 fig.savefig(buf, format="png", bbox_inches='tight', pad_inches=0.2)
 base64_img = base64.b64encode(buf.getvalue()).decode()
 
+# 凡例表示
 st.markdown(f"""
 <div style="font-size: 14px; margin-bottom: 10px; line-height: 1.6;">
     <span style="color: gold;">■</span> 最高(北西) &nbsp;&nbsp; <span style="color: orange;">■</span> 良好(西・南西) &nbsp;&nbsp;
