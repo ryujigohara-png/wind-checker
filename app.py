@@ -66,41 +66,68 @@ best_times = df[df['cond_name'] == "最高"]
 if not best_times.empty:
     st.success(f"🏆 【狙い目！最高コンディション】\n" + ", ".join(best_times['time'].dt.strftime('%m/%d(%a) %H:%M')))
 
-# --- グラフ描画（究極のクッキリ＆スクロール設定） ---
-# 1日あたり8インチの幅を持たせる（7日で56インチ＝超巨大）
-# これにより、画面に収まりきらず必ずスクロールが発生します
+# --- グラフの描画部分のみ差し替え ---
+
+# 1日あたり8インチの幅。1週間なら56インチ。
 dynamic_width = max(12, days * 8) 
 
-# dpi=300 で印刷品質の画質を確保
-fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(dynamic_width, 10), dpi=300, 
+fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(dynamic_width, 8), dpi=200, 
                                sharex=True, gridspec_kw={'height_ratios': [3, 1]})
 plt.subplots_adjust(hspace=0.2)
 
-bars = ax1.bar(df['time'], df['wind_speed_10m'], color=df['color'], alpha=0.8, width=0.03)
+# 風速バーの描画
+bars = ax1.bar(df['time'], df['wind_speed_10m'], color=df['color'], alpha=0.8)
 ax1.axhline(y=danger_v, color='red', linestyle='--', alpha=0.5)
-ax1.set_ylabel('風速 (m/s)', fontsize=16)
+ax1.set_ylabel('風速 (m/s)', fontsize=14)
 ax1.set_ylim(0, max(df['wind_speed_10m'].max(), danger_v) + 5)
 ax1.grid(True, axis='y', linestyle=':', alpha=0.5)
 
-# 文字を大きく読みやすく
+# 文字の書き込み
 step = 1 if days <= 2 else 2
 for i, bar in enumerate(bars):
     if i % step == 0:
         h = bar.get_height()
         ax1.text(bar.get_x() + bar.get_width()/2., h + 0.3, 
                  f"{df['mark'].iloc[i]}\n{df['dir_name'].iloc[i]}\n{df['arrow'].iloc[i]}", 
-                 ha='center', va='bottom', fontsize=10, fontweight='bold')
+                 ha='center', va='bottom', fontsize=9, fontweight='bold')
 
-ax2.plot(df['time'], df['temperature_2m'], color='#444444', linewidth=3)
+# 気温の描画
+ax2.plot(df['time'], df['temperature_2m'], color='#444444', linewidth=2)
 ax2.fill_between(df['time'], df['temperature_2m'], color='gray', alpha=0.1)
-ax2.set_ylabel('気温 (℃)', fontsize=14)
-
+ax2.set_ylabel('気温 (℃)', fontsize=12)
 ax2.xaxis.set_major_formatter(mdates.DateFormatter('%m/%d(%a)\n%H:%M'))
 ax2.xaxis.set_major_locator(mdates.HourLocator(byhour=[0, 6, 12, 18]))
-plt.xticks(fontsize=12)
 
-# 【重要】use_container_width=False にすることで
-# ブラウザの幅に関係なく、figsizeで指定した巨大なサイズで表示させます
-st.pyplot(fig, use_container_width=False)
+# --- 【ここがポイント】横スクロール枠を強制的に作成 ---
+# HTMLとCSSを使って、幅2000px以上の「横に長い箱」の中にグラフを閉じ込めます
+import streamlit.components.v1 as components
+
+st.write("### 週間予報（右にスワイプして確認）")
+
+# グラフを一度画像として保存せず、そのままスクロール可能なdivの中に入れる設定
+# overflow-x: auto でスクロールを発生させます
+st.markdown(
+    """
+    <style>
+    .scroll-container {
+        overflow-x: auto;
+        white-space: nowrap;
+        width: 100%;
+    }
+    .scroll-container img {
+        max-width: none !important; /* ブラウザの自動縮小を禁止 */
+        width: auto !important;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
+with st.container():
+    # スクロール用の箱を作成
+    st.markdown('<div class="scroll-container">', unsafe_allow_html=True)
+    # ここでグラフを表示（use_container_width=Falseが必須）
+    st.pyplot(fig, use_container_width=False)
+    st.markdown('</div>', unsafe_allow_html=True)
 
 st.write(f"凡例: 金色=最高(北西) / 橙色=良好(西・南西) / 赤色=危険({danger_v}m/s超)")
