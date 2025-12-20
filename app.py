@@ -99,7 +99,8 @@ def process_wind_data(df, lat, lon, danger_v):
             return "crimson", ""
         
         # 2. ジャスト・アンダーの対象風向判定
-        target_dirs = ["南" ,"南南西" ,"南西", "西南西", "西", "西北西", "北西", "北北西"]"み""南南西" ,"南西", "西# ジャスト：6m〜10m かつ 指定風向
+        target_dirs = ["南" ,"南南西" ,"南西", "西南西", "西", "西北西", "北西", "北北西"]
+        # ジャスト：6m〜10m かつ 指定風向
         if 6 <= speed < 10 and direction in target_dirs:
             return "orange", ""
         
