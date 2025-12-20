@@ -38,36 +38,73 @@ warnings.simplefilter('ignore', UserWarning)
 
 st.markdown(f'<h1 style="font-size:{TITLE_SIZE}px;">⛵ 風況チェッカー</h1>', unsafe_allow_html=True)
 
-# --- セッション状態で座標を保持（初期値：高須沖） ---
+# --- セッション状態で座標を保持 ---
 if 'lat' not in st.session_state:
     st.session_state.lat = 31.3420
     st.session_state.lon = 130.7870
 
 # --- サイドメニュー ---
 st.sidebar.header("場所の設定")
-use_map = st.sidebar.checkbox("地図から場所を選択（中心の座標を取得）")
+use_map = st.sidebar.checkbox("地図から場所を選択")
 
 if use_map:
-    st.info("地図をドラッグして動かしてください。常に【中心（赤色の＋マーカー）】の座標が予報地点になります。")
+    st.info("地図を動かして、中央の【╋】を調べたい場所に合わせると予報が更新されます。")
     
-    # 地図の作成
-    m = folium.Map(location=[st.session_state.lat, st.session_state.lon], zoom_start=12)
-    
-    # 中心を示す「╋」マーカー
-    folium.Marker(
-        [st.session_state.lat, st.session_state.lon],
-        icon=folium.Icon(color='red', icon='plus', prefix='fa'),
-    ).add_to(m)
+    # 十字レティクル（オーバーレイ）をCSSで作成
+    # 地図コンテナの中に絶対座標で十字を配置します
+    st.markdown("""
+        <style>
+        .map-container {
+            position: relative;
+            width: 100%;
+        }
+        .reticle {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 40px;
+            height: 40px;
+            margin-top: -20px;
+            margin-left: -20px;
+            pointer-events: none; /* クリックを地図に透過させる */
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .reticle::before {
+            content: '';
+            position: absolute;
+            width: 2px;
+            height: 100%;
+            background-color: red;
+        }
+        .reticle::after {
+            content: '';
+            position: absolute;
+            width: 100%;
+            height: 2px;
+            background-color: red;
+        }
+        </style>
+    """, unsafe_allow_html=True)
 
-    # 地図の描画と中心座標の取得
-    map_out = st_folium(m, width="100%", height=400, key="main_map")
+    # 地図表示
+    with st.container():
+        st.markdown('<div class="map-container">', unsafe_allow_html=True)
+        # 地図本体（マーカーは置かずに背景だけ表示）
+        m = folium.Map(location=[st.session_state.lat, st.session_state.lon], zoom_start=12)
+        map_out = st_folium(m, width="100%", height=400, key="center_map")
+        
+        # 十字オーバーレイを地図の上に重ねる
+        st.markdown('<div class="reticle"></div>', unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)
 
-    # 地図の移動（中心点が変わった時）に座標を更新
+    # 地図が動いた時に中心座標を更新
     if map_out and map_out.get("center"):
         new_lat = map_out["center"]["lat"]
         new_lon = map_out["center"]["lng"]
         
-        # 微細なズレでの再読み込みループを防ぐ
         if abs(st.session_state.lat - new_lat) > 0.0001 or abs(st.session_state.lon - new_lon) > 0.0001:
             st.session_state.lat = new_lat
             st.session_state.lon = new_lon
@@ -86,10 +123,9 @@ data = requests.get(url).json()
 
 df = pd.DataFrame(data["hourly"])
 df['time'] = pd.to_datetime(df['time'])
-# 空白対策：データの先頭から表示日数分を切り出し
 df = df.head(24 * days).reset_index(drop=True)
 
-# 曜日マッピング（日本語1文字）
+# 曜日マッピング
 jp_weeks = ["月", "火", "水", "木", "金", "土", "日"]
 
 def get_wind_info(deg):
@@ -106,7 +142,6 @@ def judge_condition(row):
     speed = row['wind_speed_10m']
     direction = row['dir_name']
     if speed > danger_v: return "crimson", "⚠️", "危険"
-    # 高須沖周辺のみ「最高」判定（判定範囲を広めに設定）
     is_takasu = (31.0 <= lat <= 31.5 and 130.5 <= lon <= 131.0)
     if is_takasu and 5 <= speed <= 10 and direction == "北西": return "gold", "★", "最高"
     if 5 <= speed <= 10 and direction in ["西", "南西"]: return "orange", "○", "良好"
@@ -129,18 +164,15 @@ fig_w = graph_width_px / 100
 fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(fig_w, 8), dpi=DPI_QUALITY, sharex=True, gridspec_kw={'height_ratios': [3.5, 1.5]})
 plt.subplots_adjust(hspace=0.6)
 
-# 風速グラフ
 bars = ax1.bar(df['time'], df['wind_speed_10m'], color=df['color'], alpha=0.8, width=0.03, align='center')
 ax1.axhline(y=danger_v, color='red', linestyle='--', alpha=0.5)
 ax1.set_ylabel('風速 (m/s)', fontsize=LABEL_SIZE)
 ax1.set_ylim(0, max(df['wind_speed_10m'].max(), danger_v) + 6.5)
 ax1.grid(True, axis='both', linestyle=':', alpha=0.5)
 
-# 現在時刻の線
 ax1.axvline(datetime.now(), color='blue', linestyle='-', alpha=0.4, linewidth=2)
 ax1.set_xlim(df['time'].iloc[0], df['time'].iloc[-1])
 
-# テキスト描画
 for i, bar in enumerate(bars):
     t = df['time'].iloc[i]
     w_str = jp_weeks[t.weekday()]
@@ -154,7 +186,6 @@ for i, bar in enumerate(bars):
         ax1.text(bar.get_x() + bar.get_width()/2., -0.8, 
                  time_str, ha='center', va='top', fontsize=GRAPH_FONT_SIZE - 1, color='#555555')
 
-# 気温グラフ
 ax2.plot(df['time'], df['temperature_2m'], color='#444444', linewidth=2)
 ax2.set_ylabel('気温 (℃)', fontsize=LABEL_SIZE)
 ax2.grid(True, linestyle=':', alpha=0.5)
@@ -165,12 +196,11 @@ def format_func(x, pos=None):
 ax2.xaxis.set_major_formatter(plt.FuncFormatter(format_func))
 ax2.xaxis.set_major_locator(mdates.HourLocator(byhour=[0, 6, 12, 18]))
 
-# 画像変換
 buf = io.BytesIO()
 fig.savefig(buf, format="png", bbox_inches='tight', pad_inches=0.2)
 base64_img = base64.b64encode(buf.getvalue()).decode()
 
-# 凡例表示（■マーク）
+# 凡例表示
 st.markdown(f"""
 <div style="font-size: 14px; margin-bottom: 10px; line-height: 1.6;">
     <span style="color: gold;">■</span> 最高(北西) &nbsp;&nbsp;
