@@ -2,36 +2,35 @@ import streamlit as st
 import requests
 import pandas as pd
 import matplotlib.pyplot as plt
-import matplotlib.font_manager as fm # 追加
-import urllib.request # 追加
-import os # 追加
+import matplotlib.font_manager as fm
+import urllib.request
+import os
 import warnings
 from datetime import datetime
 import matplotlib.dates as mdates
 
-# --- 日本語フォント設定 (最新Python 3.13対応版) ---
+# --- 日本語フォント設定 ---
 FONT_URL = "https://github.com/google/fonts/raw/main/ofl/notosansjp/NotoSansJP%5Bwght%5D.ttf"
 FONT_PATH = "NotoSansJP.ttf"
 if not os.path.exists(FONT_PATH):
     urllib.request.urlretrieve(FONT_URL, FONT_PATH)
 fm.fontManager.addfont(FONT_PATH)
 plt.rc('font', family='Noto Sans JP')
-# ---------------------------------------------
 
 st.set_page_config(page_title="高須沖・風況チェッカー", layout="wide")
 warnings.simplefilter('ignore', UserWarning)
 
 st.title("⛵ 高須沖・風況チェッカー")
 
-# サイドメニュー設定
+# サイドメニュー
 st.sidebar.header("設定")
 basho = st.sidebar.selectbox("場所", ["高須沖(鹿児島県)", "錦江湾(鹿児島県)"])
 days = st.sidebar.slider("表示日数", 1, 7, 7)
 danger_v = st.sidebar.number_input("危険風速(m/s)", value=10)
 
-# データ取得 (座標 31.34, 130.79)
+# データ取得
 lat, lon = (31.34, 130.79) if basho == "高須沖(鹿児島県)" else (31.59, 130.60)
-url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&hourly=temperature_2m,wind_speed_10m,wind_direction_10m&timezone=Asia%2FTokyo&wind_speed_unit=ms"
+url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}6&longitude={lon}&hourly=temperature_2m,wind_speed_10m,wind_direction_10m&timezone=Asia%2FTokyo&wind_speed_unit=ms"
 data = requests.get(url).json()
 
 df = pd.DataFrame(data["hourly"])
@@ -67,25 +66,46 @@ best_times = df[df['cond_name'] == "最高"]
 if not best_times.empty:
     st.success(f"🏆 【狙い目！最高コンディション】\n" + ", ".join(best_times['time'].dt.strftime('%m/%d(%a) %H:%M')))
 
-# グラフ描画 (高解像度設定)
-fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(15, 8), dpi=150, sharex=True, gridspec_kw={'height_ratios': [3, 1]})
-plt.subplots_adjust(hspace=0.2)
+# --- グラフの描画（スクロール対応） ---
+# 日数に応じて横幅を伸ばす（1日あたり6インチ、最低15インチ）
+dynamic_width = max(15, days * 6)
 
-bars = ax1.bar(df['time'], df['wind_speed_10m'], color=df['color'], alpha=0.8)
-ax1.axhline(y=danger_v, color='red', linestyle='--', alpha=0.5)
-ax1.set_ylabel('風速 (m/s)')
+# st.containerを使ってスクロール可能な領域を作る（CSSハック）
+st.write("### 週間風況チャート（横にスクロールして確認できます）")
+with st.container():
+    # 高解像度 dpi=300
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(dynamic_width, 10), dpi=300, 
+                                   sharex=True, gridspec_kw={'height_ratios': [4, 1]})
+    plt.subplots_adjust(hspace=0.2)
 
-step = 2 if days <= 2 else (4 if days <= 4 else 6)
-for i, bar in enumerate(bars):
-    if i % step == 0:
-        h = bar.get_height()
-        ax1.text(bar.get_x() + bar.get_width()/2., h + 0.3, f"{df['mark'].iloc[i]}\n{df['dir_name'].iloc[i]}\n{df['arrow'].iloc[i]}", ha='center', va='bottom', fontsize=9, fontweight='bold')
+    # 上段：風速
+    bars = ax1.bar(df['time'], df['wind_speed_10m'], color=df['color'], alpha=0.8, width=0.03)
+    ax1.axhline(y=danger_v, color='red', linestyle='--', alpha=0.5, linewidth=1)
+    ax1.set_ylabel('風速 (m/s)', fontsize=14)
+    ax1.set_ylim(0, max(df['wind_speed_10m'].max(), danger_v) + 5)
+    ax1.grid(True, axis='y', linestyle=':', alpha=0.5)
 
-ax2.plot(df['time'], df['temperature_2m'], color='gray', alpha=0.5)
-ax2.fill_between(df['time'], df['temperature_2m'], color='gray', alpha=0.1)
-ax2.set_ylabel('気温 (℃)')
-ax2.xaxis.set_major_formatter(mdates.DateFormatter('%m/%d(%a)'))
-ax2.xaxis.set_major_locator(mdates.DayLocator())
+    # 文字サイズを少し小さくし、密度を調整
+    step = 2 if days <= 2 else 3
+    for i, bar in enumerate(bars):
+        if i % step == 0:
+            h = bar.get_height()
+            ax1.text(bar.get_x() + bar.get_width()/2., h + 0.3, 
+                     f"{df['mark'].iloc[i]}\n{df['dir_name'].iloc[i]}\n{df['arrow'].iloc[i]}", 
+                     ha='center', va='bottom', fontsize=8, fontweight='bold')
 
-st.pyplot(fig)
+    # 下段：気温
+    ax2.plot(df['time'], df['temperature_2m'], color='#666666', linewidth=2)
+    ax2.fill_between(df['time'], df['temperature_2m'], color='gray', alpha=0.1)
+    ax2.set_ylabel('気温 (℃)', fontsize=12)
+    ax2.grid(True, axis='y', linestyle=':', alpha=0.5)
+
+    # X軸
+    ax2.xaxis.set_major_formatter(mdates.DateFormatter('%m/%d(%a)\n%H:%M'))
+    ax2.xaxis.set_major_locator(mdates.HourLocator(byhour=[0, 6, 12, 18]))
+    plt.xticks(fontsize=10)
+
+    # Streamlitで表示（use_container_width=Falseにすることで、設定した横幅を維持＝スクロール発生）
+    st.pyplot(fig, use_container_width=False)
+
 st.write(f"凡例: 金色=最高(北西) / 橙色=良好(西・南西) / 赤色=危険({danger_v}m/s超)")
