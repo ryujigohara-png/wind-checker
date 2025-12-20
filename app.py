@@ -10,8 +10,6 @@ import base64
 import warnings
 from datetime import datetime
 import matplotlib.dates as mdates
-from streamlit_folium import st_folium
-import folium
 
 # ==========================================
 # ★設定エリア★
@@ -36,30 +34,36 @@ plt.rc('font', family='Noto Sans JP', size=GRAPH_FONT_SIZE)
 st.set_page_config(page_title="高須沖・風況チェッカー", layout="wide")
 warnings.simplefilter('ignore', UserWarning)
 
-st.markdown(f'<h1 style="font-size:{TITLE_SIZE}px;">⛵ 全日本・風況チェッカー</h1>', unsafe_allow_html=True)
+st.markdown(f'<h1 style="font-size:{TITLE_SIZE}px;">⛵ 風況チェッカー</h1>', unsafe_allow_html=True)
 
-# --- 地図による場所選択機能 ---
+# --- 場所の選択ロジック ---
 st.sidebar.header("場所の設定")
-st.sidebar.write("地図をクリックして地点を変更できます。")
 
-# 初期値（高須沖）
-default_lat, default_lon = 31.34, 130.79
+# 初期値は「高須沖」
+lat, lon = 31.34, 130.79
+place_name = "高須沖(鹿児島県)"
 
-# 地図の描画
-m = folium.Map(location=[default_lat, default_lon], zoom_start=12)
-folium.Marker([default_lat, default_lon], tooltip="現在の選択地点").add_to(m)
-# 地図を表示し、クリックイベントを取得
-map_data = st_folium(m, width=700, height=300)
+# 「地図から選ぶ」モードの切り替え
+use_map = st.sidebar.checkbox("地図から場所を選択する")
 
-# クリックされたらその座標を、されなければデフォルトを使用
-if map_data and map_data["last_clicked"]:
-    lat = map_data["last_clicked"]["lat"]
-    lon = map_data["last_clicked"]["lng"]
+if use_map:
+    # 地図を表示して座標を指定
+    st.info("地図上のポイントを動かして場所を指定してください。")
+    # 地図用のデータフレーム（現在の地点を表示）
+    map_df = pd.DataFrame({'lat': [lat], 'lon': [lon]})
+    # クリックではなく、スライダーや数値入力で微調整する形がStreamlit標準では最も安定します
+    lat = st.sidebar.number_input("緯度", value=lat, format="%.4f")
+    lon = st.sidebar.number_input("経度", value=lon, format="%.4f")
+    st.map(pd.DataFrame({'lat': [lat], 'lon': [lon]}))
+    place_name = f"指定地点 ({lat:.2f}, {lon:.2f})"
 else:
-    lat, lon = default_lat, default_lon
+    # 通常モード（プリセットから選択）
+    selected_place = st.sidebar.selectbox("プリセット地点", ["高須沖(鹿児島県)", "錦江湾(鹿児島県)"])
+    if selected_place == "錦江湾(鹿児島県)":
+        lat, lon = 31.59, 130.60
+        place_name = selected_place
 
-st.sidebar.info(f"現在の座標: {lat:.2f}, {lon:.2f}")
-
+st.sidebar.markdown("---")
 days = st.sidebar.slider("表示日数", 1, 7, 7)
 danger_v = st.sidebar.number_input("危険風速(m/s)", value=10)
 
@@ -71,7 +75,7 @@ df = pd.DataFrame(data["hourly"])
 df['time'] = pd.to_datetime(df['time'])
 df = df.head(24 * days).reset_index(drop=True)
 
-# 曜日を日本語1文字にするためのマッピング
+# 曜日マッピング
 jp_weeks = ["月", "火", "水", "木", "金", "土", "日"]
 
 def get_wind_info(deg):
@@ -88,7 +92,9 @@ def judge_condition(row):
     speed = row['wind_speed_10m']
     direction = row['dir_name']
     if speed > danger_v: return "crimson", "⚠️", "危険"
-    if 5 <= speed <= 10 and direction == "北西": return "gold", "★", "最高"
+    # 高須沖付近の場合のみ「最高」判定を有効にする（他地点での誤解を避けるため）
+    is_takasu = (31.0 <= lat <= 31.5 and 130.5 <= lon <= 131.0)
+    if is_takasu and 5 <= speed <= 10 and direction == "北西": return "gold", "★", "最高"
     if 5 <= speed <= 10 and direction in ["西", "南西"]: return "orange", "○", "良好"
     if 5 <= speed <= 10: return "skyblue", "", "ジャスト"
     return "lightgray", "", "微風"
@@ -97,6 +103,11 @@ res_all = df.apply(judge_condition, axis=1)
 df['color'] = [r[0] for r in res_all]
 df['mark'] = [r[1] for r in res_all]
 df['cond_name'] = [r[2] for r in res_all]
+
+# 狙い目表示（高須沖かつ最高コンディションがある場合のみ）
+best_times = df[df['cond_name'] == "最高"]
+if not best_times.empty:
+    st.success(f"🏆 【{place_name} 狙い目！】\n" + ", ".join(best_times['time'].dt.strftime('%m/%d(%a) %H:%M')))
 
 # --- グラフ作成 ---
 graph_width_px = max(800, days * 350)
@@ -111,21 +122,17 @@ ax1.set_ylabel('風速 (m/s)', fontsize=LABEL_SIZE)
 ax1.set_ylim(0, max(df['wind_speed_10m'].max(), danger_v) + 6.5)
 ax1.grid(True, axis='both', linestyle=':', alpha=0.5)
 
-now_jst = datetime.now()
-ax1.axvline(now_jst, color='blue', linestyle='-', alpha=0.4, linewidth=2)
+ax1.axvline(datetime.now(), color='blue', linestyle='-', alpha=0.4, linewidth=2)
 ax1.set_xlim(df['time'].iloc[0], df['time'].iloc[-1])
 
 for i, bar in enumerate(bars):
     t = df['time'].iloc[i]
-    # 曜日を1文字（例：(月)）に
     w_str = jp_weeks[t.weekday()]
-    
     if i % WIND_STEP == 0:
         h = bar.get_height()
         ax1.text(bar.get_x() + bar.get_width()/2., h + 0.4, 
                  f"{df['mark'].iloc[i]}\n{df['dir_name'].iloc[i]}\n{df['arrow'].iloc[i]}", 
                  ha='center', va='bottom', fontsize=GRAPH_FONT_SIZE, fontweight='bold')
-    
     if i % TIME_LABEL_STEP == 0:
         time_str = t.strftime('%m/%d') + f"\n({w_str})\n" + t.strftime('%H:%M')
         ax1.text(bar.get_x() + bar.get_width()/2., -0.8, 
@@ -135,11 +142,9 @@ ax2.plot(df['time'], df['temperature_2m'], color='#444444', linewidth=2)
 ax2.set_ylabel('気温 (℃)', fontsize=LABEL_SIZE)
 ax2.grid(True, linestyle=':', alpha=0.5)
 
-# 気温グラフの下の曜日も1文字に
 def format_func(x, pos=None):
     dt = mdates.num2date(x)
     return dt.strftime('%m/%d') + f'\n({jp_weeks[dt.weekday()]})\n' + dt.strftime('%H:%M')
-
 ax2.xaxis.set_major_formatter(plt.FuncFormatter(format_func))
 ax2.xaxis.set_major_locator(mdates.HourLocator(byhour=[0, 6, 12, 18]))
 
@@ -147,7 +152,7 @@ buf = io.BytesIO()
 fig.savefig(buf, format="png", bbox_inches='tight', pad_inches=0.2)
 base64_img = base64.b64encode(buf.getvalue()).decode()
 
-# 凡例とおしゃれな表示
+# 凡例表示
 st.markdown(f"""
 <div style="font-size: 14px; margin-bottom: 10px; line-height: 1.6;">
     <span style="color: gold;">■</span> 最高(北西) &nbsp;&nbsp;
@@ -158,7 +163,7 @@ st.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
-st.markdown(f'<p style="font-size:{SUBTITLE_SIZE}px; font-weight:bold; margin-bottom:0;">週間予報（横にスクロール）</p>', unsafe_allow_html=True)
+st.markdown(f'<p style="font-size:{SUBTITLE_SIZE}px; font-weight:bold; margin-bottom:0;">{place_name} 週間予報</p>', unsafe_allow_html=True)
 
 html_code = f"""
 <div style="overflow-x: auto; width: 100%; border-radius: 8px; border: 1px solid #eee; background-color: white;">
