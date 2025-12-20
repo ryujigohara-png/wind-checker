@@ -17,8 +17,8 @@ import folium
 CONFIG = {
     "TITLE_SIZE": 20,
     "SUBTITLE_SIZE": 16,
-    "GRAPH_FONT_SIZE": 11,
-    "LABEL_SIZE": 11,
+    "GRAPH_FONT_SIZE": 12,
+    "LABEL_SIZE": 12,
     "DPI": 300,
     "MAP_WIDTH": 700,
     "MAP_HEIGHT": 400
@@ -62,10 +62,10 @@ def get_weather_info(code):
 #=================================================================================================
     if code is None: return "", "black"
     if code <= 1: return "晴", "orange"
-    if code <= 2: return "晴/曇", "darkorange"
+    if code <= 2: return "晴/曇", "orange"
     if code <= 3: return "曇", "gray"
-    if code <= 48: return "霧", "silver"
-    if code <= 61: return "小雨", "dodgerblue"
+    if code <= 48: return "霧", "gray"
+    if code <= 61: return "小雨", "blue"
     if code <= 65: return "雨", "blue"
     if code <= 99: return "大雨", "darkblue"
     return "？", "black"
@@ -186,7 +186,7 @@ def display_map_selector():
 def main():
 #=================================================================================================
     setup_font()
-    st.markdown(f'<h1 style="font-size:{CONFIG["TITLE_SIZE"]}px;">⛵ 風チェッカー</h1>', unsafe_allow_html=True)
+    st.markdown(f'<h1 style="font-size:{CONFIG["TITLE_SIZE"]}px;">⛵ 高須風チェッカー</h1>', unsafe_allow_html=True)
 
     if 'lat' not in st.session_state:
         st.session_state.lat, st.session_state.lon = 31.337, 130.795
