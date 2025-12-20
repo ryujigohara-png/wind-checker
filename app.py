@@ -19,9 +19,8 @@ SUBTITLE_SIZE = 16
 GRAPH_FONT_SIZE = 10
 LABEL_SIZE = 12
 DPI_QUALITY = 300
-WIND_STEP = 2         # 角度を付けるので間隔を「2時間」に詰めて情報量をアップ
-TIME_LABEL_STEP = 6
-WIND_ROTATION = 45    # ★風向文字の傾き（度）
+WIND_STEP = 3         # 風向情報の表示間隔（3時間おき。重なるなら大きくして）
+TIME_LABEL_STEP = 6   # 風グラフ側の日時ラベル表示間隔（6時間おき）
 # ==========================================
 
 # --- 日本語フォント設定 ---
@@ -43,21 +42,17 @@ basho = st.sidebar.selectbox("場所", ["高須沖(鹿児島県)", "錦江湾(�
 days = st.sidebar.slider("表示日数", 1, 7, 7)
 danger_v = st.sidebar.number_input("危険風速(m/s)", value=10)
 
-# --- データ取得と「左端空白」の徹底修正 ---
+# --- データ取得と「左端空白」の絶対修正 ---
 lat, lon = (31.34, 130.79) if basho == "高須沖(鹿児島県)" else (31.59, 130.60)
-# APIからは余裕を持って前後を取得
-url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&hourly=temperature_2m,wind_speed_10m,wind_direction_10m&timezone=Asia%2FTokyo&wind_speed_unit=ms&past_days=1"
+url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&hourly=temperature_2m,wind_speed_10m,wind_direction_10m&timezone=Asia%2FTokyo&wind_speed_unit=ms"
 data = requests.get(url).json()
 
 df = pd.DataFrame(data["hourly"])
 df['time'] = pd.to_datetime(df['time'])
 
-# ★修正の要：日本時間の「今日0時0分」を算出
-now_jst = datetime.now() + timedelta(hours=0) # StreamlitサーバーがJSTならそのまま
-today_start = now_jst.replace(hour=0, minute=0, second=0, microsecond=0)
-
-# グラフの開始を今日0時に合わせ、表示日数分だけ切り出し
-df = df[df['time'] >= today_start].head(24 * days).reset_index(drop=True)
+# 【空白対策】データ内の最初の日付の「0時0分」を起点として、そこから表示日数分だけ取る
+start_time = df['time'].iloc[0].replace(hour=0, minute=0, second=0)
+df = df[df['time'] >= start_time].head(24 * days).reset_index(drop=True)
 
 def get_wind_info(deg):
     dirs = ["北", "北北東", "北東", "東北東", "東", "東南東", "南東", "南南東", "南", "南南西", "南西", "西南西", "西", "西北西", "北西", "北北西", "北"]
@@ -99,20 +94,19 @@ plt.subplots_adjust(hspace=0.6)
 bars = ax1.bar(df['time'], df['wind_speed_10m'], color=df['color'], alpha=0.8, width=0.03)
 ax1.axhline(y=danger_v, color='red', linestyle='--', alpha=0.5)
 ax1.set_ylabel('風速 (m/s)', fontsize=LABEL_SIZE)
-ax1.set_ylim(0, max(df['wind_speed_10m'].max(), danger_v) + 7)
+ax1.set_ylim(0, max(df['wind_speed_10m'].max(), danger_v) + 6)
 ax1.grid(True, axis='both', linestyle=':', alpha=0.5)
 
 # 現在時刻の線
 ax1.axvline(datetime.now(), color='blue', linestyle='-', alpha=0.4, linewidth=2)
 
-# テキスト描画（角度付き）
+# テキスト描画（水平に戻しました）
 for i, bar in enumerate(bars):
     if i % WIND_STEP == 0:
         h = bar.get_height()
-        # ★回転(rotation)を適用。va='bottom'で棒の上に配置
-        ax1.text(bar.get_x() + bar.get_width()/2., h + 0.5, 
-                 f"{df['mark'].iloc[i]}{df['dir_name'].iloc[i]}{df['arrow'].iloc[i]}", 
-                 ha='left', va='bottom', fontsize=GRAPH_FONT_SIZE, fontweight='bold', rotation=WIND_ROTATION)
+        ax1.text(bar.get_x() + bar.get_width()/2., h + 0.4, 
+                 f"{df['mark'].iloc[i]}\n{df['dir_name'].iloc[i]}\n{df['arrow'].iloc[i]}", 
+                 ha='center', va='bottom', fontsize=GRAPH_FONT_SIZE, fontweight='bold')
     
     if i % TIME_LABEL_STEP == 0:
         t = df['time'].iloc[i]
@@ -127,14 +121,14 @@ ax2.grid(True, linestyle=':', alpha=0.5)
 ax2.xaxis.set_major_formatter(mdates.DateFormatter('%m/%d\n(%a)\n%H:%M'))
 ax2.xaxis.set_major_locator(mdates.HourLocator(byhour=[0, 6, 12, 18]))
 
-# 仕上げ
+# 画像変換
 buf = io.BytesIO()
 fig.savefig(buf, format="png", bbox_inches='tight', pad_inches=0.2)
 base64_img = base64.b64encode(buf.getvalue()).decode()
 
-# 凡例を表示（気温グラフの上＝画像の上に来るように配置）
+# 凡例を上に配置
 st.write(f"凡例: 金色=最高(北西) / 橙色=良好(西・南西) / 赤色=危険({danger_v}m/s超) / 青線=現在時刻")
-st.markdown(f'<p style="font-size:{SUBTITLE_SIZE}px; font-weight:bold; margin-bottom:0;">週間予報（横スクロール）</p>', unsafe_allow_html=True)
+st.markdown(f'<p style="font-size:{SUBTITLE_SIZE}px; font-weight:bold; margin-bottom:0;">週間予報（横にスクロール）</p>', unsafe_allow_html=True)
 
 html_code = f"""
 <div style="overflow-x: auto; width: 100%; border-radius: 8px; border: 1px solid #eee; background-color: white;">
