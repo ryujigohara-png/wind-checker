@@ -42,17 +42,13 @@ basho = st.sidebar.selectbox("場所", ["高須沖(鹿児島県)", "錦江湾(�
 days = st.sidebar.slider("表示日数", 1, 7, 7)
 danger_v = st.sidebar.number_input("危険風速(m/s)", value=10)
 
-# --- データ取得と「左端空白」の最終対策 ---
+# --- データ取得 ---
 lat, lon = (31.34, 130.79) if basho == "高須沖(鹿児島県)" else (31.59, 130.60)
-# APIから取得（forecast_daysを多めに設定し、確実にデータを確保）
 url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&hourly=temperature_2m,wind_speed_10m,wind_direction_10m&timezone=Asia%2FTokyo&wind_speed_unit=ms&forecast_days=8"
 data = requests.get(url).json()
 
 df = pd.DataFrame(data["hourly"])
 df['time'] = pd.to_datetime(df['time'])
-
-# 【超重要】「今」の基準を使わず、APIが返してきたデータの「一番最初」をグラフの左端に固定する
-# これにより、APIが何時からデータを返してきても、左端は常に埋まります。
 df = df.head(24 * days).reset_index(drop=True)
 
 def get_wind_info(deg):
@@ -91,22 +87,16 @@ fig_w = graph_width_px / 100
 fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(fig_w, 8), dpi=DPI_QUALITY, sharex=True, gridspec_kw={'height_ratios': [3.5, 1.5]})
 plt.subplots_adjust(hspace=0.6)
 
-# 風速グラフ
-# 棒グラフの描画開始位置を明示的に指定
 bars = ax1.bar(df['time'], df['wind_speed_10m'], color=df['color'], alpha=0.8, width=0.03, align='center')
 ax1.axhline(y=danger_v, color='red', linestyle='--', alpha=0.5)
 ax1.set_ylabel('風速 (m/s)', fontsize=LABEL_SIZE)
 ax1.set_ylim(0, max(df['wind_speed_10m'].max(), danger_v) + 6)
 ax1.grid(True, axis='both', linestyle=':', alpha=0.5)
 
-# 現在時刻の線 (日本時間)
 now_jst = datetime.now()
 ax1.axvline(now_jst, color='blue', linestyle='-', alpha=0.4, linewidth=2)
-
-# X軸の範囲をデータの最初と最後に強制固定（これが空白を消す鍵）
 ax1.set_xlim(df['time'].iloc[0], df['time'].iloc[-1])
 
-# テキスト描画
 for i, bar in enumerate(bars):
     if i % WIND_STEP == 0:
         h = bar.get_height()
@@ -120,20 +110,27 @@ for i, bar in enumerate(bars):
         ax1.text(bar.get_x() + bar.get_width()/2., -0.8, 
                  time_str, ha='center', va='top', fontsize=GRAPH_FONT_SIZE - 1, color='#555555')
 
-# 気温グラフ
 ax2.plot(df['time'], df['temperature_2m'], color='#444444', linewidth=2)
 ax2.set_ylabel('気温 (℃)', fontsize=LABEL_SIZE)
 ax2.grid(True, linestyle=':', alpha=0.5)
 ax2.xaxis.set_major_formatter(mdates.DateFormatter('%m/%d\n(%a)\n%H:%M'))
 ax2.xaxis.set_major_locator(mdates.HourLocator(byhour=[0, 6, 12, 18]))
 
-# 画像変換
 buf = io.BytesIO()
 fig.savefig(buf, format="png", bbox_inches='tight', pad_inches=0.2)
 base64_img = base64.b64encode(buf.getvalue()).decode()
 
-# 凡例を上に配置
-st.write(f"凡例: 金色=最高(北西) / 橙色=良好(西・南西) / 赤色=危険({danger_v}m/s超) / 青線=現在時刻")
+# --- 【改善】おしゃれな凡例の表示 ---
+st.markdown(f"""
+<div style="font-size: 14px; margin-bottom: 10px; line-height: 1.6;">
+    <span style="color: gold;">■</span> 最高(北西) &nbsp;&nbsp;
+    <span style="color: orange;">■</span> 良好(西・南西) &nbsp;&nbsp;
+    <span style="color: skyblue;">■</span> ジャスト &nbsp;&nbsp;
+    <span style="color: crimson;">■</span> 危険({danger_v}m/s超) &nbsp;&nbsp;
+    <span style="color: blue; font-weight: bold;">―</span> 現在時刻
+</div>
+""", unsafe_allow_html=True)
+
 st.markdown(f'<p style="font-size:{SUBTITLE_SIZE}px; font-weight:bold; margin-bottom:0;">週間予報（横にスクロール）</p>', unsafe_allow_html=True)
 
 html_code = f"""
