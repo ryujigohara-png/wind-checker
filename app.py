@@ -46,66 +46,22 @@ st.sidebar.header("設定")
 use_map = st.sidebar.checkbox("地図から場所を選択")
 
 if use_map:
-    # 十字を地図の最前面に固定するCSS（!importantで強制適用）
-    st.markdown("""
-        <style>
-        .map-wrapper {
-            position: relative;
-            width: 700px;
-            height: 400px;
-            margin-bottom: 20px;
-        }
-        /* 地図自体の重なりを制御 */
-        .map-wrapper > div {
-            position: absolute;
-            top: 0;
-            left: 0;
-            z-index: 1;
-        }
-        /* 十字を最前面(z-index: 9999)に固定 */
-        .fixed-cross {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            width: 40px;
-            height: 40px;
-            transform: translate(-50%, -50%);
-            pointer-events: none;
-            z-index: 9999 !important; 
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-        .cross-v {
-            position: absolute;
-            width: 2px;
-            height: 100%;
-            background-color: red;
-        }
-        .cross-h {
-            position: absolute;
-            width: 100%;
-            height: 2px;
-            background-color: red;
-        }
-        </style>
-    """, unsafe_allow_html=True)
+    st.info("地図をドラッグして、中央の【╋】に合わせると予報が切り替わります。")
+    # 地図オブジェクトの作成
+    m = folium.Map(location=[st.session_state.lat, st.session_state.lon], zoom_start=12)
+    
+    # CSSではなく、地図自体に「十字線」を画像のように書き込む（FloatImage的なアプローチ）
+    # これにより、地図のフレーム内に確実に収まります
+    icon_style = "font-size: 30px; color: red; font-weight: bold; background: none; border: none;"
+    folium.Marker(
+        [st.session_state.lat, st.session_state.lon],
+        icon=folium.DivIcon(
+            html=f'<div style="{icon_style}">╋</div>',
+            icon_anchor=(15, 23) # 十字の見た目の中心を合わせる調整
+        )
+    ).add_to(m)
 
-    with st.container():
-        st.info("地図を動かして、中央の【╋】に合わせると予報が切り替わります。")
-        # 地図と十字を強制的に重ねるHTML構造
-        st.markdown(f'''
-            <div class="map-wrapper">
-                <div class="fixed-cross">
-                    <div class="cross-v"></div>
-                    <div class="cross-h"></div>
-                </div>
-            </div>
-        ''', unsafe_allow_html=True)
-        
-        # 地図本体
-        m = folium.Map(location=[st.session_state.lat, st.session_state.lon], zoom_start=12)
-        map_out = st_folium(m, width=700, height=400, key="fixed_map")
+    map_out = st_folium(m, width=700, height=400, key="fixed_map_new")
 
     if map_out and map_out.get("center"):
         new_lat = map_out["center"]["lat"]
@@ -121,16 +77,16 @@ place_display = f"指定地点 ({lat:.3f}, {lon:.3f})" if use_map else "高須�
 days = st.sidebar.slider("表示日数", 1, 7, 7)
 danger_v = st.sidebar.number_input("危険風速(m/s)", value=10)
 
-# 日数に応じた間引き
+# --- 日数に応じた間引き設定 ---
 if days == 1:
-    WIND_STEP = 1
-    TIME_STEP = 3
-elif days <= 3:
-    WIND_STEP = 2
-    TIME_STEP = 6
+    WIND_STEP = 1      # 全時間
+    TIME_STEP = 3      # 3時間ごと
+elif days == 2:
+    WIND_STEP = 2      # 2時間ごと
+    TIME_STEP = 6      # 6時間ごと
 else:
-    WIND_STEP = 3
-    TIME_STEP = 12
+    WIND_STEP = 3      # 3時間ごと
+    TIME_STEP = 6      # 3〜7日は一律6時間ごと
 
 # --- データ取得 ---
 url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&hourly=temperature_2m,wind_speed_10m,wind_direction_10m&timezone=Asia%2FTokyo&wind_speed_unit=ms&forecast_days=8"
@@ -140,7 +96,6 @@ df = pd.DataFrame(data["hourly"])
 df['time'] = pd.to_datetime(df['time'])
 df = df.head(24 * days).reset_index(drop=True)
 
-# 曜日マッピング
 jp_weeks = ["月", "火", "水", "木", "金", "土", "日"]
 
 def get_wind_info(deg):
@@ -179,37 +134,43 @@ ax1.set_ylabel('風速 (m/s)', fontsize=LABEL_SIZE)
 ax1.set_ylim(0, max(df['wind_speed_10m'].max(), danger_v) + 7.5)
 ax1.grid(True, axis='both', linestyle=':', alpha=0.5)
 
-# --- 【修正】現在時刻を日本時間（UTC+9）で取得 ---
+# 現在時刻（JST）
 jst = timezone(timedelta(hours=9))
-now_jst = datetime.now(jst).replace(tzinfo=None) # グラフの軸と合わせるためtzinfoを消去
+now_jst = datetime.now(jst).replace(tzinfo=None)
 ax1.axvline(now_jst, color='blue', linestyle='-', alpha=0.6, linewidth=2.5)
 
 ax1.set_xlim(df['time'].iloc[0], df['time'].iloc[-1])
 
+# 棒グラフ上のテキスト
 for i, bar in enumerate(bars):
-    t = df['time'].iloc[i]
     if i % WIND_STEP == 0:
         h = bar.get_height()
         speed_val = round(df['wind_speed_10m'].iloc[i])
         label_text = f"{df['mark'].iloc[i]}\n{df['dir_name'].iloc[i]}\n{df['arrow'].iloc[i]}\n{speed_val}m"
         ax1.text(bar.get_x() + bar.get_width()/2., h + 0.3, 
                  label_text, ha='center', va='bottom', fontsize=GRAPH_FONT_SIZE, fontweight='bold')
-    
-    if i % TIME_STEP == 0:
-        time_str = t.strftime('%m/%d') + f"\n({jp_weeks[t.weekday()]})\n" + t.strftime('%H:%M')
-        ax1.text(bar.get_x() + bar.get_width()/2., -0.8, 
-                 time_str, ha='center', va='top', fontsize=GRAPH_FONT_SIZE, color='#333333')
+
+# --- 時間軸のラベル設定（センター合わせ） ---
+def format_func(x, pos=None):
+    dt = mdates.num2date(x)
+    return dt.strftime('%m/%d') + f'\n({jp_weeks[dt.weekday()]})\n' + dt.strftime('%H:%M')
 
 ax2.plot(df['time'], df['temperature_2m'], color='#444444', linewidth=2)
 ax2.set_ylabel('気温 (℃)', fontsize=LABEL_SIZE)
 ax2.grid(True, linestyle=':', alpha=0.5)
-ax2.xaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: mdates.num2date(x).strftime('%H時')))
+
+# X軸の目盛りとラベルを同期させる
 ax2.xaxis.set_major_locator(mdates.HourLocator(interval=TIME_STEP))
+ax2.xaxis.set_major_formatter(plt.FuncFormatter(format_func))
+
+# ラベルの中央揃え設定
+plt.setp(ax2.get_xticklabels(), ha='center')
 
 buf = io.BytesIO()
 fig.savefig(buf, format="png", bbox_inches='tight', pad_inches=0.2)
 base64_img = base64.b64encode(buf.getvalue()).decode()
 
+# 凡例・表示
 st.markdown(f"""
 <div style="font-size: 14px; margin-bottom: 10px; line-height: 1.6;">
     <span style="color: gold;">■</span> 最高(北西) &nbsp;&nbsp; <span style="color: orange;">■</span> 良好(西・南西) &nbsp;&nbsp;
