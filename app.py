@@ -11,18 +11,28 @@ import warnings
 from datetime import datetime
 import matplotlib.dates as mdates
 
+# ==========================================
+# ★設定エリア：ここを書き換えて調整してください★
+# ==========================================
+TITLE_SIZE = 14       # メインタイトルの大きさ
+GRAPH_FONT_SIZE = 10  # グラフ内の文字（風向・風速・気温）の大きさ
+LABEL_SIZE = 10       # 縦軸（風速m/sなど）のラベルの大きさ
+DPI_QUALITY = 300     # 画質（300がクッキリ、200だと少し軽い）
+# ==========================================
+
 # --- 日本語フォント設定 ---
 FONT_URL = "https://github.com/google/fonts/raw/main/ofl/notosansjp/NotoSansJP%5Bwght%5D.ttf"
 FONT_PATH = "NotoSansJP.ttf"
 if not os.path.exists(FONT_PATH):
     urllib.request.urlretrieve(FONT_URL, FONT_PATH)
 fm.fontManager.addfont(FONT_PATH)
-plt.rc('font', family='Noto Sans JP')
+plt.rc('font', family='Noto Sans JP', size=GRAPH_FONT_SIZE)
 
 st.set_page_config(page_title="高須沖・風況チェッカー", layout="wide")
 warnings.simplefilter('ignore', UserWarning)
 
-st.title("⛵ 高須沖・風況チェッカー")
+# タイトル（サイズ指定）
+st.markdown(f'<h1 style="font-size:{TITLE_SIZE}px;">⛵ 高須沖・風況チェッカー</h1>', unsafe_allow_html=True)
 
 # サイドメニュー
 st.sidebar.header("設定")
@@ -69,45 +79,45 @@ if not best_times.empty:
     st.success(f"🏆 【狙い目！最高コンディション】\n" + ", ".join(best_times['time'].dt.strftime('%m/%d(%a) %H:%M')))
 
 # --- グラフ作成 ---
-# 1日あたり400ピクセル以上の幅を確保
-graph_width_px = max(1000, days * 400)
-# matplotlibのサイズ計算 (1インチ=100ピクセル想定)
+# 1日あたりの幅を少し抑えめに（250px）して「大きすぎ」を解消
+graph_width_px = max(800, days * 250)
 fig_w = graph_width_px / 100
 
-fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(fig_w, 8), dpi=150, sharex=True, gridspec_kw={'height_ratios': [3, 1]})
-plt.subplots_adjust(hspace=0.2)
+fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(fig_w, 7), dpi=DPI_QUALITY, sharex=True, gridspec_kw={'height_ratios': [3, 1]})
+plt.subplots_adjust(hspace=0.3)
 
 # 風速
-bars = ax1.bar(df['time'], df['wind_speed_10m'], color=df['color'], alpha=0.8)
+bars = ax1.bar(df['time'], df['wind_speed_10m'], color=df['color'], alpha=0.8, width=0.03)
 ax1.axhline(y=danger_v, color='red', linestyle='--', alpha=0.5)
-ax1.set_ylabel('風速 (m/s)', fontsize=14)
+ax1.set_ylabel('風速 (m/s)', fontsize=LABEL_SIZE)
 ax1.set_ylim(0, max(df['wind_speed_10m'].max(), danger_v) + 5)
 ax1.grid(True, axis='y', linestyle=':', alpha=0.5)
 
+# グラフ内テキスト
 step = 1 if days <= 2 else 2
 for i, bar in enumerate(bars):
     if i % step == 0:
         h = bar.get_height()
         ax1.text(bar.get_x() + bar.get_width()/2., h + 0.3, 
                  f"{df['mark'].iloc[i]}\n{df['dir_name'].iloc[i]}\n{df['arrow'].iloc[i]}", 
-                 ha='center', va='bottom', fontsize=9, fontweight='bold')
+                 ha='center', va='bottom', fontsize=GRAPH_FONT_SIZE, fontweight='bold')
 
 # 気温
 ax2.plot(df['time'], df['temperature_2m'], color='#444444', linewidth=2)
-ax2.set_ylabel('気温 (℃)', fontsize=12)
+ax2.set_ylabel('気温 (℃)', fontsize=LABEL_SIZE)
 ax2.xaxis.set_major_formatter(mdates.DateFormatter('%m/%d(%a)\n%H:%M'))
 ax2.xaxis.set_major_locator(mdates.HourLocator(byhour=[0, 6, 12, 18]))
 
-# --- 【重要】グラフを画像データに変換して、スクロール枠で表示 ---
+# --- 仕上げ：高画質画像をスクロール枠へ ---
 buf = io.BytesIO()
-fig.savefig(buf, format="png", bbox_inches='tight')
+# bbox_inches='tight'で余白を自動調整
+fig.savefig(buf, format="png", bbox_inches='tight', pad_inches=0.1)
 base64_img = base64.b64encode(buf.getvalue()).decode()
 
-# スクロールさせるHTML/CSS
-st.write("### 週間予報（右にスワイプ）")
+st.write("### 週間予報（横スクロールで確認）")
 html_code = f"""
-<div style="overflow-x: auto; overflow-y: hidden; width: 100%; border: 1px solid #ddd; border-radius: 8px;">
-    <img src="data:image/png;base64,{base64_img}" style="width: {graph_width_px}px; max-width: none;">
+<div style="overflow-x: auto; width: 100%; border-radius: 8px;">
+    <img src="data:image/png;base64,{base64_img}" style="height: 500px; width: auto; max-width: none;">
 </div>
 """
 st.markdown(html_code, unsafe_allow_html=True)
