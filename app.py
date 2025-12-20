@@ -19,8 +19,8 @@ SUBTITLE_SIZE = 16
 GRAPH_FONT_SIZE = 10
 LABEL_SIZE = 12
 DPI_QUALITY = 300
-WIND_STEP = 3         # 風向情報の表示間隔（3時間おき。重なるなら大きくして）
-TIME_LABEL_STEP = 6   # 風グラフ側の日時ラベル表示間隔（6時間おき）
+WIND_STEP = 3         
+TIME_LABEL_STEP = 6   
 # ==========================================
 
 # --- 日本語フォント設定 ---
@@ -42,17 +42,18 @@ basho = st.sidebar.selectbox("場所", ["高須沖(鹿児島県)", "錦江湾(�
 days = st.sidebar.slider("表示日数", 1, 7, 7)
 danger_v = st.sidebar.number_input("危険風速(m/s)", value=10)
 
-# --- データ取得と「左端空白」の絶対修正 ---
+# --- データ取得と「左端空白」の最終対策 ---
 lat, lon = (31.34, 130.79) if basho == "高須沖(鹿児島県)" else (31.59, 130.60)
-url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&hourly=temperature_2m,wind_speed_10m,wind_direction_10m&timezone=Asia%2FTokyo&wind_speed_unit=ms"
+# APIから取得（forecast_daysを多めに設定し、確実にデータを確保）
+url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&hourly=temperature_2m,wind_speed_10m,wind_direction_10m&timezone=Asia%2FTokyo&wind_speed_unit=ms&forecast_days=8"
 data = requests.get(url).json()
 
 df = pd.DataFrame(data["hourly"])
 df['time'] = pd.to_datetime(df['time'])
 
-# 【空白対策】データ内の最初の日付の「0時0分」を起点として、そこから表示日数分だけ取る
-start_time = df['time'].iloc[0].replace(hour=0, minute=0, second=0)
-df = df[df['time'] >= start_time].head(24 * days).reset_index(drop=True)
+# 【超重要】「今」の基準を使わず、APIが返してきたデータの「一番最初」をグラフの左端に固定する
+# これにより、APIが何時からデータを返してきても、左端は常に埋まります。
+df = df.head(24 * days).reset_index(drop=True)
 
 def get_wind_info(deg):
     dirs = ["北", "北北東", "北東", "東北東", "東", "東南東", "南東", "南南東", "南", "南南西", "南西", "西南西", "西", "西北西", "北西", "北北西", "北"]
@@ -91,16 +92,21 @@ fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(fig_w, 8), dpi=DPI_QUALITY, sharex
 plt.subplots_adjust(hspace=0.6)
 
 # 風速グラフ
-bars = ax1.bar(df['time'], df['wind_speed_10m'], color=df['color'], alpha=0.8, width=0.03)
+# 棒グラフの描画開始位置を明示的に指定
+bars = ax1.bar(df['time'], df['wind_speed_10m'], color=df['color'], alpha=0.8, width=0.03, align='center')
 ax1.axhline(y=danger_v, color='red', linestyle='--', alpha=0.5)
 ax1.set_ylabel('風速 (m/s)', fontsize=LABEL_SIZE)
 ax1.set_ylim(0, max(df['wind_speed_10m'].max(), danger_v) + 6)
 ax1.grid(True, axis='both', linestyle=':', alpha=0.5)
 
-# 現在時刻の線
-ax1.axvline(datetime.now(), color='blue', linestyle='-', alpha=0.4, linewidth=2)
+# 現在時刻の線 (日本時間)
+now_jst = datetime.now()
+ax1.axvline(now_jst, color='blue', linestyle='-', alpha=0.4, linewidth=2)
 
-# テキスト描画（水平に戻しました）
+# X軸の範囲をデータの最初と最後に強制固定（これが空白を消す鍵）
+ax1.set_xlim(df['time'].iloc[0], df['time'].iloc[-1])
+
+# テキスト描画
 for i, bar in enumerate(bars):
     if i % WIND_STEP == 0:
         h = bar.get_height()
