@@ -135,8 +135,8 @@ def display_map_selector():
     if map_out and map_out.get("center"):
         new_lat = map_out["center"]["lat"]
         new_lon = map_out["center"]["lng"]
-        # 小数点第4位まで見て変化があれば更新
-        if abs(st.session_state.lat - new_lat) > 0.0001 or abs(st.session_state.lon - new_lon) > 0.0001:
+        # 小数点第8位まで見て変化があれば更新
+        if abs(st.session_state.lat - new_lat) > 0.00000001 or abs(st.session_state.lon - new_lon) > 0.00000001:
             st.session_state.lat = new_lat
             st.session_state.lon = new_lon
             st.rerun()
