@@ -17,7 +17,7 @@ import folium
 CONFIG = {
     "TITLE_SIZE": 20,
     "SUBTITLE_SIZE": 16,
-    "GRAPH_FONT_SIZE": 9,
+    "GRAPH_FONT_SIZE": 10,  # 10ポイントに修正
     "LABEL_SIZE": 11,
     "DPI": 300,
     "MAP_WIDTH": 700,
@@ -37,7 +37,6 @@ def setup_font():
 #=================================================================================================
 def fetch_weather_data(lat, lon, days):
 #=================================================================================================
-    # weather_code を取得項目に追加
     url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&hourly=temperature_2m,wind_speed_10m,wind_direction_10m,weather_code&timezone=Asia%2FTokyo&wind_speed_unit=ms&forecast_days=8"
     try:
         data = requests.get(url).json()
@@ -49,17 +48,17 @@ def fetch_weather_data(lat, lon, days):
         return None
 
 #=================================================================================================
-def get_weather_emoji(code):
+def get_weather_info(code):
 #=================================================================================================
-    # WMO天気コードを絵文字に変換
-    if code <= 1: return "☀️"         # 晴れ
-    if code <= 2: return "🌤️"         # 時々晴れ
-    if code <= 3: return "☁️"         # 曇り
-    if code <= 48: return "🌫️"        # 霧（曇り扱い）
-    if code <= 61: return "🌦️"        # 時々雨
-    if code <= 65: return "☔"         # 雨
-    if code <= 99: return "⛈️"         # 大雨・雷雨
-    return "❓"
+    # 文字化けを防ぐため、絵文字ではなく漢字と色で定義
+    if code <= 1: return "晴", "orange"
+    if code <= 2: return "晴/曇", "darkorange"
+    if code <= 3: return "曇", "gray"
+    if code <= 48: return "霧", "silver"
+    if code <= 61: return "小雨", "dodgerblue"
+    if code <= 65: return "雨", "blue"
+    if code <= 99: return "大雨", "darkblue"
+    return "？", "black"
 
 #=================================================================================================
 def process_wind_data(df, lat, lon, danger_v):
@@ -73,8 +72,10 @@ def process_wind_data(df, lat, lon, danger_v):
     df['dir_name'] = df['res'].apply(lambda x: x[0])
     df['arrow'] = df['res'].apply(lambda x: x[1])
     
-    # 天気絵文字の付与
-    df['w_emoji'] = df['weather_code'].apply(get_weather_emoji)
+    # 天気情報の付与
+    weather_res = df['weather_code'].apply(get_weather_info)
+    df['w_text'] = [r[0] for r in weather_res]
+    df['w_color'] = [r[1] for r in weather_res]
 
     def judge(row):
         speed, direction = row['wind_speed_10m'], row['dir_name']
@@ -105,7 +106,7 @@ def create_graph(df, days, danger_v, wind_step, time_step):
     bars = ax1.bar(df['time'], df['wind_speed_10m'], color=df['color'], alpha=0.8, width=0.03)
     ax1.axhline(y=danger_v, color='red', linestyle='--', alpha=0.4)
     ax1.set_ylabel('風速 (m/s)', fontsize=CONFIG["LABEL_SIZE"])
-    ax1.set_ylim(0, max(df['wind_speed_10m'].max(), danger_v) + 8) # 天気表示用に少し高く設定
+    ax1.set_ylim(0, max(df['wind_speed_10m'].max(), danger_v) + 9) 
     
     jst = timezone(timedelta(hours=9))
     now_jst = datetime.now(jst).replace(tzinfo=None)
@@ -122,8 +123,13 @@ def create_graph(df, days, danger_v, wind_step, time_step):
         if i % wind_step == 0:
             h = bar.get_height()
             v = round(df['wind_speed_10m'].iloc[i])
-            # 天気絵文字 + 判定マーク + 風向 + 矢印 + 風速 の順に表示
-            txt = f"{df['w_emoji'].iloc[i]}\n{df['mark'].iloc[i]}\n{df['dir_name'].iloc[i]}\n{df['arrow'].iloc[i]}\n{v}m"
+            
+            # 天気テキスト（漢字）を表示
+            ax1.text(bar.get_x() + bar.get_width()/2., h + 3.5, df['w_text'].iloc[i], 
+                    ha='center', va='bottom', color=df['w_color'].iloc[i], fontweight='bold', fontsize=9)
+            
+            # 風向・風速情報を表示
+            txt = f"{df['mark'].iloc[i]}\n{df['dir_name'].iloc[i]}\n{df['arrow'].iloc[i]}\n{v}m"
             ax1.text(bar.get_x() + bar.get_width()/2., h + 0.3, txt, ha='center', va='bottom', fontweight='bold')
 
     ax2.plot(df['time'], df['temperature_2m'], color='#666666', linewidth=1.5)
