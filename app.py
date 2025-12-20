@@ -66,12 +66,11 @@ def process_wind_data(df, lat, lon, danger_v):
     return df
 
 def create_graph(df, days, danger_v, wind_step, time_step):
-    fig_w = max(10, days * 4)
-    # sharex=Trueを解除し、個別に軸を制御
+    # 横方向のサイズを日数に応じて大きく確保（スクロール用）
+    fig_w = max(10, days * 3.5)
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(fig_w, 8), dpi=CONFIG["DPI"])
-    plt.subplots_adjust(hspace=0.7)
+    plt.subplots_adjust(hspace=0.8)
 
-    # 共通の時間軸設定関数
     jp_weeks = ["月", "火", "水", "木", "金", "土", "日"]
     def formatter(x, p):
         dt = mdates.num2date(x)
@@ -83,16 +82,17 @@ def create_graph(df, days, danger_v, wind_step, time_step):
     ax1.set_ylabel('風速 (m/s)', fontsize=CONFIG["LABEL_SIZE"])
     ax1.set_ylim(0, max(df['wind_speed_10m'].max(), danger_v) + 7)
     
-    # 現在時刻
     jst = timezone(timedelta(hours=9))
     now_jst = datetime.now(jst).replace(tzinfo=None)
     ax1.axvline(now_jst, color='blue', linestyle='-', alpha=0.5, linewidth=2.5)
 
-    # 風グラフの時刻軸表示
-    ax1.xaxis.set_major_locator(mdates.HourLocator(interval=time_step))
-    ax1.xaxis.set_major_formatter(plt.FuncFormatter(formatter))
-    ax1.set_xlim(df['time'].iloc[0], df['time'].iloc[-1]) # 左端空白なし
-    plt.setp(ax1.get_xticklabels(), ha='center')
+    # 軸の設定
+    for ax in [ax1, ax2]:
+        ax.xaxis.set_major_locator(mdates.HourLocator(interval=time_step))
+        ax.xaxis.set_major_formatter(plt.FuncFormatter(formatter))
+        ax.set_xlim(df['time'].iloc[0], df['time'].iloc[-1]) # 左端空白なし
+        ax.grid(True, linestyle=':', alpha=0.5)
+        plt.setp(ax.get_xticklabels(), ha='center')
 
     for i, bar in enumerate(bars):
         if i % wind_step == 0:
@@ -104,13 +104,6 @@ def create_graph(df, days, danger_v, wind_step, time_step):
     # --- 下段：気温グラフ ---
     ax2.plot(df['time'], df['temperature_2m'], color='#666666', linewidth=1.5)
     ax2.set_ylabel('気温 (℃)', fontsize=CONFIG["LABEL_SIZE"])
-    ax2.xaxis.set_major_locator(mdates.HourLocator(interval=time_step))
-    ax2.xaxis.set_major_formatter(plt.FuncFormatter(formatter))
-    ax2.set_xlim(df['time'].iloc[0], df['time'].iloc[-1]) # 左端空白なし
-    plt.setp(ax2.get_xticklabels(), ha='center')
-
-    # グリッド
-    ax1.grid(True, linestyle=':', alpha=0.5); ax2.grid(True, linestyle=':', alpha=0.5)
 
     buf = io.BytesIO()
     fig.savefig(buf, format="png", bbox_inches='tight', pad_inches=0.1)
@@ -127,16 +120,41 @@ def main():
     use_map = st.sidebar.checkbox("地図から場所を選択", value=False)
 
     if use_map:
-        st.info("地図を動かすと、中心に合わせてポインターが移動し予報が更新されます。")
+        # 地図のコンテナに対して十字を絶対配置するCSS
+        st.markdown(f"""
+            <style>
+            .map-wrapper {{
+                position: relative;
+                width: {CONFIG["MAP_WIDTH"]}px;
+                height: {CONFIG["MAP_HEIGHT"]}px;
+            }}
+            .crosshair {{
+                position: absolute;
+                top: 50%;
+                left: 50%;
+                width: 40px;
+                height: 40px;
+                margin-top: -20px;
+                margin-left: -20px;
+                z-index: 1000;
+                pointer-events: none;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }}
+            .v-line {{ position: absolute; width: 2px; height: 100%; background: red; }}
+            .h-line {{ position: absolute; width: 100%; height: 2px; background: red; }}
+            </style>
+        """, unsafe_allow_html=True)
+        
+        st.info("地図の中央（赤い十字）に調べたい場所を合わせてください。")
+        
+        # コンテナの中に地図と十字を入れる
+        st.markdown('<div class="map-wrapper">', unsafe_allow_html=True)
         m = folium.Map(location=[st.session_state.lat, st.session_state.lon], zoom_start=12)
-        # 地図内にポインターを表示
-        folium.Marker(
-            [st.session_state.lat, st.session_state.lon],
-            popup="現在の予報地点",
-            icon=folium.Icon(color='blue', icon='info-sign')
-        ).add_to(m)
-
         map_out = st_folium(m, width=CONFIG["MAP_WIDTH"], height=CONFIG["MAP_HEIGHT"], key="map")
+        st.markdown('<div class="crosshair"><div class="v-line"></div><div class="h-line"></div></div>', unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)
 
         if map_out and map_out.get("center"):
             c = map_out["center"]
@@ -157,7 +175,13 @@ def main():
 
         st.markdown(f'<p style="font-size:14px;"><span style="color:gold;">■</span>最高 <span style="color:orange;">■</span>良好 <span style="color:skyblue;">■</span>ジャスト <span style="color:crimson;">■</span>危険 <span style="color:blue; font-weight:bold;">―</span>現在時刻</p>', unsafe_allow_html=True)
         st.markdown(f'<p style="font-weight:bold;">地点: ({st.session_state.lat:.3f}, {st.session_state.lon:.3f})</p>', unsafe_allow_html=True)
-        st.markdown(f'<div style="overflow-x:auto; background:white; border-radius:8px;"><img src="data:image/png;base64,{img_base64}" style="height:550px;"></div>', unsafe_allow_html=True)
+        
+        # overflow-x: auto を付与して横スクロールを有効化
+        st.markdown(f"""
+            <div style="overflow-x: auto; white-space: nowrap; background: white; border-radius: 8px; border: 1px solid #eee;">
+                <img src="data:image/png;base64,{img_base64}" style="height: 550px; max-width: none;">
+            </div>
+        """, unsafe_allow_html=True)
 
 if __name__ == "__main__":
     main()
