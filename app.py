@@ -22,6 +22,23 @@ warnings.simplefilter('ignore', UserWarning)
 
 st.title("⛵ 高須沖・風況チェッカー")
 
+# --- 【重要】ここから：横スクロールを強制するCSS ---
+st.markdown("""
+    <style>
+    .stPlotlyChart {
+        overflow-x: scroll;
+    }
+    [data-testid="stHorizontalBlock"] {
+        overflow-x: scroll;
+    }
+    .stpyplot {
+        overflow-x: scroll;
+        min-width: 1200px; /* ここで最低の横幅を固定します */
+    }
+    </style>
+    """, unsafe_allow_html=True)
+# --- ここまで ---
+
 # サイドメニュー
 st.sidebar.header("設定")
 basho = st.sidebar.selectbox("場所", ["高須沖(鹿児島県)", "錦江湾(鹿児島県)"])
@@ -30,7 +47,7 @@ danger_v = st.sidebar.number_input("危険風速(m/s)", value=10)
 
 # データ取得
 lat, lon = (31.34, 130.79) if basho == "高須沖(鹿児島県)" else (31.59, 130.60)
-url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}6&longitude={lon}&hourly=temperature_2m,wind_speed_10m,wind_direction_10m&timezone=Asia%2FTokyo&wind_speed_unit=ms"
+url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&hourly=temperature_2m,wind_speed_10m,wind_direction_10m&timezone=Asia%2FTokyo&wind_speed_unit=ms"
 data = requests.get(url).json()
 
 df = pd.DataFrame(data["hourly"])
@@ -66,46 +83,36 @@ best_times = df[df['cond_name'] == "最高"]
 if not best_times.empty:
     st.success(f"🏆 【狙い目！最高コンディション】\n" + ", ".join(best_times['time'].dt.strftime('%m/%d(%a) %H:%M')))
 
-# --- グラフの描画（スクロール対応） ---
-# 日数に応じて横幅を伸ばす（1日あたり6インチ、最低15インチ）
-dynamic_width = max(15, days * 6)
+# グラフ描画
+# 表示日数に応じて、1日あたり400px（7日で2800px相当）の巨大なグラフを作成
+dynamic_width = max(10, days * 5) 
 
-# st.containerを使ってスクロール可能な領域を作る（CSSハック）
-st.write("### 週間風況チャート（横にスクロールして確認できます）")
-with st.container():
-    # 高解像度 dpi=300
-    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(dynamic_width, 10), dpi=300, 
-                                   sharex=True, gridspec_kw={'height_ratios': [4, 1]})
-    plt.subplots_adjust(hspace=0.2)
+fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(dynamic_width, 8), dpi=200, 
+                               sharex=True, gridspec_kw={'height_ratios': [4, 1]})
+plt.subplots_adjust(hspace=0.2)
 
-    # 上段：風速
-    bars = ax1.bar(df['time'], df['wind_speed_10m'], color=df['color'], alpha=0.8, width=0.03)
-    ax1.axhline(y=danger_v, color='red', linestyle='--', alpha=0.5, linewidth=1)
-    ax1.set_ylabel('風速 (m/s)', fontsize=14)
-    ax1.set_ylim(0, max(df['wind_speed_10m'].max(), danger_v) + 5)
-    ax1.grid(True, axis='y', linestyle=':', alpha=0.5)
+bars = ax1.bar(df['time'], df['wind_speed_10m'], color=df['color'], alpha=0.8)
+ax1.axhline(y=danger_v, color='red', linestyle='--', alpha=0.5)
+ax1.set_ylabel('風速 (m/s)', fontsize=14)
+ax1.set_ylim(0, max(df['wind_speed_10m'].max(), danger_v) + 5)
+ax1.grid(True, axis='y', linestyle=':', alpha=0.5)
 
-    # 文字サイズを少し小さくし、密度を調整
-    step = 2 if days <= 2 else 3
-    for i, bar in enumerate(bars):
-        if i % step == 0:
-            h = bar.get_height()
-            ax1.text(bar.get_x() + bar.get_width()/2., h + 0.3, 
-                     f"{df['mark'].iloc[i]}\n{df['dir_name'].iloc[i]}\n{df['arrow'].iloc[i]}", 
-                     ha='center', va='bottom', fontsize=8, fontweight='bold')
+step = 1 if days <= 1 else (2 if days <= 3 else 3)
+for i, bar in enumerate(bars):
+    if i % step == 0:
+        h = bar.get_height()
+        ax1.text(bar.get_x() + bar.get_width()/2., h + 0.3, 
+                 f"{df['mark'].iloc[i]}\n{df['dir_name'].iloc[i]}\n{df['arrow'].iloc[i]}", 
+                 ha='center', va='bottom', fontsize=9, fontweight='bold')
 
-    # 下段：気温
-    ax2.plot(df['time'], df['temperature_2m'], color='#666666', linewidth=2)
-    ax2.fill_between(df['time'], df['temperature_2m'], color='gray', alpha=0.1)
-    ax2.set_ylabel('気温 (℃)', fontsize=12)
-    ax2.grid(True, axis='y', linestyle=':', alpha=0.5)
+ax2.plot(df['time'], df['temperature_2m'], color='gray', alpha=0.5)
+ax2.fill_between(df['time'], df['temperature_2m'], color='gray', alpha=0.1)
+ax2.set_ylabel('気温 (℃)', fontsize=12)
 
-    # X軸
-    ax2.xaxis.set_major_formatter(mdates.DateFormatter('%m/%d(%a)\n%H:%M'))
-    ax2.xaxis.set_major_locator(mdates.HourLocator(byhour=[0, 6, 12, 18]))
-    plt.xticks(fontsize=10)
+ax2.xaxis.set_major_formatter(mdates.DateFormatter('%m/%d(%a)\n%H:%M'))
+ax2.xaxis.set_major_locator(mdates.HourLocator(byhour=[0, 6, 12, 18]))
 
-    # Streamlitで表示（use_container_width=Falseにすることで、設定した横幅を維持＝スクロール発生）
-    st.pyplot(fig, use_container_width=False)
+# 表示。use_container_width=Falseが重要
+st.pyplot(fig, use_container_width=False)
 
 st.write(f"凡例: 金色=最高(北西) / 橙色=良好(西・南西) / 赤色=危険({danger_v}m/s超)")
