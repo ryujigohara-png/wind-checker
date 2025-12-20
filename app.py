@@ -8,16 +8,18 @@ import os
 import io
 import base64
 import warnings
-from datetime import datetime
+from datetime import datetime, timedelta
 import matplotlib.dates as mdates
 
 # ==========================================
 # ★設定エリア：ここを書き換えて調整してください★
 # ==========================================
-TITLE_SIZE = 14       # メインタイトルの大きさ
-GRAPH_FONT_SIZE = 10  # グラフ内の文字（風向・風速・気温）の大きさ
-LABEL_SIZE = 10       # 縦軸（風速m/sなど）のラベルの大きさ
-DPI_QUALITY = 300     # 画質（300がクッキリ、200だと少し軽い）
+TITLE_SIZE = 20       # メインタイトルの大きさ
+SUBTITLE_SIZE = 16    # 「週間予報」などの見出しの大きさ
+GRAPH_FONT_SIZE = 10  # グラフ内の文字（風向・矢印など）
+LABEL_SIZE = 12       # 縦軸ラベルの大きさ
+DPI_QUALITY = 300     # 画質（300が最高品質）
+WIND_STEP = 3         # 風向・矢印を表示する間隔（3なら3時間おき。重なるなら大きくして）
 # ==========================================
 
 # --- 日本語フォント設定 ---
@@ -31,7 +33,7 @@ plt.rc('font', family='Noto Sans JP', size=GRAPH_FONT_SIZE)
 st.set_page_config(page_title="高須沖・風況チェッカー", layout="wide")
 warnings.simplefilter('ignore', UserWarning)
 
-# タイトル（サイズ指定）
+# タイトル
 st.markdown(f'<h1 style="font-size:{TITLE_SIZE}px;">⛵ 高須沖・風況チェッカー</h1>', unsafe_allow_html=True)
 
 # サイドメニュー
@@ -40,14 +42,18 @@ basho = st.sidebar.selectbox("場所", ["高須沖(鹿児島県)", "錦江湾(�
 days = st.sidebar.slider("表示日数", 1, 7, 7)
 danger_v = st.sidebar.number_input("危険風速(m/s)", value=10)
 
-# データ取得
+# --- データ取得（今日0時からのデータを取得するように調整） ---
 lat, lon = (31.34, 130.79) if basho == "高須沖(鹿児島県)" else (31.59, 130.60)
-url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&hourly=temperature_2m,wind_speed_10m,wind_direction_10m&timezone=Asia%2FTokyo&wind_speed_unit=ms"
+# past_days=1 を入れることで、昨日の分も含めて取得し、左端の空白を防ぎます
+url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&hourly=temperature_2m,wind_speed_10m,wind_direction_10m&timezone=Asia%2FTokyo&wind_speed_unit=ms&past_days=1"
 data = requests.get(url).json()
 
 df = pd.DataFrame(data["hourly"])
 df['time'] = pd.to_datetime(df['time'])
-df = df.head(24 * days)
+
+# 今日の0時以降を抽出して表示日数分切り出す
+today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+df = df[df['time'] >= today_start].head(24 * days)
 
 def get_wind_info(deg):
     dirs = ["北", "北北東", "北東", "東北東", "東", "東南東", "南東", "南南東", "南", "南南西", "南西", "西南西", "西", "西北西", "北西", "北北西", "北"]
@@ -79,8 +85,7 @@ if not best_times.empty:
     st.success(f"🏆 【狙い目！最高コンディション】\n" + ", ".join(best_times['time'].dt.strftime('%m/%d(%a) %H:%M')))
 
 # --- グラフ作成 ---
-# 1日あたりの幅を少し抑えめに（250px）して「大きすぎ」を解消
-graph_width_px = max(800, days * 250)
+graph_width_px = max(800, days * 300)
 fig_w = graph_width_px / 100
 
 fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(fig_w, 7), dpi=DPI_QUALITY, sharex=True, gridspec_kw={'height_ratios': [3, 1]})
@@ -93,10 +98,13 @@ ax1.set_ylabel('風速 (m/s)', fontsize=LABEL_SIZE)
 ax1.set_ylim(0, max(df['wind_speed_10m'].max(), danger_v) + 5)
 ax1.grid(True, axis='y', linestyle=':', alpha=0.5)
 
-# グラフ内テキスト
-step = 1 if days <= 2 else 2
+# 現在時刻に線を引く（今の状況を分かりやすく）
+now = datetime.now()
+ax1.axvline(now, color='blue', linestyle='-', alpha=0.3, linewidth=2)
+
+# 風向テキスト（WIND_STEPごとに間引いて表示）
 for i, bar in enumerate(bars):
-    if i % step == 0:
+    if i % WIND_STEP == 0:
         h = bar.get_height()
         ax1.text(bar.get_x() + bar.get_width()/2., h + 0.3, 
                  f"{df['mark'].iloc[i]}\n{df['dir_name'].iloc[i]}\n{df['arrow'].iloc[i]}", 
@@ -108,18 +116,19 @@ ax2.set_ylabel('気温 (℃)', fontsize=LABEL_SIZE)
 ax2.xaxis.set_major_formatter(mdates.DateFormatter('%m/%d(%a)\n%H:%M'))
 ax2.xaxis.set_major_locator(mdates.HourLocator(byhour=[0, 6, 12, 18]))
 
-# --- 仕上げ：高画質画像をスクロール枠へ ---
+# 仕上げ
 buf = io.BytesIO()
-# bbox_inches='tight'で余白を自動調整
 fig.savefig(buf, format="png", bbox_inches='tight', pad_inches=0.1)
 base64_img = base64.b64encode(buf.getvalue()).decode()
 
-st.write("### 週間予報（横スクロールで確認）")
+# 「週間予報」の見出しサイズ調整
+st.markdown(f'<p style="font-size:{SUBTITLE_SIZE}px; font-weight:bold; margin-bottom:0;">### 週間予報（横にスクロール）</p>', unsafe_allow_html=True)
+
 html_code = f"""
-<div style="overflow-x: auto; width: 100%; border-radius: 8px;">
-    <img src="data:image/png;base64,{base64_img}" style="height: 500px; width: auto; max-width: none;">
+<div style="overflow-x: auto; width: 100%; border-radius: 8px; border: 1px solid #eee;">
+    <img src="data:image/png;base64,{base64_img}" style="height: 550px; width: auto; max-width: none;">
 </div>
 """
 st.markdown(html_code, unsafe_allow_html=True)
 
-st.write(f"凡例: 金色=最高(北西) / 橙色=良好(西・南西) / 赤色=危険({danger_v}m/s超)")
+st.write(f"凡例: 金色=最高(北西) / 橙色=良好(西・南西) / 赤色=危険({danger_v}m/s超) / 青線=現在時刻")
