@@ -7,6 +7,7 @@ import urllib.request
 import os
 import io
 import base64
+import numpy as np
 from datetime import datetime, timedelta, timezone
 import matplotlib.dates as mdates
 from streamlit_folium import st_folium
@@ -23,7 +24,6 @@ CONFIG = {
     "MAP_HEIGHT": 400
 }
 
-# 全16方位の定義（順番を固定）
 ALL_DIRECTIONS = ["北", "北北東", "北東", "東北東", "東", "東南東", "南東", "南南東", "南", "南南西", "南西", "西南西", "西", "西北西", "北西", "北北西"]
 
 def setup_font():
@@ -41,6 +41,7 @@ def fetch_weather_data(lat, lon, days):
         df = pd.DataFrame(data["hourly"])
         df['time'] = pd.to_datetime(df['time'])
         df = df.head(24 * days).reset_index(drop=True)
+        # パディング処理（グラフ左端の被り防止）
         first_time = df['time'].iloc[0]
         padding = pd.DataFrame({
             'time': [first_time - timedelta(hours=i) for i in range(3, 0, -1)],
@@ -53,6 +54,22 @@ def fetch_weather_data(lat, lon, days):
     except Exception as e:
         st.error(f"データ取得エラー: {e}")
         return None
+
+def get_tide_level(times):
+    """簡易的な潮汐計算（正弦波モデル）"""
+    # 基準となる満潮時刻（簡易的に設定）と周期（約12.42時間）
+    base_full_tide = datetime(2025, 1, 1, 6, 0) 
+    cycle_hours = 12.42
+    levels = []
+    for t in times:
+        if pd.isna(t):
+            levels.append(None)
+            continue
+        hours_from_base = (t - base_full_tide).total_seconds() / 3600
+        # 正弦波で潮位をシミュレーション（-100cm ～ 100cm の範囲）
+        level = 100 * np.cos(2 * np.pi * hours_from_base / cycle_hours)
+        levels.append(level)
+    return levels
 
 def get_weather_info(code):
     if code is None: return "", "black"
@@ -82,7 +99,6 @@ def process_wind_data(df, target_dirs, danger_v):
         speed = row['wind_speed_10m']
         if pd.isna(speed): return "none"
         direction = row['dir_name']
-        
         if speed >= danger_v: return "crimson"
         if direction in target_dirs:
             if 6 <= speed < danger_v: return "orange"
@@ -90,12 +106,16 @@ def process_wind_data(df, target_dirs, danger_v):
         return "#D3D3D3"
         
     df['color'] = df.apply(judge, axis=1)
+    # 潮位データの追加
+    df['tide_level'] = get_tide_level(df['time'])
     return df
 
 def create_graph(df, days, danger_v, wind_step, time_step):
     fig_w = max(10, days * 4.5)
-    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(fig_w, 8), dpi=CONFIG["DPI"], gridspec_kw={'height_ratios': [4, 1]})
-    plt.subplots_adjust(hspace=0.8)
+    # 3段構成に変更 (高さも調整)
+    fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(fig_w, 10), dpi=CONFIG["DPI"], 
+                                        gridspec_kw={'height_ratios': [4, 1.2, 1.2]})
+    plt.subplots_adjust(hspace=0.6)
     
     jp_weeks = ["月", "火", "水", "木", "金", "土", "日"]
     def formatter(x, p):
@@ -103,18 +123,31 @@ def create_graph(df, days, danger_v, wind_step, time_step):
         if dt.hour == 0: return dt.strftime('%m/%d') + f'\n({jp_weeks[dt.weekday()]})\n' + dt.strftime('%H:%M')
         else: return dt.strftime('%H:%M')
         
+    # 1段目: 風速
     bars = ax1.bar(df['time'], df['wind_speed_10m'], color=df['color'], alpha=0.9, width=0.03)
     ax1.axhline(y=danger_v, color='red', linestyle='--', alpha=0.6)
-    ax1.set_ylabel('風速 (m/s)', fontsize=CONFIG["LABEL_SIZE"], color='black')
-    
+    ax1.set_ylabel('風速 (m/s)', fontsize=CONFIG["LABEL_SIZE"])
     max_speed = df['wind_speed_10m'].dropna().max() if not df['wind_speed_10m'].dropna().empty else 0
     ax1.set_ylim(0, max(max_speed, danger_v) + 5) 
     
+    # 現在時刻線
     jst = timezone(timedelta(hours=9))
     now_jst = datetime.now(jst).replace(tzinfo=None)
-    ax1.axvline(now_jst, color='blue', linestyle='-', alpha=0.6, linewidth=2.5)
+    for ax in [ax1, ax2, ax3]:
+        ax.axvline(now_jst, color='blue', linestyle='-', alpha=0.6, linewidth=2.5)
+
+    # 2段目: 気温
+    ax2.plot(df['time'], df['temperature_2m'], color='black', linewidth=1.5)
+    ax2.set_ylabel('気温(℃)', fontsize=CONFIG["LABEL_SIZE"])
     
-    for ax in [ax1, ax2]:
+    # 3段目: 潮位 (簡易版)
+    ax3.plot(df['time'], df['tide_level'], color='royalblue', linewidth=2)
+    ax3.fill_between(df['time'], df['tide_level'], -120, color='royalblue', alpha=0.2)
+    ax3.set_ylabel('潮位イメージ', fontsize=CONFIG["LABEL_SIZE"])
+    ax3.set_ylim(-120, 120)
+    ax3.set_yticks([]) # 簡易的なので数値は隠す
+
+    for ax in [ax1, ax2, ax3]:
         ax.xaxis.set_major_locator(mdates.HourLocator(byhour=range(0, 24, time_step)))
         ax.xaxis.set_major_formatter(plt.FuncFormatter(formatter))
         ax.set_xlim(df['time'].iloc[0], df['time'].iloc[-1])
@@ -123,6 +156,7 @@ def create_graph(df, days, danger_v, wind_step, time_step):
         for spine in ax.spines.values():
             spine.set_edgecolor('black'); spine.set_linewidth(1.0)
             
+    # 風速ラベルの描画
     for i, bar in enumerate(bars):
         if not pd.isna(df['wind_speed_10m'].iloc[i]) and i % wind_step == 0:
             h = bar.get_height()
@@ -130,9 +164,6 @@ def create_graph(df, days, danger_v, wind_step, time_step):
             txt = f"{df['dir_name'].iloc[i]}\n{df['arrow'].iloc[i]}\n{round(df['wind_speed_10m'].iloc[i])}m"
             ax1.text(bar.get_x() + bar.get_width()/2., h + 0.3, txt, ha='center', va='bottom', fontweight='bold', color='black', fontsize=10)
             
-    ax2.plot(df['time'], df['temperature_2m'], color='black', linewidth=1.5)
-    ax2.set_ylabel('気温 (℃)', fontsize=CONFIG["LABEL_SIZE"], color='black')
-    
     buf = io.BytesIO()
     fig.savefig(buf, format="png", bbox_inches='tight', pad_inches=0.1)
     return base64.b64encode(buf.getvalue()).decode()
@@ -171,14 +202,12 @@ def main():
     days = st.sidebar.slider("表示日数", 1, 8, 8)
     danger_v = st.sidebar.number_input("危険風速(m/s)", value=10)
 
-    # --- 修正点①・②: タイトル変更と方位の並び順固定 ---
     st.sidebar.markdown("---")
     st.sidebar.header("乗れる風向")
     default_dirs = ["南", "南南西", "南西", "西南西", "西", "西北西", "北西", "北北西"]
-    
     cols = st.sidebar.columns(2)
     selected_target_dirs = []
-    for i, d in enumerate(ALL_DIRECTIONS): # ALL_DIRECTIONSの順に描画
+    for i, d in enumerate(ALL_DIRECTIONS):
         with cols[i % 2]:
             if st.checkbox(d, value=(d in default_dirs)):
                 selected_target_dirs.append(d)
@@ -191,7 +220,6 @@ def main():
         df = process_wind_data(df, selected_target_dirs, danger_v)
         img_base64 = create_graph(df, days, danger_v, w_step, t_step)
         
-        # --- 修正点③: 凡例表示の変更と解説の追加 ---
         st.markdown(f'''
             <p style="font-size:16px; font-weight:bold;">
                 <span style="color:skyblue;">■</span>アンダー(3-6m/s) &nbsp;
@@ -201,12 +229,13 @@ def main():
                 <span style="color:blue;">―</span>現在時刻
             </p>
             <p style="font-size:14px; color:#555; margin-top:-10px;">
-                ※乗れる風向のときに色付けしています。（乗れる風向はサイドメニューで設定できます。）
+                ※乗れる風向のときに色付けしています。（乗れる風向はサイドメニューで設定できます。）<br>
+                ※最下段の潮位は簡易計算によるイメージです。正確な潮位は公式情報をご確認ください。
             </p>
         ''', unsafe_allow_html=True)
         
         st.markdown(f'<p style="font-weight:bold; font-size:16px; color:black;">地点: {current_place_name}</p>', unsafe_allow_html=True)
-        st.markdown(f'<div style="overflow-x: auto; white-space: nowrap; background: white; border-radius: 8px; border: 1px solid #eee;"><img src="data:image/png;base64,{img_base64}" style="height: 550px; max-width: none;"></div>', unsafe_allow_html=True)
+        st.markdown(f'<div style="overflow-x: auto; white-space: nowrap; background: white; border-radius: 8px; border: 1px solid #eee;"><img src="data:image/png;base64,{img_base64}" style="height: 600px; max-width: none;"></div>', unsafe_allow_html=True)
 
 if __name__ == "__main__":
     main()
