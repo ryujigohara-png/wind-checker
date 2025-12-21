@@ -20,7 +20,6 @@ CONFIG = {
     "GRAPH_FONT_SIZE": 14,
     "LABEL_SIZE": 14,
     "DPI": 300,
-    "MAP_WIDTH": 700,
     "MAP_HEIGHT": 350
 }
 
@@ -34,7 +33,6 @@ def setup_font():
     fm.fontManager.addfont(font_path)
     plt.rc('font', family='Noto Sans JP', size=CONFIG["GRAPH_FONT_SIZE"])
 
-# グラフ生成のキャッシュ化
 @st.cache_data(show_spinner=False)
 def get_cached_graph(lat, lon, days, danger_v, selected_dirs_tuple):
     df = fetch_weather_data(lat, lon, days)
@@ -145,14 +143,20 @@ def main():
     if 'lon' not in st.session_state: st.session_state.lon = init_lon
     if 'last_basho' not in st.session_state: st.session_state.last_basho = "高須沖(鹿児島県)"
 
-    # --- メイン画面上部：地点選択と地図表示 ---
+    # --- メイン画面上部：地点選択 ---
     col_sel, col_map_check = st.columns([7, 3])
+    basho_list = ["高須沖(鹿児島県)", "柏原沖(鹿児島県)", "垂水港(鹿児島県)", "海潟(鹿児島県)", "磯海岸沖(鹿児島県)", "江口浜沖(鹿児島県)", "錦江湾(鹿児島県)", "地図で指定"]
+    
     with col_sel:
-        basho_list = ["高須沖(鹿児島県)", "柏原沖(鹿児島県)", "垂水港(鹿児島県)", "海潟(鹿児島県)", "磯海岸沖(鹿児島県)", "江口浜沖(鹿児島県)", "錦江湾(鹿児島県)", "地図で指定"]
-        basho = st.selectbox("地点を選択", basho_list, label_visibility="collapsed")
+        # 地図で地点を変更した際、「地図で指定」に強制変更するためのindex計算
+        current_idx = basho_list.index(st.session_state.last_basho) if st.session_state.last_basho in basho_list else 7
+        basho = st.selectbox("地点を選択", basho_list, index=current_idx, label_visibility="collapsed")
     
     with col_map_check:
         show_map = st.checkbox("地図表示", value=(basho == "地図で指定"))
+
+    # 緯度経度の常時表示
+    st.markdown(f"<p style='font-size:12px; color:#666; margin-top:-10px;'>現在地: 緯度 {st.session_state.lat:.4f} / 経度 {st.session_state.lon:.4f}</p>", unsafe_allow_html=True)
 
     if st.session_state.last_basho != basho:
         coords = {"高須沖(鹿児島県)":(31.337, 130.795), "柏原沖(鹿児島県)":(31.380, 131.020), "垂水港(鹿児島県)":(31.478, 130.668), "海潟(鹿児島県)":(31.539, 130.706), "磯海岸沖(鹿児島県)":(31.614, 130.577), "江口浜沖(鹿児島県)":(31.643, 130.322), "錦江湾(鹿児島県)":(31.590, 130.600)}
@@ -163,31 +167,34 @@ def main():
         elif basho == "地図で指定":
             st.session_state.last_basho = basho
 
-    # --- 地図表示（外枠ガイド方式 ＆ 確定地点マーカー） ---
+    # --- 地図表示（外枠ガイド方式） ---
     if show_map:
         st.info("地図の中央地点のグラフを描画表示することができます。")
         
         # 上の矢印
         st.markdown("<div style='text-align:center; color:crimson; font-size:24px; font-weight:bold; margin-bottom:-10px;'>▼</div>", unsafe_allow_html=True)
         
-        col_l, col_m, col_r = st.columns([1, 15, 1])
+        # 画面幅に応じたレスポンシブ調整用
+        col_l, col_m, col_r = st.columns([1, 18, 1])
         with col_l:
             st.markdown(f"<div style='line-height:{CONFIG['MAP_HEIGHT']}px; text-align:right; color:crimson; font-size:24px; font-weight:bold;'>▶</div>", unsafe_allow_html=True)
         with col_m:
             map_key = f"map_view_{st.session_state.lat}_{st.session_state.lon}"
-            # 地図上に現在確定されている地点に青いマーカーを表示
             m = folium.Map(location=[st.session_state.lat, st.session_state.lon], zoom_start=13)
-            folium.Marker([st.session_state.lat, st.session_state.lon], tooltip="現在の描画地点").add_to(m)
-            map_out = st_folium(m, width=600, height=CONFIG["MAP_HEIGHT"], key=map_key, returned_objects=["center"])
+            # マーカーの色を赤に変更
+            folium.Marker([st.session_state.lat, st.session_state.lon], tooltip="現在の描画地点", icon=folium.Icon(color='red')).add_to(m)
+            # width=Noneで親要素100%に適応
+            map_out = st_folium(m, width=None, height=CONFIG["MAP_HEIGHT"], key=map_key, returned_objects=["center"])
         with col_r:
             st.markdown(f"<div style='line-height:{CONFIG['MAP_HEIGHT']}px; text-align:left; color:crimson; font-size:24px; font-weight:bold;'>◀</div>", unsafe_allow_html=True)
             
-        # 下の矢印
         st.markdown("<div style='text-align:center; color:crimson; font-size:24px; font-weight:bold; margin-top:-10px;'>▲</div>", unsafe_allow_html=True)
         
         if map_out and map_out.get("center"):
             if st.button("グラフ描画地点確定", use_container_width=True):
                 st.session_state.lat, st.session_state.lon = map_out["center"]["lat"], map_out["center"]["lng"]
+                # 確定時にコンボボックスを「地図で指定」にセット
+                st.session_state.last_basho = "地図で指定"
                 st.rerun()
 
     # サイドバー：表示設定
