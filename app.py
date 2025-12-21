@@ -175,8 +175,25 @@ def main():
         img_base64 = create_graph(df, days, danger_v, (1 if days <= 1 else (2 if days <= 3 else 3)), (3 if days <= 2 else 6))
         
         st.markdown(f'<p style="font-weight:bold; font-size:14px; color:#333; margin-bottom: 5px;">📍 {current_place_name}</p>', unsafe_allow_html=True)
-        with st.expander("📊 凡例・使い方"):
-            st.markdown(f'''<p style="font-size:14px; line-height:1.6;"><span style="color:skyblue;">■</span> アンダー(3-6m/s) <span style="color:orange;">■</span> ジャスト(6-10m/s) <span style="color:crimson;">■</span> オーバー {danger_v}m/s+<br><span style="color:crimson;">---</span> 危険風速{danger_v}m/s <span style="color:blue;">―</span> 現在時刻</p><p style="font-size:12px; color:#666;">※指定風向時のみ色付。最下段は潮位イメージ。</p>''', unsafe_allow_html=True)
+        
+        # 修正点①・②: タイトルの変更、解説文の更新、凡例内の余白調整
+        with st.expander("📊 凡例"):
+            st.markdown(f'''
+                <p style="font-size:14px; line-height:1.8;">
+                    <span style="color:skyblue;">■</span> アンダー(3-6m/s) &nbsp;&nbsp;
+                    <span style="color:orange;">■</span> ジャスト(6-10m/s) &nbsp;&nbsp;
+                    <span style="color:crimson;">■</span> オーバー {danger_v}m/s以上<br>
+                    <span style="color:crimson;">---</span> 危険風速{danger_v}m/s 
+                    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+                    <span style="color:blue;">―</span> 現在時刻
+                </p>
+                <hr style="margin: 10px 0;">
+                <p style="font-size:12px; color:#555; line-height:1.6;">
+                    ※乗れる風向のときに色付けしています（乗れる風向はサイドメニューで設定できます。）。<br>
+                    ※最下段の潮位は簡易計算によるイメージです。正確な潮位は公式情報をご確認ください。
+                </p>
+            ''', unsafe_allow_html=True)
+
         st.markdown(f'<div style="overflow-x: auto; white-space: nowrap; background: white; border-radius: 8px; border: 1px solid #eee; margin-top: 5px;"><img src="data:image/png;base64,{img_base64}" style="height: 520px; max-width: none;"></div>', unsafe_allow_html=True)
 
 if __name__ == "__main__": main()
