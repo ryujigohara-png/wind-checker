@@ -49,7 +49,13 @@ def fetch_weather_data(lat, lon, days):
         df = pd.DataFrame(data["hourly"])
         df['time'] = pd.to_datetime(df['time'])
         df = df.head(24 * days).reset_index(drop=True)
-        return df
+        # --- 3時間の空白（余白）を設ける処理を復元 ---
+        first_time = df['time'].iloc[0]
+        padding = pd.DataFrame({
+            'time': [first_time - timedelta(hours=i) for i in range(3, 0, -1)],
+            'temperature_2m': [None]*3, 'wind_speed_10m': [None]*3, 'wind_direction_10m': [None]*3, 'weather_code': [None]*3
+        })
+        return pd.concat([padding, df], ignore_index=True)
     except Exception:
         return None
 
@@ -143,20 +149,21 @@ def main():
     if 'lon' not in st.session_state: st.session_state.lon = init_lon
     if 'last_basho' not in st.session_state: st.session_state.last_basho = "高須沖(鹿児島県)"
 
-    # --- メイン画面上部：地点選択 ---
+    # --- 地点選択 ---
     col_sel, col_map_check = st.columns([7, 3])
     basho_list = ["高須沖(鹿児島県)", "柏原沖(鹿児島県)", "垂水港(鹿児島県)", "海潟(鹿児島県)", "磯海岸沖(鹿児島県)", "江口浜沖(鹿児島県)", "錦江湾(鹿児島県)", "地図で指定"]
     
     with col_sel:
-        # 地図で地点を変更した際、「地図で指定」に強制変更するためのindex計算
         current_idx = basho_list.index(st.session_state.last_basho) if st.session_state.last_basho in basho_list else 7
         basho = st.selectbox("地点を選択", basho_list, index=current_idx, label_visibility="collapsed")
     
     with col_map_check:
-        show_map = st.checkbox("地図表示", value=(basho == "地図で指定"))
+        # 地図表示チェックボックスは手動操作のみに連動（初期値False）
+        show_map = st.checkbox("地図表示", value=st.session_state.get('show_map_state', False))
+        st.session_state.show_map_state = show_map
 
-    # 緯度経度の常時表示
-    st.markdown(f"<p style='font-size:12px; color:#666; margin-top:-10px;'>現在地: 緯度 {st.session_state.lat:.4f} / 経度 {st.session_state.lon:.4f}</p>", unsafe_allow_html=True)
+    # 緯度経度表示（グラフ描画地点：に変更）
+    st.markdown(f"<p style='font-size:12px; color:#666; margin-top:-10px;'>グラフ描画地点： 緯度 {st.session_state.lat:.4f} / 経度 {st.session_state.lon:.4f}</p>", unsafe_allow_html=True)
 
     if st.session_state.last_basho != basho:
         coords = {"高須沖(鹿児島県)":(31.337, 130.795), "柏原沖(鹿児島県)":(31.380, 131.020), "垂水港(鹿児島県)":(31.478, 130.668), "海潟(鹿児島県)":(31.539, 130.706), "磯海岸沖(鹿児島県)":(31.614, 130.577), "江口浜沖(鹿児島県)":(31.643, 130.322), "錦江湾(鹿児島県)":(31.590, 130.600)}
@@ -170,11 +177,9 @@ def main():
     # --- 地図表示（外枠ガイド方式） ---
     if show_map:
         st.info("地図の中央地点のグラフを描画表示することができます。")
-        
-        # 上の矢印
         st.markdown("<div style='text-align:center; color:crimson; font-size:24px; font-weight:bold; margin-bottom:-10px;'>▼</div>", unsafe_allow_html=True)
         
-        # 画面幅に応じたレスポンシブ調整用
+        # カラム比率を5%:90%:5%に設定
         col_l, col_m, col_r = st.columns([1, 18, 1])
         with col_l:
             st.markdown(f"<div style='line-height:{CONFIG['MAP_HEIGHT']}px; text-align:right; color:crimson; font-size:24px; font-weight:bold;'>▶</div>", unsafe_allow_html=True)
@@ -183,7 +188,6 @@ def main():
             m = folium.Map(location=[st.session_state.lat, st.session_state.lon], zoom_start=13)
             # マーカーの色を赤に変更
             folium.Marker([st.session_state.lat, st.session_state.lon], tooltip="現在の描画地点", icon=folium.Icon(color='red')).add_to(m)
-            # width=Noneで親要素100%に適応
             map_out = st_folium(m, width=None, height=CONFIG["MAP_HEIGHT"], key=map_key, returned_objects=["center"])
         with col_r:
             st.markdown(f"<div style='line-height:{CONFIG['MAP_HEIGHT']}px; text-align:left; color:crimson; font-size:24px; font-weight:bold;'>◀</div>", unsafe_allow_html=True)
@@ -193,11 +197,10 @@ def main():
         if map_out and map_out.get("center"):
             if st.button("グラフ描画地点確定", use_container_width=True):
                 st.session_state.lat, st.session_state.lon = map_out["center"]["lat"], map_out["center"]["lng"]
-                # 確定時にコンボボックスを「地図で指定」にセット
                 st.session_state.last_basho = "地図で指定"
                 st.rerun()
 
-    # サイドバー：表示設定
+    # サイドバー設定
     st.sidebar.header("表示設定")
     days = st.sidebar.slider("表示日数", 1, 8, init_days)
     danger_v = st.sidebar.number_input("危険風速(m/s)", value=init_danger)
@@ -209,24 +212,13 @@ def main():
             if st.checkbox(d, value=(d in init_dirs), key=f"chk_{d}"):
                 selected_target_dirs.append(d)
 
-    # URLパラメータ同期
     st.query_params.update({"lat": st.session_state.lat, "lon": st.session_state.lon, "days": days, "danger": danger_v, "dirs": ",".join(selected_target_dirs)})
 
-    # グラフ描画
     img_base64 = get_cached_graph(st.session_state.lat, st.session_state.lon, days, danger_v, tuple(selected_target_dirs))
 
     if img_base64:
         with st.expander("📊 凡例・自分専用設定の保存方法"):
-            st.markdown(f'''
-                <p style="font-size:14px;">
-                    <span style="color:skyblue;">■</span> 3-6m/s &nbsp; <span style="color:orange;">■</span> 6-10m/s &nbsp; <span style="color:crimson;">■</span> {danger_v}m/s以上<br>
-                    <span style="color:crimson;">---</span> 危険風速{danger_v}m/s
-                </p>
-                <hr>
-                <p style="font-size:12px; color:#333;"><b>自分専用設定の保存</b><br>
-                iPhone: Safari下の「共有」→「ホーム画面に追加」<br>
-                Android: Chrome右上の「︙」→「ホーム画面に追加」</p>
-            ''', unsafe_allow_html=True)
+            st.markdown(f'''<p style="font-size:14px;"><span style="color:skyblue;">■</span> 3-6m/s &nbsp; <span style="color:orange;">■</span> 6-10m/s &nbsp; <span style="color:crimson;">■</span> {danger_v}m/s以上<br><span style="color:crimson;">---</span> 危険風速{danger_v}m/s</p><hr><p style="font-size:12px; color:#333;"><b>自分専用設定の保存</b><br>iPhone: Safari下の「共有」→「ホーム画面に追加」<br>Android: Chrome右上の「︙」→「ホーム画面に追加」</p>''', unsafe_allow_html=True)
         st.markdown(f'<div style="overflow-x: auto; background: white; border-radius: 8px; border: 1px solid #eee; margin-top: 5px;"><img src="data:image/png;base64,{img_base64}" style="height: 520px; max-width: none;"></div>', unsafe_allow_html=True)
 
 if __name__ == "__main__": main()
