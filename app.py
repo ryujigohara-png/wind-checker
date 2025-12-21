@@ -44,24 +44,18 @@ def fetch_weather_data(lat, lon, days):
         first_time = df['time'].iloc[0]
         padding = pd.DataFrame({
             'time': [first_time - timedelta(hours=i) for i in range(3, 0, -1)],
-            'temperature_2m': [None]*3,
-            'wind_speed_10m': [None]*3,
-            'wind_direction_10m': [None]*3,
-            'weather_code': [None]*3
+            'temperature_2m': [None]*3, 'wind_speed_10m': [None]*3, 'wind_direction_10m': [None]*3, 'weather_code': [None]*3
         })
         return pd.concat([padding, df], ignore_index=True)
     except Exception as e:
-        st.error(f"データ取得エラー: {e}")
-        return None
+        st.error(f"データ取得エラー: {e}"); return None
 
 def get_tide_level(times):
     base_full_tide = datetime(2025, 1, 1, 6, 0) 
     cycle_hours = 12.42
     levels = []
     for t in times:
-        if pd.isna(t):
-            levels.append(None)
-            continue
+        if pd.isna(t): levels.append(None); continue
         hours_from_base = (t - base_full_tide).total_seconds() / 3600
         level = 100 * np.cos(2 * np.pi * hours_from_base / cycle_hours)
         levels.append(level)
@@ -82,8 +76,7 @@ def process_wind_data(df, target_dirs, danger_v):
         idx = int((deg + 11.25) / 22.5) % 16
         return dirs[idx], arrows[idx]
     df['res'] = df['wind_direction_10m'].apply(get_info)
-    df['dir_name'] = df['res'].apply(lambda x: x[0])
-    df['arrow'] = df['res'].apply(lambda x: x[1])
+    df['dir_name'] = df['res'].apply(lambda x: x[0]); df['arrow'] = df['res'].apply(lambda x: x[1])
     weather_res = df['weather_code'].apply(get_weather_info)
     df['w_text'] = [r[0] for r in weather_res]; df['w_color'] = [r[1] for r in weather_res]
     def judge(row):
@@ -94,8 +87,7 @@ def process_wind_data(df, target_dirs, danger_v):
             if 6 <= speed < danger_v: return "orange"
             if 3 <= speed < 6: return "skyblue"
         return "#D3D3D3"
-    df['color'] = df.apply(judge, axis=1)
-    df['tide_level'] = get_tide_level(df['time'])
+    df['color'] = df.apply(judge, axis=1); df['tide_level'] = get_tide_level(df['time'])
     return df
 
 def create_graph(df, days, danger_v, wind_step, time_step):
@@ -123,8 +115,7 @@ def create_graph(df, days, danger_v, wind_step, time_step):
     ax2.set_ylabel('気温(℃)', fontsize=CONFIG["LABEL_SIZE"])
     ax3.plot(df['time'], df['tide_level'], color='royalblue', linewidth=2)
     ax3.fill_between(df['time'], df['tide_level'], -120, color='royalblue', alpha=0.2)
-    ax3.set_ylabel('潮位', fontsize=CONFIG["LABEL_SIZE"])
-    ax3.set_yticks([])
+    ax3.set_ylabel('潮位', fontsize=CONFIG["LABEL_SIZE"]); ax3.set_yticks([])
     for i, bar in enumerate(bars):
         if not pd.isna(df['wind_speed_10m'].iloc[i]) and i % wind_step == 0:
             h = bar.get_height()
@@ -137,63 +128,72 @@ def create_graph(df, days, danger_v, wind_step, time_step):
 def main():
     setup_font()
     st.markdown(f'<h1 style="font-size:{CONFIG["TITLE_SIZE"]}px; margin-bottom: 5px;">⛵ 高須風チェッカー</h1>', unsafe_allow_html=True)
-    if 'lat' not in st.session_state: st.session_state.lat, st.session_state.lon = 31.337, 130.795
-    if 'zoom' not in st.session_state: st.session_state.zoom = 13
-    if 'last_basho' not in st.session_state: st.session_state.last_basho = "高須沖(鹿児島県)"
     
+    # --- URLパラメータの読み込み ---
+    params = st.query_params
+    init_lat = float(params.get("lat", 31.337))
+    init_lon = float(params.get("lon", 130.795))
+    init_days = int(params.get("days", 8))
+    init_danger = float(params.get("danger", 10.0))
+    # 風向はカンマ区切り文字列で復元（なければデフォルト）
+    default_dirs = ["南", "南南西", "南西", "西南西", "西", "西北西", "北西", "北北西"]
+    init_dirs = params.get("dirs", ",".join(default_dirs)).split(",")
+
+    # セッション状態の同期
+    if 'lat' not in st.session_state: st.session_state.lat = init_lat
+    if 'lon' not in st.session_state: st.session_state.lon = init_lon
+    if 'last_basho' not in st.session_state: st.session_state.last_basho = "高須沖(鹿児島県)"
+
     st.sidebar.header("基本設定")
-    basho = st.sidebar.selectbox("場所", ["高須沖(鹿児島県)", "柏原沖(鹿児島県)", "垂水港(鹿児島県)", "海潟(鹿児島県)", "磯海岸沖(鹿児島県)", "江口浜沖(鹿児島県)", "錦江湾(鹿児島県)", "地図で指定"])
+    basho_list = ["高須沖(鹿児島県)", "柏原沖(鹿児島県)", "垂水港(鹿児島県)", "海潟(鹿児島県)", "磯海岸沖(鹿児島県)", "江口浜沖(鹿児島県)", "錦江湾(鹿児島県)", "地図で指定"]
+    basho = st.sidebar.selectbox("場所", basho_list)
+    
     if st.session_state.last_basho != basho:
         coords = {"高須沖(鹿児島県)":(31.337, 130.795), "柏原沖(鹿児島県)":(31.380, 131.020), "垂水港(鹿児島県)":(31.478, 130.668), "海潟(鹿児島県)":(31.539, 130.706), "磯海岸沖(鹿児島県)":(31.614, 130.577), "江口浜沖(鹿児島県)":(31.643, 130.322), "錦江湾(鹿児島県)":(31.590, 130.600)}
-        if basho in coords: st.session_state.lat, st.session_state.lon = coords[basho]
-        st.session_state.last_basho = basho
-    
+        if basho in coords:
+            st.session_state.lat, st.session_state.lon = coords[basho]
+            st.session_state.last_basho = basho
+            st.rerun()
+
     current_place_name = basho
-    if st.sidebar.checkbox("地図で指定する") or basho == "地図で指定":
+    if basho == "地図で指定":
         current_place_name = f"地図指定 ({st.session_state.lat:.2f}, {st.session_state.lon:.2f})"
-        st.info("地図中央地点で場所を確定してください。")
-        m = folium.Map(location=[st.session_state.lat, st.session_state.lon], zoom_start=st.session_state.zoom)
+        map_key = f"map_{st.session_state.lat}_{st.session_state.lon}"
+        m = folium.Map(location=[st.session_state.lat, st.session_state.lon], zoom_start=13)
         folium.Marker([st.session_state.lat, st.session_state.lon], icon=folium.DivIcon(html='<div style="font-size: 24pt; color: red; font-weight: bold; text-align: center; width: 50px; margin-left: -25px; margin-top: -25px;">╋</div>')).add_to(m)
-        map_out = st_folium(m, width=CONFIG["MAP_WIDTH"], height=300, key="map_selector")
+        map_out = st_folium(m, width=CONFIG["MAP_WIDTH"], height=300, key=map_key)
         if map_out and map_out.get("center"):
             if st.button("場所を確定して更新", use_container_width=True):
                 st.session_state.lat, st.session_state.lon = map_out["center"]["lat"], map_out["center"]["lng"]
                 st.rerun()
     
-    days = st.sidebar.slider("表示日数", 1, 8, 8); danger_v = st.sidebar.number_input("危険風速(m/s)", value=10)
+    days = st.sidebar.slider("表示日数", 1, 8, init_days)
+    danger_v = st.sidebar.number_input("危険風速(m/s)", value=init_danger)
+    
     st.sidebar.markdown("---")
     st.sidebar.header("乗れる風向")
-    default_dirs = ["南", "南南西", "南西", "西南西", "西", "西北西", "北西", "北北西"]
     cols = st.sidebar.columns(2); selected_target_dirs = []
     for i, d in enumerate(ALL_DIRECTIONS):
         with cols[i % 2]:
-            if st.checkbox(d, value=(d in default_dirs)): selected_target_dirs.append(d)
+            if st.checkbox(d, value=(d in init_dirs), key=f"chk_{d}"):
+                selected_target_dirs.append(d)
+
+    # --- URLパラメータへの書き出し (変更があったら自動更新) ---
+    st.query_params.update({
+        "lat": st.session_state.lat,
+        "lon": st.session_state.lon,
+        "days": days,
+        "danger": danger_v,
+        "dirs": ",".join(selected_target_dirs)
+    })
 
     df = fetch_weather_data(st.session_state.lat, st.session_state.lon, days)
     if df is not None:
         df = process_wind_data(df, selected_target_dirs, danger_v)
         img_base64 = create_graph(df, days, danger_v, (1 if days <= 1 else (2 if days <= 3 else 3)), (3 if days <= 2 else 6))
-        
         st.markdown(f'<p style="font-weight:bold; font-size:14px; color:#333; margin-bottom: 5px;">📍 {current_place_name}</p>', unsafe_allow_html=True)
-        
-        # 修正点①・②: タイトルの変更、解説文の更新、凡例内の余白調整
         with st.expander("📊 凡例"):
-            st.markdown(f'''
-                <p style="font-size:14px; line-height:1.8;">
-                    <span style="color:skyblue;">■</span> アンダー(3-6m/s) &nbsp;&nbsp;
-                    <span style="color:orange;">■</span> ジャスト(6-10m/s) &nbsp;&nbsp;
-                    <span style="color:crimson;">■</span> オーバー {danger_v}m/s以上<br>
-                    <span style="color:crimson;">---</span> 危険風速{danger_v}m/s 
-                    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-                    <span style="color:blue;">―</span> 現在時刻
-                </p>
-                <hr style="margin: 10px 0;">
-                <p style="font-size:12px; color:#555; line-height:1.6;">
-                    ※乗れる風向のときに色付けしています（乗れる風向はサイドメニューで設定できます。）。<br>
-                    ※最下段の潮位は簡易計算によるイメージです。正確な潮位は公式情報をご確認ください。
-                </p>
-            ''', unsafe_allow_html=True)
-
+            st.markdown(f'''<p style="font-size:14px; line-height:1.8;"><span style="color:skyblue;">■</span> アンダー(3-6m/s) &nbsp;&nbsp; <span style="color:orange;">■</span> ジャスト(6-10m/s) &nbsp;&nbsp; <span style="color:crimson;">■</span> オーバー {danger_v}m/s以上<br><span style="color:crimson;">---</span> 危険風速{danger_v}m/s &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <span style="color:blue;">―</span> 現在時刻</p><hr style="margin: 10px 0;"><p style="font-size:12px; color:#555; line-height:1.6;">※乗れる風向のときに色付けしています（設定はサイドメニュー）。<br>※最下段は簡易的な潮位イメージです。</p>''', unsafe_allow_html=True)
         st.markdown(f'<div style="overflow-x: auto; white-space: nowrap; background: white; border-radius: 8px; border: 1px solid #eee; margin-top: 5px;"><img src="data:image/png;base64,{img_base64}" style="height: 520px; max-width: none;"></div>', unsafe_allow_html=True)
 
 if __name__ == "__main__": main()
