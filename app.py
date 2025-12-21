@@ -156,6 +156,46 @@ def create_graph(df, days, danger_v, wind_step, time_step):
     return base64.b64encode(buf.getvalue()).decode()
 
 #========================================================================================================================
+# 地図表示サブルーチン
+#========================================================================================================================
+def show_location_map():
+    st.info("地図の中央地点のグラフを描画表示することができます。")
+    
+    # スマホでカラムが縦に積み上がるのを防ぐCSS
+    st.markdown("""
+        <style>
+        div[data-testid="stHorizontalBlock"] {
+            flex-wrap: nowrap !important;
+        }
+        [data-testid="column"] {
+            min-width: 0px !important;
+        }
+        </style>
+        """, unsafe_allow_html=True)
+    
+    st.markdown("<div style='text-align:center; color:crimson; font-size:24px; font-weight:bold; margin-bottom:-10px;'>▼</div>", unsafe_allow_html=True)
+    
+    # 1:16:1 の比率で横並びを維持
+    col_l, col_m, col_r = st.columns([1, 16, 1])
+    with col_l:
+        st.markdown(f"<div style='line-height:{CONFIG['MAP_HEIGHT']}px; text-align:right; color:crimson; font-size:24px; font-weight:bold;'>▶</div>", unsafe_allow_html=True)
+    with col_m:
+        map_key = f"map_view_{st.session_state.lat}_{st.session_state.lon}"
+        m = folium.Map(location=[st.session_state.lat, st.session_state.lon], zoom_start=13)
+        folium.Marker([st.session_state.lat, st.session_state.lon], tooltip="現在の描画地点", icon=folium.Icon(color='red')).add_to(m)
+        map_out = st_folium(m, width=None, height=CONFIG["MAP_HEIGHT"], key=map_key, returned_objects=["center"])
+    with col_r:
+        st.markdown(f"<div style='line-height:{CONFIG['MAP_HEIGHT']}px; text-align:left; color:crimson; font-size:24px; font-weight:bold;'>◀</div>", unsafe_allow_html=True)
+        
+    st.markdown("<div style='text-align:center; color:crimson; font-size:24px; font-weight:bold; margin-top:-10px;'>▲</div>", unsafe_allow_html=True)
+    
+    if map_out and map_out.get("center"):
+        if st.button("グラフ描画地点確定", use_container_width=True):
+            st.session_state.lat, st.session_state.lon = map_out["center"]["lat"], map_out["center"]["lng"]
+            st.session_state.last_basho = "地図で指定"
+            st.rerun()
+
+#========================================================================================================================
 # メインアプリケーション
 #========================================================================================================================
 def main():
@@ -196,63 +236,9 @@ def main():
         elif basho == "地図で指定":
             st.session_state.last_basho = basho
 
-    # 地図表示セクション（外枠ガイド方式：比率1:16:1）
+    # 地図表示
     if show_map:
-        st.info("テスト中：地図のみ表示")
-        # 矢印なし・カラムなしで地図を100%幅で表示
-        map_out = st_folium(m, width=None, use_container_width=True, height=CONFIG["MAP_HEIGHT"])
-# --- 地図表示（外枠ガイド方式：HTMLテーブルで横並びを強制） ---
-    if show_map:
-        st.info("地図の中央地点のグラフを描画表示することができます。")
-        
-        # 上の矢印
-        st.markdown("<div style='text-align:center; color:crimson; font-size:24px; font-weight:bold; margin-bottom:-10px;'>▼</div>", unsafe_allow_html=True)
-        
-        # HTMLテーブルを使用して、スマホでも強制的に横並びにする
-        map_html = f"""
-        <table style="width:100%; border:none; border-collapse:collapse; table-layout:fixed;">
-            <tr>
-                <td style="width:5%; text-align:right; vertical-align:middle; color:crimson; font-size:24px; font-weight:bold; padding:0;">▶</td>
-                <td style="width:90%; padding:0; vertical-align:middle;" id="map_container">
-                    </td>
-                <td style="width:5%; text-align:left; vertical-align:middle; color:crimson; font-size:24px; font-weight:bold; padding:0;">◀</td>
-            </tr>
-        </table>
-        """
-        # 矢印ガイドのみ先に表示（地図を挟む枠組み）
-        # ※Streamlitの制約上、st_foliumをテーブルの中に直接入れることはできないため、
-        #   「矢印を独立させたカラム」のスタックをCSSで防止する方法を適用します。
-
-        st.markdown("""
-            <style>
-            [data-testid="column"] {
-                min-width: 0px !important;
-                flex-basis: content !important;
-            }
-            div[data-testid="stHorizontalBlock"] {
-                flex-wrap: nowrap !important;
-            }
-            </style>
-            """, unsafe_allow_html=True)
-
-        col_l, col_m, col_r = st.columns([1, 18, 1])
-        with col_l:
-            st.markdown(f"<div style='line-height:{CONFIG['MAP_HEIGHT']}px; text-align:right; color:crimson; font-size:24px; font-weight:bold;'>▶</div>", unsafe_allow_html=True)
-        with col_m:
-            map_key = f"map_view_{st.session_state.lat}_{st.session_state.lon}"
-            m = folium.Map(location=[st.session_state.lat, st.session_state.lon], zoom_start=13)
-            folium.Marker([st.session_state.lat, st.session_state.lon], tooltip="現在の描画地点", icon=folium.Icon(color='red')).add_to(m)
-            map_out = st_folium(m, width=None, height=CONFIG["MAP_HEIGHT"], key=map_key, returned_objects=["center"])
-        with col_r:
-            st.markdown(f"<div style='line-height:{CONFIG['MAP_HEIGHT']}px; text-align:left; color:crimson; font-size:24px; font-weight:bold;'>◀</div>", unsafe_allow_html=True)
-            
-        st.markdown("<div style='text-align:center; color:crimson; font-size:24px; font-weight:bold; margin-top:-10px;'>▲</div>", unsafe_allow_html=True)
-        
-        if map_out and map_out.get("center"):
-            if st.button("グラフ描画地点確定", use_container_width=True):
-                st.session_state.lat, st.session_state.lon = map_out["center"]["lat"], map_out["center"]["lng"]
-                st.session_state.last_basho = "地図で指定"
-                st.rerun()
+        show_location_map()
 
     # サイドバー設定
     st.sidebar.header("表示設定")
