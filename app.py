@@ -25,6 +25,9 @@ CONFIG = {
 
 ALL_DIRECTIONS = ["北", "北北東", "北東", "東北東", "東", "東南東", "南東", "南南東", "南", "南南西", "南西", "西南西", "西", "西北西", "北西", "北北西"]
 
+#========================================================================================================================
+# フォント設定
+#========================================================================================================================
 def setup_font():
     font_url = "https://github.com/google/fonts/raw/main/ofl/notosansjp/NotoSansJP%5Bwght%5D.ttf"
     font_path = "NotoSansJP.ttf"
@@ -33,6 +36,9 @@ def setup_font():
     fm.fontManager.addfont(font_path)
     plt.rc('font', family='Noto Sans JP', size=CONFIG["GRAPH_FONT_SIZE"])
 
+#========================================================================================================================
+# グラフ生成のキャッシュ処理
+#========================================================================================================================
 @st.cache_data(show_spinner=False)
 def get_cached_graph(lat, lon, days, danger_v, selected_dirs_tuple):
     df = fetch_weather_data(lat, lon, days)
@@ -42,6 +48,9 @@ def get_cached_graph(lat, lon, days, danger_v, selected_dirs_tuple):
     time_step = (3 if days <= 2 else 6)
     return create_graph(df, days, danger_v, wind_step, time_step)
 
+#========================================================================================================================
+# 気象データの取得（Open-Meteo API）
+#========================================================================================================================
 def fetch_weather_data(lat, lon, days):
     url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&hourly=temperature_2m,wind_speed_10m,wind_direction_10m,weather_code&timezone=Asia%2FTokyo&wind_speed_unit=ms&forecast_days={days}"
     try:
@@ -49,7 +58,7 @@ def fetch_weather_data(lat, lon, days):
         df = pd.DataFrame(data["hourly"])
         df['time'] = pd.to_datetime(df['time'])
         df = df.head(24 * days).reset_index(drop=True)
-        # --- 3時間の空白（余白）を設ける処理を復元 ---
+        # 3時間の空白（余白）を設ける処理
         first_time = df['time'].iloc[0]
         padding = pd.DataFrame({
             'time': [first_time - timedelta(hours=i) for i in range(3, 0, -1)],
@@ -59,6 +68,9 @@ def fetch_weather_data(lat, lon, days):
     except Exception:
         return None
 
+#========================================================================================================================
+# 潮汐データの計算（擬似計算）
+#========================================================================================================================
 def get_tide_level(times):
     base_full_tide = datetime(2025, 1, 1, 6, 0) 
     cycle_hours = 12.42
@@ -70,6 +82,9 @@ def get_tide_level(times):
         levels.append(level)
     return levels
 
+#========================================================================================================================
+# 天気コードの変換
+#========================================================================================================================
 def get_weather_info(code):
     if code is None: return "", "black"
     if code <= 2: return "晴", "#FF8C00"
@@ -77,6 +92,9 @@ def get_weather_info(code):
     if code <= 99: return "雨", "#0000FF"
     return "？", "black"
 
+#========================================================================================================================
+# 風向・風速データの加工と判定
+#========================================================================================================================
 def process_wind_data(df, target_dirs, danger_v):
     dirs = ALL_DIRECTIONS + ["北"]
     arrows = ["↓", "↙", "↙", "↙", "←", "↖", "↖", "↖", "↑", "↗", "↗", "↗", "→", "↘", "↘", "↘", "↓"]
@@ -99,6 +117,9 @@ def process_wind_data(df, target_dirs, danger_v):
     df['color'] = df.apply(judge, axis=1); df['tide_level'] = get_tide_level(df['time'])
     return df
 
+#========================================================================================================================
+# Matplotlibによるグラフ作成
+#========================================================================================================================
 def create_graph(df, days, danger_v, wind_step, time_step):
     fig_w = max(10, days * 4.5)
     fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(fig_w, 10), dpi=CONFIG["DPI"], gridspec_kw={'height_ratios': [4, 1.2, 1.2]})
@@ -134,6 +155,9 @@ def create_graph(df, days, danger_v, wind_step, time_step):
     buf = io.BytesIO(); fig.savefig(buf, format="png", bbox_inches='tight', pad_inches=0.1)
     return base64.b64encode(buf.getvalue()).decode()
 
+#========================================================================================================================
+# メインアプリケーション
+#========================================================================================================================
 def main():
     setup_font()
     st.markdown(f'<h1 style="font-size:{CONFIG["TITLE_SIZE"]}px; margin-bottom: 5px;">⛵ 高須風チェッカー</h1>', unsafe_allow_html=True)
@@ -149,7 +173,7 @@ def main():
     if 'lon' not in st.session_state: st.session_state.lon = init_lon
     if 'last_basho' not in st.session_state: st.session_state.last_basho = "高須沖(鹿児島県)"
 
-    # --- 地点選択 ---
+    # 地点選択セクション
     col_sel, col_map_check = st.columns([7, 3])
     basho_list = ["高須沖(鹿児島県)", "柏原沖(鹿児島県)", "垂水港(鹿児島県)", "海潟(鹿児島県)", "磯海岸沖(鹿児島県)", "江口浜沖(鹿児島県)", "錦江湾(鹿児島県)", "地図で指定"]
     
@@ -158,11 +182,9 @@ def main():
         basho = st.selectbox("地点を選択", basho_list, index=current_idx, label_visibility="collapsed")
     
     with col_map_check:
-        # 地図表示チェックボックスは手動操作のみに連動（初期値False）
         show_map = st.checkbox("地図表示", value=st.session_state.get('show_map_state', False))
         st.session_state.show_map_state = show_map
 
-    # 緯度経度表示（グラフ描画地点：に変更）
     st.markdown(f"<p style='font-size:12px; color:#666; margin-top:-10px;'>グラフ描画地点： 緯度 {st.session_state.lat:.4f} / 経度 {st.session_state.lon:.4f}</p>", unsafe_allow_html=True)
 
     if st.session_state.last_basho != basho:
@@ -174,19 +196,18 @@ def main():
         elif basho == "地図で指定":
             st.session_state.last_basho = basho
 
-    # --- 地図表示（外枠ガイド方式） ---
+    # 地図表示セクション（外枠ガイド方式：比率1:16:1）
     if show_map:
         st.info("地図の中央地点のグラフを描画表示することができます。")
         st.markdown("<div style='text-align:center; color:crimson; font-size:24px; font-weight:bold; margin-bottom:-10px;'>▼</div>", unsafe_allow_html=True)
         
-        # カラム比率を5%:90%:5%に設定
-        col_l, col_m, col_r = st.columns([1, 18, 1])
+        # スマホ縦画面対策として比率を 1:16:1 に変更
+        col_l, col_m, col_r = st.columns([1, 16, 1])
         with col_l:
             st.markdown(f"<div style='line-height:{CONFIG['MAP_HEIGHT']}px; text-align:right; color:crimson; font-size:24px; font-weight:bold;'>▶</div>", unsafe_allow_html=True)
         with col_m:
             map_key = f"map_view_{st.session_state.lat}_{st.session_state.lon}"
             m = folium.Map(location=[st.session_state.lat, st.session_state.lon], zoom_start=13)
-            # マーカーの色を赤に変更
             folium.Marker([st.session_state.lat, st.session_state.lon], tooltip="現在の描画地点", icon=folium.Icon(color='red')).add_to(m)
             map_out = st_folium(m, width=None, height=CONFIG["MAP_HEIGHT"], key=map_key, returned_objects=["center"])
         with col_r:
@@ -214,6 +235,7 @@ def main():
 
     st.query_params.update({"lat": st.session_state.lat, "lon": st.session_state.lon, "days": days, "danger": danger_v, "dirs": ",".join(selected_target_dirs)})
 
+    # グラフ表示
     img_base64 = get_cached_graph(st.session_state.lat, st.session_state.lon, days, danger_v, tuple(selected_target_dirs))
 
     if img_base64:
