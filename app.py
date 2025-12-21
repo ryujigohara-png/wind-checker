@@ -149,30 +149,35 @@ def get_cached_graph(lat, lon, days, danger_v, selected_dirs_tuple):
     return base64.b64encode(buf.getvalue()).decode()
 
 #========================================================================================================================
-# 地図表示サブルーチン（HTMLテーブルによる横並び強制）
+# 地図表示サブルーチン（3x3構造をカラム内で完結）
 #========================================================================================================================
 def show_location_map():
     st.info("地図の中央地点のグラフを描画表示することができます。")
     
-    # 1段目：上中央の矢印（独立して中央配置）
-    st.markdown("<div style='text-align:center; color:crimson; font-size:24px; font-weight:bold; margin-bottom:-5px;'>▼</div>", unsafe_allow_html=True)
+    # スマホでカラムが縦に積み上がるのを防ぐCSS
+    st.markdown("""
+        <style>
+        div[data-testid="stHorizontalBlock"] {
+            flex-wrap: nowrap !important;
+        }
+        [data-testid="column"] {
+            min-width: 0px !important;
+        }
+        </style>
+        """, unsafe_allow_html=True)
     
-    # 2段目：左右の矢印と地図を「HTMLテーブル」で強制横並びにする
-    # カラム比率は 5% : 90% : 5%
+    # 1:18:1 のカラム構造を定義
     col_l, col_m, col_r = st.columns([1, 18, 1])
     
-    # 地図の本体定義
+    # 地図オブジェクトの作成
     m = folium.Map(location=[st.session_state.lat, st.session_state.lon], zoom_start=13)
     folium.Marker([st.session_state.lat, st.session_state.lon], icon=folium.Icon(color='red')).add_to(m)
 
-    # 左右の矢印を配置（ブラウザ幅が狭くても横並びを維持するCSS）
-    st.markdown("""
-        <style>
-        div[data-testid="stHorizontalBlock"] { flex-wrap: nowrap !important; }
-        [data-testid="column"] { min-width: 0px !important; }
-        </style>
-    """, unsafe_allow_html=True)
+    # --- 1段目：上中央 ---
+    with col_m:
+        st.markdown("<div style='text-align:center; color:crimson; font-size:24px; font-weight:bold; margin-bottom:-5px;'>▼</div>", unsafe_allow_html=True)
 
+    # --- 2段目：左・地図・右 ---
     with col_l:
         st.markdown(f"<div style='line-height:{CONFIG['MAP_HEIGHT']}px; text-align:right; color:crimson; font-size:24px; font-weight:bold;'>▶</div>", unsafe_allow_html=True)
     with col_m:
@@ -180,8 +185,9 @@ def show_location_map():
     with col_r:
         st.markdown(f"<div style='line-height:{CONFIG['MAP_HEIGHT']}px; text-align:left; color:crimson; font-size:24px; font-weight:bold;'>◀</div>", unsafe_allow_html=True)
         
-    # 3段目：下中央の矢印
-    st.markdown("<div style='text-align:center; color:crimson; font-size:24px; font-weight:bold; margin-top:-5px;'>▲</div>", unsafe_allow_html=True)
+    # --- 3段目：下中央 ---
+    with col_m:
+        st.markdown("<div style='text-align:center; color:crimson; font-size:24px; font-weight:bold; margin-top:-5px;'>▲</div>", unsafe_allow_html=True)
 
     if map_out and map_out.get("center"):
         if st.button("グラフ描画地点確定", use_container_width=True):
