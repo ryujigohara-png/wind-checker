@@ -37,7 +37,7 @@ def setup_font():
     plt.rc('font', family='Noto Sans JP', size=CONFIG["GRAPH_FONT_SIZE"])
 
 #========================================================================================================================
-# 気象データの取得（Open-Meteo API）
+# 気象データの取得（Open-Meteo API / 3時間空白処理含む）
 #========================================================================================================================
 def fetch_weather_data(lat, lon, days):
     url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&hourly=temperature_2m,wind_speed_10m,wind_direction_10m,weather_code&timezone=Asia%2FTokyo&wind_speed_unit=ms&forecast_days={days}"
@@ -46,7 +46,7 @@ def fetch_weather_data(lat, lon, days):
         df = pd.DataFrame(data["hourly"])
         df['time'] = pd.to_datetime(df['time'])
         df = df.head(24 * days).reset_index(drop=True)
-        # 3時間の空白（余白）を設ける処理
+        # 前方3時間の空白（余白）を設ける
         first_time = df['time'].iloc[0]
         padding = pd.DataFrame({
             'time': [first_time - timedelta(hours=i) for i in range(3, 0, -1)],
@@ -71,7 +71,7 @@ def get_tide_level(times):
     return levels
 
 #========================================================================================================================
-# 天気・風速・色の判定処理
+# 風向・風速データの加工と判定
 #========================================================================================================================
 def get_weather_info(code):
     if code is None: return "", "black"
@@ -149,45 +149,47 @@ def get_cached_graph(lat, lon, days, danger_v, selected_dirs_tuple):
     return base64.b64encode(buf.getvalue()).decode()
 
 #========================================================================================================================
-# 地図表示サブルーチン（3x3構造をカラム内で完結）
+# 地図表示サブルーチン（格子状3x3構造）
 #========================================================================================================================
 def show_location_map():
     st.info("地図の中央地点のグラフを描画表示することができます。")
     
-    # スマホでカラムが縦に積み上がるのを防ぐCSS
-    st.markdown("""
-        <style>
-        div[data-testid="stHorizontalBlock"] {
-            flex-wrap: nowrap !important;
-        }
-        [data-testid="column"] {
-            min-width: 0px !important;
-        }
-        </style>
-        """, unsafe_allow_html=True)
-    
-    # 1:18:1 のカラム構造を定義
-    col_l, col_m, col_r = st.columns([1, 18, 1])
-    
-    # 地図オブジェクトの作成
+    # 地図オブジェクト作成
     m = folium.Map(location=[st.session_state.lat, st.session_state.lon], zoom_start=13)
     folium.Marker([st.session_state.lat, st.session_state.lon], icon=folium.Icon(color='red')).add_to(m)
 
-    # --- 1段目：上中央 ---
-    with col_m:
-        st.markdown("<div style='text-align:center; color:crimson; font-size:24px; font-weight:bold; margin-bottom:-5px;'>▼</div>", unsafe_allow_html=True)
+    # HTMLテーブルで3x3を構築。地図を(2,2)のセルに配置
+    # Streamlitで st_folium をHTML内に直接書くことはできないため、
+    # 3つのカラム(5%:90%:5%)を使い、その中で上下の矢印もセンター配置する
+    
+    st.markdown("""
+        <style>
+        div[data-testid="stHorizontalBlock"] { flex-wrap: nowrap !important; }
+        [data-testid="column"] { min-width: 0px !important; }
+        .guide-arrow { color: crimson; font-size: 24px; font-weight: bold; text-align: center; }
+        </style>
+    """, unsafe_allow_html=True)
 
-    # --- 2段目：左・地図・右 ---
-    with col_l:
-        st.markdown(f"<div style='line-height:{CONFIG['MAP_HEIGHT']}px; text-align:right; color:crimson; font-size:24px; font-weight:bold;'>▶</div>", unsafe_allow_html=True)
+    col_l, col_m, col_r = st.columns([1, 18, 1])
+    
     with col_m:
+        # (1, 2) セルに相当：上中央
+        st.markdown("<div class='guide-arrow'>▼</div>", unsafe_allow_html=True)
+
+    # 中段 (2, 1), (2, 2), (2, 3)
+    with col_l:
+        # (2, 1) セルに相当：左中央
+        st.markdown(f"<div style='line-height:{CONFIG['MAP_HEIGHT']}px; text-align:right;' class='guide-arrow'>▶</div>", unsafe_allow_html=True)
+    with col_m:
+        # (2, 2) セルに相当：地図本体
         map_out = st_folium(m, width=None, height=CONFIG["MAP_HEIGHT"], key=f"map_{st.session_state.lat}", returned_objects=["center"])
     with col_r:
-        st.markdown(f"<div style='line-height:{CONFIG['MAP_HEIGHT']}px; text-align:left; color:crimson; font-size:24px; font-weight:bold;'>◀</div>", unsafe_allow_html=True)
+        # (2, 3) セルに相当：右中央
+        st.markdown(f"<div style='line-height:{CONFIG['MAP_HEIGHT']}px; text-align:left;' class='guide-arrow'>◀</div>", unsafe_allow_html=True)
         
-    # --- 3段目：下中央 ---
     with col_m:
-        st.markdown("<div style='text-align:center; color:crimson; font-size:24px; font-weight:bold; margin-top:-5px;'>▲</div>", unsafe_allow_html=True)
+        # (3, 2) セルに相当：下中央
+        st.markdown("<div class='guide-arrow' style='margin-top:-10px;'>▲</div>", unsafe_allow_html=True)
 
     if map_out and map_out.get("center"):
         if st.button("グラフ描画地点確定", use_container_width=True):
@@ -208,7 +210,7 @@ def main():
     if 'lon' not in st.session_state: st.session_state.lon = init_lon
     if 'last_basho' not in st.session_state: st.session_state.last_basho = "高須沖(鹿児島県)"
 
-    # 地点選択
+    # 地点選択と地図表示切替
     col_sel, col_map_check = st.columns([7, 3])
     basho_list = ["高須沖(鹿児島県)", "柏原沖(鹿児島県)", "垂水港(鹿児島県)", "海潟(鹿児島県)", "磯海岸沖(鹿児島県)", "江口浜沖(鹿児島県)", "錦江湾(鹿児島県)", "地図で指定"]
     with col_sel:
@@ -220,15 +222,17 @@ def main():
 
     st.markdown(f"<p style='font-size:12px; color:#666; margin-top:-10px;'>グラフ描画地点： 緯度 {st.session_state.lat:.4f} / 経度 {st.session_state.lon:.4f}</p>", unsafe_allow_html=True)
 
+    # 地点変更時のロジック
     if st.session_state.last_basho != basho:
         coords = {"高須沖(鹿児島県)":(31.337, 130.795), "柏原沖(鹿児島県)":(31.380, 131.020), "垂水港(鹿児島県)":(31.478, 130.668), "海潟(鹿児島県)":(31.539, 130.706), "磯海岸沖(鹿児島県)":(31.614, 130.577), "江口浜沖(鹿児島県)":(31.643, 130.322), "錦江湾(鹿児島県)":(31.590, 130.600)}
         if basho in coords:
             st.session_state.lat, st.session_state.lon = coords[basho]; st.session_state.last_basho = basho; st.rerun()
         elif basho == "地図で指定": st.session_state.last_basho = basho
 
+    # 地図の描画（サブルーチン呼び出し）
     if show_map: show_location_map()
 
-    # サイドバー設定とグラフ表示
+    # サイドバー設定
     st.sidebar.header("表示設定")
     days = st.sidebar.slider("表示日数", 1, 8, int(params.get("days", 8)))
     danger_v = st.sidebar.number_input("危険風速(m/s)", value=float(params.get("danger", 10.0)))
@@ -241,6 +245,8 @@ def main():
             if st.checkbox(d, value=(d in init_dirs), key=f"chk_{d}"): selected_target_dirs.append(d)
 
     st.query_params.update({"lat": st.session_state.lat, "lon": st.session_state.lon, "days": days, "danger": danger_v, "dirs": ",".join(selected_target_dirs)})
+
+    # グラフ描画
     img_base64 = get_cached_graph(st.session_state.lat, st.session_state.lon, days, danger_v, tuple(selected_target_dirs))
 
     if img_base64:
