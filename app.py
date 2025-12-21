@@ -37,7 +37,7 @@ def setup_font():
     plt.rc('font', family='Noto Sans JP', size=CONFIG["GRAPH_FONT_SIZE"])
 
 #========================================================================================================================
-# 気象データの取得（Open-Meteo API）
+# 気象データの取得
 #========================================================================================================================
 def fetch_weather_data(lat, lon, days):
     url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&hourly=temperature_2m,wind_speed_10m,wind_direction_10m,weather_code&timezone=Asia%2FTokyo&wind_speed_unit=ms&forecast_days={days}"
@@ -56,7 +56,7 @@ def fetch_weather_data(lat, lon, days):
         return None
 
 #========================================================================================================================
-# 潮汐データの計算（擬似計算）
+# 潮汐データの計算
 #========================================================================================================================
 def get_tide_level(times):
     base_full_tide = datetime(2025, 1, 1, 6, 0) 
@@ -70,7 +70,7 @@ def get_tide_level(times):
     return levels
 
 #========================================================================================================================
-# 風向・風速データの加工と判定
+# 風向・風速データの加工
 #========================================================================================================================
 def get_weather_info(code):
     if code is None: return "", "black"
@@ -148,22 +148,16 @@ def get_cached_graph(lat, lon, days, danger_v, selected_dirs_tuple):
     return base64.b64encode(buf.getvalue()).decode()
 
 #========================================================================================================================
-# 地図表示サブルーチン（3x3格子・全幅中央配置）
+# 地図表示サブルーチン
 #========================================================================================================================
 def show_location_map():
     st.info("地図の中央地点のグラフを描画表示することができます。")
     
-    # 画面全幅から正確にセンターを計算し、カラムスタックを無効化するCSS
     st.markdown("""
         <style>
-        div[data-testid="stHorizontalBlock"] {
-            flex-wrap: nowrap !important;
-            justify-content: center !important;
-        }
-        [data-testid="column"] {
-            min-width: 0px !important;
-        }
-        .guide-mark { color: #eee; font-size: 10px; text-align: center; }
+        div[data-testid="stHorizontalBlock"] { flex-wrap: nowrap !important; gap: 0rem !important; }
+        [data-testid="column"] { min-width: 0px !important; }
+        .guide-mark { color: #f0f0f0; font-size: 8px; text-align: center; }
         .guide-arrow-main { color: crimson; font-size: 24px; font-weight: bold; text-align: center; }
         </style>
     """, unsafe_allow_html=True)
@@ -171,14 +165,13 @@ def show_location_map():
     m = folium.Map(location=[st.session_state.lat, st.session_state.lon], zoom_start=13)
     folium.Marker([st.session_state.lat, st.session_state.lon], icon=folium.Icon(color='red')).add_to(m)
 
-    # 1段目
-    col_l1, col_m1, col_r1 = st.columns([1, 18, 1])
+    # 左右比率を極限まで小さくして密着させる (0.4 : 19.2 : 0.4)
+    col_l1, col_m1, col_r1 = st.columns([0.4, 19.2, 0.4])
     with col_l1: st.markdown("<div class='guide-mark'>┼</div>", unsafe_allow_html=True)
     with col_m1: st.markdown("<div class='guide-arrow-main'>▼</div>", unsafe_allow_html=True)
     with col_r1: st.markdown("<div class='guide-mark'>┼</div>", unsafe_allow_html=True)
 
-    # 2段目（メイン：垂直方向の中央合わせを line-height で正確に調整）
-    col_l2, col_m2, col_r2 = st.columns([1, 18, 1])
+    col_l2, col_m2, col_r2 = st.columns([0.4, 19.2, 0.4])
     with col_l2:
         st.markdown(f"<div style='line-height:{CONFIG['MAP_HEIGHT']}px; text-align:right;' class='guide-arrow-main'>▶</div>", unsafe_allow_html=True)
     with col_m2:
@@ -186,8 +179,7 @@ def show_location_map():
     with col_r2:
         st.markdown(f"<div style='line-height:{CONFIG['MAP_HEIGHT']}px; text-align:left;' class='guide-arrow-main'>◀</div>", unsafe_allow_html=True)
         
-    # 3段目
-    col_l3, col_m3, col_r3 = st.columns([1, 18, 1])
+    col_l3, col_m3, col_r3 = st.columns([0.4, 19.2, 0.4])
     with col_l3: st.markdown("<div class='guide-mark'>┼</div>", unsafe_allow_html=True)
     with col_m3: st.markdown("<div class='guide-arrow-main' style='margin-top:-10px;'>▲</div>", unsafe_allow_html=True)
     with col_r3: st.markdown("<div class='guide-mark'>┼</div>", unsafe_allow_html=True)
@@ -211,25 +203,34 @@ def main():
     if 'lon' not in st.session_state: st.session_state.lon = init_lon
     if 'last_basho' not in st.session_state: st.session_state.last_basho = "高須沖(鹿児島県)"
 
+    # 地点選択と地図表示切替
     col_sel, col_map_check = st.columns([7, 3])
     basho_list = ["高須沖(鹿児島県)", "柏原沖(鹿児島県)", "垂水港(鹿児島県)", "海潟(鹿児島県)", "磯海岸沖(鹿児島県)", "江口浜沖(鹿児島県)", "錦江湾(鹿児島県)", "地図で指定"]
+    
     with col_sel:
-        current_idx = basho_list.index(st.session_state.last_basho) if st.session_state.last_basho in basho_list else 7
+        # 地図表示をONにしても last_basho を書き換えないように修正
+        current_idx = basho_list.index(st.session_state.last_basho) if st.session_state.last_basho in basho_list else 0
         basho = st.selectbox("地点を選択", basho_list, index=current_idx, label_visibility="collapsed")
+    
     with col_map_check:
         show_map = st.checkbox("地図表示", value=st.session_state.get('show_map_state', False))
         st.session_state.show_map_state = show_map
 
     st.markdown(f"<p style='font-size:12px; color:#666; margin-top:-10px;'>グラフ描画地点： 緯度 {st.session_state.lat:.4f} / 経度 {st.session_state.lon:.4f}</p>", unsafe_allow_html=True)
 
+    # 手動でコンボボックスを変更したときのみ座標を更新
     if st.session_state.last_basho != basho:
         coords = {"高須沖(鹿児島県)":(31.337, 130.795), "柏原沖(鹿児島県)":(31.380, 131.020), "垂水港(鹿児島県)":(31.478, 130.668), "海潟(鹿児島県)":(31.539, 130.706), "磯海岸沖(鹿児島県)":(31.614, 130.577), "江口浜沖(鹿児島県)":(31.643, 130.322), "錦江湾(鹿児島県)":(31.590, 130.600)}
         if basho in coords:
-            st.session_state.lat, st.session_state.lon = coords[basho]; st.session_state.last_basho = basho; st.rerun()
-        elif basho == "地図で指定": st.session_state.last_basho = basho
+            st.session_state.lat, st.session_state.lon = coords[basho]
+            st.session_state.last_basho = basho
+            st.rerun()
+        elif basho == "地図で指定":
+            st.session_state.last_basho = basho
 
     if show_map: show_location_map()
 
+    # 表示設定サイドバー
     st.sidebar.header("表示設定")
     days = st.sidebar.slider("表示日数", 1, 8, int(params.get("days", 8)))
     danger_v = st.sidebar.number_input("危険風速(m/s)", value=float(params.get("danger", 10.0)))
