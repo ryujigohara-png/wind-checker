@@ -34,18 +34,12 @@ def setup_font():
     fm.fontManager.addfont(font_path)
     plt.rc('font', family='Noto Sans JP', size=CONFIG["GRAPH_FONT_SIZE"])
 
-# --- キャッシュ機能の追加 ---
-# グラフ生成をキャッシュすることで、地図移動時の「霞み」を防止します
+# --- グラフ生成のキャッシュ化（霞み防止） ---
 @st.cache_data(show_spinner=False)
 def get_cached_graph(lat, lon, days, danger_v, selected_dirs_tuple):
-    # APIからデータを取得
     df = fetch_weather_data(lat, lon, days)
     if df is None: return None
-    
-    # データを加工
     df = process_wind_data(df, list(selected_dirs_tuple), danger_v)
-    
-    # グラフを作成
     wind_step = (1 if days <= 1 else (2 if days <= 3 else 3))
     time_step = (3 if days <= 2 else 6)
     return create_graph(df, days, danger_v, wind_step, time_step)
@@ -63,7 +57,7 @@ def fetch_weather_data(lat, lon, days):
             'temperature_2m': [None]*3, 'wind_speed_10m': [None]*3, 'wind_direction_10m': [None]*3, 'weather_code': [None]*3
         })
         return pd.concat([padding, df], ignore_index=True)
-    except Exception as e:
+    except Exception:
         return None
 
 def get_tide_level(times):
@@ -157,6 +151,7 @@ def main():
     if 'lon' not in st.session_state: st.session_state.lon = init_lon
     if 'last_basho' not in st.session_state: st.session_state.last_basho = "高須沖(鹿児島県)"
 
+    # --- 場所選択と地図表示スイッチ ---
     col_sel, col_map = st.columns([7, 3])
     with col_sel:
         basho_list = ["高須沖(鹿児島県)", "柏原沖(鹿児島県)", "垂水港(鹿児島県)", "海潟(鹿児島県)", "磯海岸沖(鹿児島県)", "江口浜沖(鹿児島県)", "錦江湾(鹿児島県)", "地図で指定"]
@@ -174,20 +169,34 @@ def main():
         elif basho == "地図で指定":
             st.session_state.last_basho = basho
 
+    # --- 地図表示ロジック（シール方式） ---
     if show_map:
-        st.info("地図中央の「╋」に場所を合わせて「場所を確定」を押してください。")
-        map_key = f"map_{st.session_state.lat}_{st.session_state.lon}"
-        m = folium.Map(location=[st.session_state.lat, st.session_state.lon], zoom_start=13)
-        folium.Marker([st.session_state.lat, st.session_state.lon], icon=folium.DivIcon(html='<div style="font-size: 24pt; color: red; font-weight: bold; text-align: center; width: 50px; margin-left: -25px; margin-top: -25px;">╋</div>')).add_to(m)
-        
-        # returned_objects=["center"] に限定し、移動中の過剰な通信を抑制
-        map_out = st_folium(m, width=CONFIG["MAP_WIDTH"], height=CONFIG["MAP_HEIGHT"], key=map_key, returned_objects=["center"])
-        
-        if map_out and map_out.get("center"):
-            if st.button("この場所に確定して更新", use_container_width=True):
-                st.session_state.lat, st.session_state.lon = map_out["center"]["lat"], map_out["center"]["lng"]
-                st.rerun()
+        st.info("地図を動かして「╋」に場所を合わせ、「確定」を押してください。")
+        st.markdown(f"""
+            <style>
+            .map-container {{ position: relative; width: {CONFIG['MAP_WIDTH']}px; }}
+            .map-overlay-center {{
+                position: absolute; top: 50%; left: 50%;
+                transform: translate(-50%, -50%);
+                font-size: 30pt; color: crimson; font-weight: bold;
+                z-index: 1000; pointer-events: none; text-shadow: 0 0 3px white;
+            }}
+            </style>
+        """, unsafe_allow_html=True)
 
+        with st.container():
+            # 地図の上に十字をオーバーレイ
+            st.markdown('<div class="map-overlay-center">╋</div>', unsafe_allow_html=True)
+            map_key = f"map_{st.session_state.lat}_{st.session_state.lon}"
+            m = folium.Map(location=[st.session_state.lat, st.session_state.lon], zoom_start=13)
+            map_out = st_folium(m, width=CONFIG["MAP_WIDTH"], height=CONFIG["MAP_HEIGHT"], key=map_key, returned_objects=["center"])
+            
+            if map_out and map_out.get("center"):
+                if st.button("この場所に確定して更新", use_container_width=True):
+                    st.session_state.lat, st.session_state.lon = map_out["center"]["lat"], map_out["center"]["lng"]
+                    st.rerun()
+
+    # サイドバー設定
     st.sidebar.header("表示設定")
     days = st.sidebar.slider("表示日数", 1, 8, init_days)
     danger_v = st.sidebar.number_input("危険風速(m/s)", value=init_danger)
@@ -202,13 +211,12 @@ def main():
     # URLパラメータ更新
     st.query_params.update({"lat": st.session_state.lat, "lon": st.session_state.lon, "days": days, "danger": danger_v, "dirs": ",".join(selected_target_dirs)})
 
-    # グラフ表示（キャッシュから取得）
+    # グラフ表示（キャッシュ利用）
     img_base64 = get_cached_graph(st.session_state.lat, st.session_state.lon, days, danger_v, tuple(selected_target_dirs))
 
     if img_base64:
-        with st.expander("📊 凡例・自分専用設定の保存方法"):
-            st.markdown(f'''<p style="font-size:14px; line-height:1.8;"><span style="color:skyblue;">■</span> アンダー(3-6m/s) &nbsp;&nbsp; <span style="color:orange;">■</span> ジャスト(6-10m/s) &nbsp;&nbsp; <span style="color:crimson;">■</span> オーバー {danger_v}m/s以上<br><span style="color:crimson;">---</span> 危険風速{danger_v}m/s &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <span style="color:blue;">―</span> 現在時刻</p><hr style="margin: 10px 0;"><p style="font-size:13px; font-weight:bold; color:#2E7D32; margin-bottom:5px;">🏠 自分専用設定（ホームゲレンデ）の保存</p><p style="font-size:12px; color:#333; line-height:1.5;">現在の<b>「場所・表示日数・危険風速・乗れる風向」</b>はすべてURLに自動反映されています。<br>iPhoneなら「ホーム画面に追加」、Androidなら「ホーム画面に追加」で自分専用アプリになります。</p>''', unsafe_allow_html=True)
-            
-        st.markdown(f'<div style="overflow-x: auto; white-space: nowrap; background: white; border-radius: 8px; border: 1px solid #eee; margin-top: 5px;"><img src="data:image/png;base64,{img_base64}" style="height: 520px; max-width: none;"></div>', unsafe_allow_html=True)
+        with st.expander("📊 凡例・保存方法"):
+            st.markdown(f'''<p style="font-size:14px;"><span style="color:skyblue;">■</span> 3-6m/s &nbsp; <span style="color:orange;">■</span> 6-10m/s &nbsp; <span style="color:crimson;">■</span> {danger_v}m/s以上</p><hr><p style="font-size:12px;">現在の設定はURLに保存されています。スマホの「ホーム画面に追加」で自分専用アプリとして保存できます。</p>''', unsafe_allow_html=True)
+        st.markdown(f'<div style="overflow-x: auto; background: white; border-radius: 8px; border: 1px solid #eee; margin-top: 5px;"><img src="data:image/png;base64,{img_base64}" style="height: 520px; max-width: none;"></div>', unsafe_allow_html=True)
 
 if __name__ == "__main__": main()
