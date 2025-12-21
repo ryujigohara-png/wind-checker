@@ -202,7 +202,7 @@ def main():
         st.markdown("<div style='text-align:center; color:crimson; font-size:24px; font-weight:bold; margin-bottom:-10px;'>▼</div>", unsafe_allow_html=True)
         
         # スマホ縦画面対策として比率を 1:16:1 に変更
-        col_l, col_m, col_r = st.columns([1, 16, 1])
+        col_l, col_m, col_r = st.columns([1, 10, 1])
         with col_l:
             st.markdown(f"<div style='line-height:{CONFIG['MAP_HEIGHT']}px; text-align:right; color:crimson; font-size:24px; font-weight:bold;'>▶</div>", unsafe_allow_html=True)
         with col_m:
