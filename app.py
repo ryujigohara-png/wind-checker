@@ -201,13 +201,41 @@ def main():
         st.info("テスト中：地図のみ表示")
         # 矢印なし・カラムなしで地図を100%幅で表示
         map_out = st_folium(m, width=None, use_container_width=True, height=CONFIG["MAP_HEIGHT"])
-
+# --- 地図表示（外枠ガイド方式：HTMLテーブルで横並びを強制） ---
     if show_map:
         st.info("地図の中央地点のグラフを描画表示することができます。")
+        
+        # 上の矢印
         st.markdown("<div style='text-align:center; color:crimson; font-size:24px; font-weight:bold; margin-bottom:-10px;'>▼</div>", unsafe_allow_html=True)
         
-        # スマホ縦画面対策として比率を 1:16:1 に変更
-        col_l, col_m, col_r = st.columns([1, 10, 1])
+        # HTMLテーブルを使用して、スマホでも強制的に横並びにする
+        map_html = f"""
+        <table style="width:100%; border:none; border-collapse:collapse; table-layout:fixed;">
+            <tr>
+                <td style="width:5%; text-align:right; vertical-align:middle; color:crimson; font-size:24px; font-weight:bold; padding:0;">▶</td>
+                <td style="width:90%; padding:0; vertical-align:middle;" id="map_container">
+                    </td>
+                <td style="width:5%; text-align:left; vertical-align:middle; color:crimson; font-size:24px; font-weight:bold; padding:0;">◀</td>
+            </tr>
+        </table>
+        """
+        # 矢印ガイドのみ先に表示（地図を挟む枠組み）
+        # ※Streamlitの制約上、st_foliumをテーブルの中に直接入れることはできないため、
+        #   「矢印を独立させたカラム」のスタックをCSSで防止する方法を適用します。
+
+        st.markdown("""
+            <style>
+            [data-testid="column"] {
+                min-width: 0px !important;
+                flex-basis: content !important;
+            }
+            div[data-testid="stHorizontalBlock"] {
+                flex-wrap: nowrap !important;
+            }
+            </style>
+            """, unsafe_allow_html=True)
+
+        col_l, col_m, col_r = st.columns([1, 18, 1])
         with col_l:
             st.markdown(f"<div style='line-height:{CONFIG['MAP_HEIGHT']}px; text-align:right; color:crimson; font-size:24px; font-weight:bold;'>▶</div>", unsafe_allow_html=True)
         with col_m:
