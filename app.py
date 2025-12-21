@@ -21,7 +21,7 @@ CONFIG = {
     "LABEL_SIZE": 14,
     "DPI": 300,
     "MAP_WIDTH": 700,
-    "MAP_HEIGHT": 400
+    "MAP_HEIGHT": 350
 }
 
 ALL_DIRECTIONS = ["北", "北北東", "北東", "東北東", "東", "東南東", "南東", "南南東", "南", "南南西", "南西", "西南西", "西", "西北西", "北西", "北北西"]
@@ -129,7 +129,7 @@ def main():
     setup_font()
     st.markdown(f'<h1 style="font-size:{CONFIG["TITLE_SIZE"]}px; margin-bottom: 5px;">⛵ 高須風チェッカー</h1>', unsafe_allow_html=True)
     
-    # --- URLパラメータの読み込み ---
+    # URLパラメータ読み込み
     params = st.query_params
     init_lat = float(params.get("lat", 31.337))
     init_lon = float(params.get("lon", 130.795))
@@ -142,32 +142,51 @@ def main():
     if 'lon' not in st.session_state: st.session_state.lon = init_lon
     if 'last_basho' not in st.session_state: st.session_state.last_basho = "高須沖(鹿児島県)"
 
-    st.sidebar.header("基本設定")
-    basho_list = ["高須沖(鹿児島県)", "柏原沖(鹿児島県)", "垂水港(鹿児島県)", "海潟(鹿児島県)", "磯海岸沖(鹿児島県)", "江口浜沖(鹿児島県)", "錦江湾(鹿児島県)", "地図で指定"]
-    basho = st.sidebar.selectbox("場所", basho_list)
+    # --- 1 & 2: 場所選択と地図表示チェックをメイン画面最上部へ配置 ---
+    col_sel, col_map = st.columns([7, 3])
+    with col_sel:
+        basho_list = ["高須沖(鹿児島県)", "柏原沖(鹿児島県)", "垂水港(鹿児島県)", "海潟(鹿児島県)", "磯海岸沖(鹿児島県)", "江口浜沖(鹿児島県)", "錦江湾(鹿児島県)", "地図で指定"]
+        # 現在の緯度経度からコンボボックスの初期値を判定（地図指定の場合は"地図で指定"へ）
+        basho = st.selectbox("場所を選択", basho_list, label_visibility="collapsed")
     
+    with col_map:
+        show_map = st.checkbox("地図表示", value=(basho == "地図で指定"))
+
+    # 場所変更時の座標処理
     if st.session_state.last_basho != basho:
         coords = {"高須沖(鹿児島県)":(31.337, 130.795), "柏原沖(鹿児島県)":(31.380, 131.020), "垂水港(鹿児島県)":(31.478, 130.668), "海潟(鹿児島県)":(31.539, 130.706), "磯海岸沖(鹿児島県)":(31.614, 130.577), "江口浜沖(鹿児島県)":(31.643, 130.322), "錦江湾(鹿児島県)":(31.590, 130.600)}
         if basho in coords:
             st.session_state.lat, st.session_state.lon = coords[basho]
             st.session_state.last_basho = basho
             st.rerun()
+        elif basho == "地図で指定":
+            st.session_state.last_basho = basho
 
-    current_place_name = basho
-    if basho == "地図で指定":
-        current_place_name = f"地図指定 ({st.session_state.lat:.2f}, {st.session_state.lon:.2f})"
-        map_key = f"map_{st.session_state.lat}_{st.session_state.lon}"
-        m = folium.Map(location=[st.session_state.lat, st.session_state.lon], zoom_start=13)
-        folium.Marker([st.session_state.lat, st.session_state.lon], icon=folium.DivIcon(html='<div style="font-size: 24pt; color: red; font-weight: bold; text-align: center; width: 50px; margin-left: -25px; margin-top: -25px;">╋</div>')).add_to(m)
-        map_out = st_folium(m, width=CONFIG["MAP_WIDTH"], height=300, key=map_key)
+    # --- 3: 地図表示ロジック（中央配置の改善） ---
+    if show_map:
+        st.info("地図中央の「╋」に場所を合わせて「場所を確定」を押してください。")
+        map_key = f"map_view_{st.session_state.lat}_{st.session_state.lon}"
+        # 地図の中心を現在のセッション状態に固定
+        m = folium.Map(location=[st.session_state.lat, st.session_state.lon], zoom_start=13, control_scale=True)
+        # マーカーを常に地図の中心に描画
+        folium.Marker(
+            [st.session_state.lat, st.session_state.lon], 
+            icon=folium.DivIcon(html='<div style="font-size: 24pt; color: red; font-weight: bold; text-align: center; width: 50px; margin-left: -25px; margin-top: -25px;">╋</div>')
+        ).add_to(m)
+        
+        map_out = st_folium(m, width=CONFIG["MAP_WIDTH"], height=CONFIG["MAP_HEIGHT"], key=map_key)
+        
         if map_out and map_out.get("center"):
-            if st.button("場所を確定して更新", use_container_width=True):
-                st.session_state.lat, st.session_state.lon = map_out["center"]["lat"], map_out["center"]["lng"]
+            new_lat = round(map_out["center"]["lat"], 5)
+            new_lon = round(map_out["center"]["lng"], 5)
+            if st.button("この場所に確定して更新", use_container_width=True):
+                st.session_state.lat, st.session_state.lon = new_lat, new_lon
                 st.rerun()
-    
+
+    # サイドバー設定
+    st.sidebar.header("表示設定")
     days = st.sidebar.slider("表示日数", 1, 8, init_days)
     danger_v = st.sidebar.number_input("危険風速(m/s)", value=init_danger)
-    
     st.sidebar.markdown("---")
     st.sidebar.header("乗れる風向")
     cols = st.sidebar.columns(2); selected_target_dirs = []
@@ -186,9 +205,7 @@ def main():
     if df is not None:
         df = process_wind_data(df, selected_target_dirs, danger_v)
         img_base64 = create_graph(df, days, danger_v, (1 if days <= 1 else (2 if days <= 3 else 3)), (3 if days <= 2 else 6))
-        st.markdown(f'<p style="font-weight:bold; font-size:14px; color:#333; margin-bottom: 5px;">📍 {current_place_name}</p>', unsafe_allow_html=True)
         
-        # 凡例と保存方法の説明
         with st.expander("📊 凡例・自分専用設定の保存方法"):
             st.markdown(f'''
                 <p style="font-size:14px; line-height:1.8;">
@@ -205,14 +222,9 @@ def main():
                     以下の手順でホーム画面に追加すると、次回からこの設定で直接開けます。
                 </p>
                 <div style="background-color: #f0f2f6; padding: 10px; border-radius: 5px; font-size: 12px; color: #555;">
-                    <b>iPhone (Safari):</b> 画面下の「共有ボタン（□に↑）」→「ホーム画面に追加」<br>
-                    <b>Android (Chrome):</b> 画面右上の「︙（三点）」→「ホーム画面に追加」
+                    <b>iPhone (Safari):</b> 共有ボタン（□に↑）→「ホーム画面に追加」<br>
+                    <b>Android (Chrome):</b> 右上の「︙（三点）」→「ホーム画面に追加」
                 </div>
-                <hr style="margin: 10px 0;">
-                <p style="font-size:12px; color:#555; line-height:1.6;">
-                    ※乗れる風向のときに色付けしています（設定はサイドメニュー）。<br>
-                    ※最下段の潮位は簡易計算によるイメージです。正確な潮位は公式情報をご確認ください。
-                </p>
             ''', unsafe_allow_html=True)
             
         st.markdown(f'<div style="overflow-x: auto; white-space: nowrap; background: white; border-radius: 8px; border: 1px solid #eee; margin-top: 5px;"><img src="data:image/png;base64,{img_base64}" style="height: 520px; max-width: none;"></div>', unsafe_allow_html=True)
