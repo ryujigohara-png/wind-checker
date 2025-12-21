@@ -198,6 +198,11 @@ def main():
 
     # 地図表示セクション（外枠ガイド方式：比率1:16:1）
     if show_map:
+        st.info("テスト中：地図のみ表示")
+        # 矢印なし・カラムなしで地図を100%幅で表示
+        map_out = st_folium(m, width=None, use_container_width=True, height=CONFIG["MAP_HEIGHT"])
+
+    if show_map:
         st.info("地図の中央地点のグラフを描画表示することができます。")
         st.markdown("<div style='text-align:center; color:crimson; font-size:24px; font-weight:bold; margin-bottom:-10px;'>▼</div>", unsafe_allow_html=True)
         
