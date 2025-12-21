@@ -145,11 +145,11 @@ def main():
     if 'lon' not in st.session_state: st.session_state.lon = init_lon
     if 'last_basho' not in st.session_state: st.session_state.last_basho = "高須沖(鹿児島県)"
 
-    # --- メイン画面上部：場所選択と地図表示 ---
+    # --- メイン画面上部：地点選択と地図表示 ---
     col_sel, col_map_check = st.columns([7, 3])
     with col_sel:
         basho_list = ["高須沖(鹿児島県)", "柏原沖(鹿児島県)", "垂水港(鹿児島県)", "海潟(鹿児島県)", "磯海岸沖(鹿児島県)", "江口浜沖(鹿児島県)", "錦江湾(鹿児島県)", "地図で指定"]
-        basho = st.selectbox("場所を選択", basho_list, label_visibility="collapsed")
+        basho = st.selectbox("地点を選択", basho_list, label_visibility="collapsed")
     
     with col_map_check:
         show_map = st.checkbox("地図表示", value=(basho == "地図で指定"))
@@ -163,9 +163,9 @@ def main():
         elif basho == "地図で指定":
             st.session_state.last_basho = basho
 
-    # --- 地図表示（外枠ガイド方式） ---
+    # --- 地図表示（外枠ガイド方式 ＆ 確定地点マーカー） ---
     if show_map:
-        st.info("上下左右の「▼▲▶◀」の交差点に場所を合わせ、「確定」を押してください。")
+        st.info("地図の中央地点のグラフを描画表示することができます。")
         
         # 上の矢印
         st.markdown("<div style='text-align:center; color:crimson; font-size:24px; font-weight:bold; margin-bottom:-10px;'>▼</div>", unsafe_allow_html=True)
@@ -175,7 +175,9 @@ def main():
             st.markdown(f"<div style='line-height:{CONFIG['MAP_HEIGHT']}px; text-align:right; color:crimson; font-size:24px; font-weight:bold;'>▶</div>", unsafe_allow_html=True)
         with col_m:
             map_key = f"map_view_{st.session_state.lat}_{st.session_state.lon}"
+            # 地図上に現在確定されている地点に青いマーカーを表示
             m = folium.Map(location=[st.session_state.lat, st.session_state.lon], zoom_start=13)
+            folium.Marker([st.session_state.lat, st.session_state.lon], tooltip="現在の描画地点").add_to(m)
             map_out = st_folium(m, width=600, height=CONFIG["MAP_HEIGHT"], key=map_key, returned_objects=["center"])
         with col_r:
             st.markdown(f"<div style='line-height:{CONFIG['MAP_HEIGHT']}px; text-align:left; color:crimson; font-size:24px; font-weight:bold;'>◀</div>", unsafe_allow_html=True)
@@ -184,11 +186,11 @@ def main():
         st.markdown("<div style='text-align:center; color:crimson; font-size:24px; font-weight:bold; margin-top:-10px;'>▲</div>", unsafe_allow_html=True)
         
         if map_out and map_out.get("center"):
-            if st.button("この場所に確定して更新", use_container_width=True):
+            if st.button("グラフ描画地点確定", use_container_width=True):
                 st.session_state.lat, st.session_state.lon = map_out["center"]["lat"], map_out["center"]["lng"]
                 st.rerun()
 
-    # サイドバー：表示日数、危険風速、風向
+    # サイドバー：表示設定
     st.sidebar.header("表示設定")
     days = st.sidebar.slider("表示日数", 1, 8, init_days)
     danger_v = st.sidebar.number_input("危険風速(m/s)", value=init_danger)
@@ -203,7 +205,7 @@ def main():
     # URLパラメータ同期
     st.query_params.update({"lat": st.session_state.lat, "lon": st.session_state.lon, "days": days, "danger": danger_v, "dirs": ",".join(selected_target_dirs)})
 
-    # グラフ描画（キャッシュを利用）
+    # グラフ描画
     img_base64 = get_cached_graph(st.session_state.lat, st.session_state.lon, days, danger_v, tuple(selected_target_dirs))
 
     if img_base64:
