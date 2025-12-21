@@ -188,12 +188,43 @@ def main():
     })
 
     df = fetch_weather_data(st.session_state.lat, st.session_state.lon, days)
+
+# --- main関数内の表示部分を以下のように修正 ---
+
     if df is not None:
         df = process_wind_data(df, selected_target_dirs, danger_v)
         img_base64 = create_graph(df, days, danger_v, (1 if days <= 1 else (2 if days <= 3 else 3)), (3 if days <= 2 else 6))
+        
         st.markdown(f'<p style="font-weight:bold; font-size:14px; color:#333; margin-bottom: 5px;">📍 {current_place_name}</p>', unsafe_allow_html=True)
-        with st.expander("📊 凡例"):
-            st.markdown(f'''<p style="font-size:14px; line-height:1.8;"><span style="color:skyblue;">■</span> アンダー(3-6m/s) &nbsp;&nbsp; <span style="color:orange;">■</span> ジャスト(6-10m/s) &nbsp;&nbsp; <span style="color:crimson;">■</span> オーバー {danger_v}m/s以上<br><span style="color:crimson;">---</span> 危険風速{danger_v}m/s &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <span style="color:blue;">―</span> 現在時刻</p><hr style="margin: 10px 0;"><p style="font-size:12px; color:#555; line-height:1.6;">※乗れる風向のときに色付けしています（設定はサイドメニュー）。<br>※最下段は簡易的な潮位イメージです。</p>''', unsafe_allow_html=True)
+        
+        # 凡例と「自分専用設定」の説明
+        with st.expander("📊 凡例・自分専用設定の保存方法"):
+            st.markdown(f'''
+                <p style="font-size:14px; line-height:1.6;">
+                    <span style="color:skyblue;">■</span> アンダー(3-6m/s) &nbsp;&nbsp;
+                    <span style="color:orange;">■</span> ジャスト(6-10m/s) &nbsp;&nbsp;
+                    <span style="color:crimson;">■</span> オーバー {danger_v}m/s以上<br>
+                    <span style="color:crimson;">---</span> 危険風速{danger_v}m/s 
+                    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+                    <span style="color:blue;">―</span> 現在時刻
+                </p>
+                <hr style="margin: 10px 0;">
+                <p style="font-size:13px; font-weight:bold; color:#2E7D32; margin-bottom:5px;">🏠 自分専用設定（ホームゲレンデ）の保存</p>
+                <p style="font-size:12px; color:#333; line-height:1.5;">
+                    現在の<b>「場所・表示日数・危険風速・乗れる風向」</b>はすべてURLに自動保存されています。<br>
+                    以下の手順でスマホのホーム画面に追加すると、次回からこの設定で直接開けます。
+                </p>
+                <div style="background-color: #f0f2f6; padding: 10px; border-radius: 5px; font-size: 12px; color: #555;">
+                    <b>iPhone (Safari):</b><br>
+                    画面下の「共有ボタン（□に↑）」→「ホーム画面に追加」<br><br>
+                    <b>Android (Chrome):</b><br>
+                    画面右上の「︙（三点リーダー）」→「ホーム画面に追加」
+                </div>
+                <p style="font-size:11px; color:#888; margin-top:10px;">
+                    ※設定を変更するたびにURLが更新されます。変更後に再度保存し直すことも可能です。
+                </p>
+            ''', unsafe_allow_html=True)
+
         st.markdown(f'<div style="overflow-x: auto; white-space: nowrap; background: white; border-radius: 8px; border: 1px solid #eee; margin-top: 5px;"><img src="data:image/png;base64,{img_base64}" style="height: 520px; max-width: none;"></div>', unsafe_allow_html=True)
 
 if __name__ == "__main__": main()
