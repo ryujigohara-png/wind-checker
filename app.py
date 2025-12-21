@@ -34,7 +34,7 @@ def setup_font():
     fm.fontManager.addfont(font_path)
     plt.rc('font', family='Noto Sans JP', size=CONFIG["GRAPH_FONT_SIZE"])
 
-# --- グラフ生成のキャッシュ化（霞み防止） ---
+# グラフ生成のキャッシュ化
 @st.cache_data(show_spinner=False)
 def get_cached_graph(lat, lon, days, danger_v, selected_dirs_tuple):
     df = fetch_weather_data(lat, lon, days)
@@ -51,12 +51,7 @@ def fetch_weather_data(lat, lon, days):
         df = pd.DataFrame(data["hourly"])
         df['time'] = pd.to_datetime(df['time'])
         df = df.head(24 * days).reset_index(drop=True)
-        first_time = df['time'].iloc[0]
-        padding = pd.DataFrame({
-            'time': [first_time - timedelta(hours=i) for i in range(3, 0, -1)],
-            'temperature_2m': [None]*3, 'wind_speed_10m': [None]*3, 'wind_direction_10m': [None]*3, 'weather_code': [None]*3
-        })
-        return pd.concat([padding, df], ignore_index=True)
+        return df
     except Exception:
         return None
 
@@ -144,20 +139,19 @@ def main():
     init_lon = float(params.get("lon", 130.795))
     init_days = int(params.get("days", 8))
     init_danger = float(params.get("danger", 10.0))
-    default_dirs_list = ["南", "南南西", "南西", "西南西", "西", "西北西", "北西", "北北西"]
-    init_dirs = params.get("dirs", ",".join(default_dirs_list)).split(",")
+    init_dirs = params.get("dirs", "南,南南西,南西,西南西,西,西北西,北西,北北西").split(",")
 
     if 'lat' not in st.session_state: st.session_state.lat = init_lat
     if 'lon' not in st.session_state: st.session_state.lon = init_lon
     if 'last_basho' not in st.session_state: st.session_state.last_basho = "高須沖(鹿児島県)"
 
-    # --- 場所選択と地図表示スイッチ ---
-    col_sel, col_map = st.columns([7, 3])
+    # --- メイン画面上部：場所選択と地図表示 ---
+    col_sel, col_map_check = st.columns([7, 3])
     with col_sel:
         basho_list = ["高須沖(鹿児島県)", "柏原沖(鹿児島県)", "垂水港(鹿児島県)", "海潟(鹿児島県)", "磯海岸沖(鹿児島県)", "江口浜沖(鹿児島県)", "錦江湾(鹿児島県)", "地図で指定"]
         basho = st.selectbox("場所を選択", basho_list, label_visibility="collapsed")
     
-    with col_map:
+    with col_map_check:
         show_map = st.checkbox("地図表示", value=(basho == "地図で指定"))
 
     if st.session_state.last_basho != basho:
@@ -169,34 +163,32 @@ def main():
         elif basho == "地図で指定":
             st.session_state.last_basho = basho
 
-    # --- 地図表示ロジック（シール方式） ---
+    # --- 地図表示（外枠ガイド方式） ---
     if show_map:
-        st.info("地図を動かして「╋」に場所を合わせ、「確定」を押してください。")
-        st.markdown(f"""
-            <style>
-            .map-container {{ position: relative; width: {CONFIG['MAP_WIDTH']}px; }}
-            .map-overlay-center {{
-                position: absolute; top: 50%; left: 50%;
-                transform: translate(-50%, -50%);
-                font-size: 30pt; color: crimson; font-weight: bold;
-                z-index: 1000; pointer-events: none; text-shadow: 0 0 3px white;
-            }}
-            </style>
-        """, unsafe_allow_html=True)
-
-        with st.container():
-            # 地図の上に十字をオーバーレイ
-            st.markdown('<div class="map-overlay-center">╋</div>', unsafe_allow_html=True)
-            map_key = f"map_{st.session_state.lat}_{st.session_state.lon}"
+        st.info("上下左右の「▼▲▶◀」の交差点に場所を合わせ、「確定」を押してください。")
+        
+        # 上の矢印
+        st.markdown("<div style='text-align:center; color:crimson; font-size:24px; font-weight:bold; margin-bottom:-10px;'>▼</div>", unsafe_allow_html=True)
+        
+        col_l, col_m, col_r = st.columns([1, 15, 1])
+        with col_l:
+            st.markdown(f"<div style='line-height:{CONFIG['MAP_HEIGHT']}px; text-align:right; color:crimson; font-size:24px; font-weight:bold;'>▶</div>", unsafe_allow_html=True)
+        with col_m:
+            map_key = f"map_view_{st.session_state.lat}_{st.session_state.lon}"
             m = folium.Map(location=[st.session_state.lat, st.session_state.lon], zoom_start=13)
-            map_out = st_folium(m, width=CONFIG["MAP_WIDTH"], height=CONFIG["MAP_HEIGHT"], key=map_key, returned_objects=["center"])
+            map_out = st_folium(m, width=600, height=CONFIG["MAP_HEIGHT"], key=map_key, returned_objects=["center"])
+        with col_r:
+            st.markdown(f"<div style='line-height:{CONFIG['MAP_HEIGHT']}px; text-align:left; color:crimson; font-size:24px; font-weight:bold;'>◀</div>", unsafe_allow_html=True)
             
-            if map_out and map_out.get("center"):
-                if st.button("この場所に確定して更新", use_container_width=True):
-                    st.session_state.lat, st.session_state.lon = map_out["center"]["lat"], map_out["center"]["lng"]
-                    st.rerun()
+        # 下の矢印
+        st.markdown("<div style='text-align:center; color:crimson; font-size:24px; font-weight:bold; margin-top:-10px;'>▲</div>", unsafe_allow_html=True)
+        
+        if map_out and map_out.get("center"):
+            if st.button("この場所に確定して更新", use_container_width=True):
+                st.session_state.lat, st.session_state.lon = map_out["center"]["lat"], map_out["center"]["lng"]
+                st.rerun()
 
-    # サイドバー設定
+    # サイドバー：表示日数、危険風速、風向
     st.sidebar.header("表示設定")
     days = st.sidebar.slider("表示日数", 1, 8, init_days)
     danger_v = st.sidebar.number_input("危険風速(m/s)", value=init_danger)
@@ -208,15 +200,24 @@ def main():
             if st.checkbox(d, value=(d in init_dirs), key=f"chk_{d}"):
                 selected_target_dirs.append(d)
 
-    # URLパラメータ更新
+    # URLパラメータ同期
     st.query_params.update({"lat": st.session_state.lat, "lon": st.session_state.lon, "days": days, "danger": danger_v, "dirs": ",".join(selected_target_dirs)})
 
-    # グラフ表示（キャッシュ利用）
+    # グラフ描画（キャッシュを利用）
     img_base64 = get_cached_graph(st.session_state.lat, st.session_state.lon, days, danger_v, tuple(selected_target_dirs))
 
     if img_base64:
-        with st.expander("📊 凡例・保存方法"):
-            st.markdown(f'''<p style="font-size:14px;"><span style="color:skyblue;">■</span> 3-6m/s &nbsp; <span style="color:orange;">■</span> 6-10m/s &nbsp; <span style="color:crimson;">■</span> {danger_v}m/s以上</p><hr><p style="font-size:12px;">現在の設定はURLに保存されています。スマホの「ホーム画面に追加」で自分専用アプリとして保存できます。</p>''', unsafe_allow_html=True)
+        with st.expander("📊 凡例・自分専用設定の保存方法"):
+            st.markdown(f'''
+                <p style="font-size:14px;">
+                    <span style="color:skyblue;">■</span> 3-6m/s &nbsp; <span style="color:orange;">■</span> 6-10m/s &nbsp; <span style="color:crimson;">■</span> {danger_v}m/s以上<br>
+                    <span style="color:crimson;">---</span> 危険風速{danger_v}m/s
+                </p>
+                <hr>
+                <p style="font-size:12px; color:#333;"><b>自分専用設定の保存</b><br>
+                iPhone: Safari下の「共有」→「ホーム画面に追加」<br>
+                Android: Chrome右上の「︙」→「ホーム画面に追加」</p>
+            ''', unsafe_allow_html=True)
         st.markdown(f'<div style="overflow-x: auto; background: white; border-radius: 8px; border: 1px solid #eee; margin-top: 5px;"><img src="data:image/png;base64,{img_base64}" style="height: 520px; max-width: none;"></div>', unsafe_allow_html=True)
 
 if __name__ == "__main__": main()
