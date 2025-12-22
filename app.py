@@ -168,17 +168,17 @@ def show_location_map():
         </style>
     """, unsafe_allow_html=True)
 
+    # 地図内のポインタの座標を「グラフ描画地点（session_state.lat/lon）」に設定
     m = folium.Map(location=[st.session_state.lat, st.session_state.lon], zoom_start=13)
     folium.Marker([st.session_state.lat, st.session_state.lon], icon=folium.Icon(color='red')).add_to(m)
 
-    # 1段目：▼を下寄せ（display: flexとalign-itemsで制御）
+    # 1段目：▼を下寄せ
     col_l1, col_m1, col_r1 = st.columns([1, 18, 1])
     with col_l1: st.markdown("<div class='guide-mark'>┼</div>", unsafe_allow_html=True)
     with col_m1: st.markdown("<div class='guide-arrow-main' style='display: flex; align-items: flex-end; justify-content: center; height: 40px;'>▼</div>", unsafe_allow_html=True)
     with col_r1: st.markdown("<div class='guide-mark'>┼</div>", unsafe_allow_html=True)
 
-    # 2段目（メイン：垂直方向の中央合わせを line-height で正確に調整）
-    # ▶を右寄せ(right)、◀を左寄せ(left)
+    # 2段目（メイン：垂直方向の中央合わせ）
     col_l2, col_m2, col_r2 = st.columns([1, 18, 1])
     with col_l2:
         st.markdown(f"<div style='line-height:{CONFIG['MAP_HEIGHT']}px; text-align:right;' class='guide-arrow-main'>▶</div>", unsafe_allow_html=True)
@@ -187,7 +187,7 @@ def show_location_map():
     with col_r2:
         st.markdown(f"<div style='line-height:{CONFIG['MAP_HEIGHT']}px; text-align:left;' class='guide-arrow-main'>◀</div>", unsafe_allow_html=True)
         
-    # 3段目：▲を上寄せ（display: flexとalign-itemsで制御）
+    # 3段目：▲を上寄せ
     col_l3, col_m3, col_r3 = st.columns([1, 18, 1])
     with col_l3: st.markdown("<div class='guide-mark'>┼</div>", unsafe_allow_html=True)
     with col_m3: st.markdown("<div class='guide-arrow-main' style='display: flex; align-items: flex-start; justify-content: center; height: 40px; margin-top:-10px;'>▲</div>", unsafe_allow_html=True)
@@ -198,9 +198,9 @@ def show_location_map():
             st.session_state.lat, st.session_state.lon = map_out["center"]["lat"], map_out["center"]["lng"]
             st.session_state.last_basho = "地図で指定"
             st.rerun()
-            
+
 #========================================================================================================================
-# メインアプリケーション
+# メインアプリケーション（地点選択ロジックの修正）
 #========================================================================================================================
 def main():
     setup_font()
@@ -218,7 +218,10 @@ def main():
     
     with col_sel:
         # 地図表示をONにしても last_basho を書き換えないように修正
-        current_idx = basho_list.index(st.session_state.last_basho) if st.session_state.last_basho in basho_list else 0
+        if st.session_state.last_basho in basho_list:
+            current_idx = basho_list.index(st.session_state.last_basho)
+        else:
+            current_idx = 0
         basho = st.selectbox("地点を選択", basho_list, index=current_idx, label_visibility="collapsed")
     
     with col_map_check:
@@ -238,8 +241,9 @@ def main():
             st.session_state.last_basho = basho
 
     if show_map: show_location_map()
-
-    # 表示設定サイドバー
+    
+    # --- 以降のコード（グラフ描画等）は変更なし ---
+   # 表示設定サイドバー
     st.sidebar.header("表示設定")
     days = st.sidebar.slider("表示日数", 1, 8, int(params.get("days", 8)))
     danger_v = st.sidebar.number_input("危険風速(m/s)", value=float(params.get("danger", 10.0)))
