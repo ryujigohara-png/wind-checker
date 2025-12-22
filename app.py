@@ -202,7 +202,17 @@ def get_cached_graph(lat, lon, days, danger_v, selected_dirs_tuple):
 def show_location_map():
     st.info("地図の中央地点のグラフを描画表示することができます。")
     # CSSで地図の周りに配置する矢印をデザイン
-    st.markdown("""<style>...</style>""", unsafe_allow_html=True)
+    st.markdown("""<style>
+        div[data-testid="stHorizontalBlock"] {
+            flex-wrap: nowrap !important;
+            justify-content: center !important;
+        }
+        [data-testid="column"] {
+            min-width: 0px !important;
+        }
+        .guide-mark { color: #eee; font-size: 10px; text-align: center; }
+        .guide-arrow-main { color: crimson; font-size: 24px; font-weight: bold; text-align: center; }
+        </style>""", unsafe_allow_html=True)
 
     # 現在選択されている座標にマーカーを置いた地図を作成
     m = folium.Map(location=[st.session_state.lat, st.session_state.lon], zoom_start=13)
@@ -228,7 +238,7 @@ def show_location_map():
 # ======================================================================================
 def main():
     setup_font()
-    st.markdown(f'<h1 ...>⛵ 高須風チェッカー</h1>', unsafe_allow_html=True)
+    st.markdown(f'<h1 style="font-size:{CONFIG["TITLE_SIZE"]}px; margin-bottom: 5px;">⛵ 高須風チェッカー</h1>', unsafe_allow_html=True)
     
     # --- 初期状態のセットアップ（クエリパラメータやセッションから値を復元） ---
     params = st.query_params
@@ -270,7 +280,7 @@ def main():
                 selected_target_dirs.append(d)
 
     # 現在の設定をURLに反映（ブックマーク可能にするため）
-    st.query_params.update({"lat": st.session_state.lat, ...})
+    st.query_params.update({"lat": st.session_state.lat, "lon": st.session_state.lon, "days": days, "danger": danger_v, "dirs": ",".join(selected_target_dirs)})
 
     # グラフの生成と表示
     img_base64 = get_cached_graph(st.session_state.lat, st.session_state.lon, days, danger_v, tuple(selected_target_dirs))
@@ -278,9 +288,9 @@ def main():
     if img_base64:
         # 凡例表示（折り畳み式）
         with st.expander("📊 凡例・保存方法"):
-            st.markdown(...)
+            st.markdown(f'<p style="font-size:14px;"><span style="color:skyblue;">■</span> 3-6m/s <span style="color:orange;">■</span> 6-10m/s <span style="color:crimson;">■</span> {danger_v}m/s以上</p>', unsafe_allow_html=True)
         # グラフ本体（横スクロール可能にするためのdiv）
-        st.markdown(f'<div style="overflow-x: auto; ..."><img src="data:image/png;base64,{img_base64}" ...></div>', unsafe_allow_html=True)
+        st.markdown(f'<div style="overflow-x: auto; background: white; border-radius: 8px; border: 1px solid #eee; margin-top: 5px;"><img src="data:image/png;base64,{img_base64}" style="height: 900px; max-width: none;"></div>', unsafe_allow_html=True)
 
 if __name__ == "__main__":
     main()
