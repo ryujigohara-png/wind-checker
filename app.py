@@ -156,7 +156,7 @@ def get_cached_graph(lat, lon, days, danger_v, selected_dirs_tuple):
     max_val = df['wind_speed_10m'].max() if not df['wind_speed_10m'].empty else 0
     y_limit = max(max_val, danger_v) + 5
     ax1.set_ylim(0, y_limit)
-    text_offset_weather = y_limit * 0.12  # y軸の12%分上に天気を置く
+    text_offset_weather = y_limit * 0.20  # y軸の20%分上に天気を置く
     text_offset_wind = y_limit * 0.02     # y軸の2%分上に風向を置く
 
     # 日本標準時（JST）の取得と現在時刻線の描画
@@ -254,14 +254,35 @@ def main():
         current_idx = basho_list.index(st.session_state.last_basho)
     except ValueError:
         current_idx = 0
+    
+    # スマホでもカラムを横並びに維持し、セレクトボックスの文字を隠さないためのCSS
+    st.markdown("""
+        <style>
+        [data-testid="column"] {
+            min-width: 0px !important; /* カラムの最小幅を解除 */
+        }
+        /* セレクトボックスのコンテナの高さを確保し、文字切れを防ぐ */
+        .stSelectbox div[data-baseweb="select"] {
+            min-height: 40px;
+        }
+        </style>
+    """, unsafe_allow_html=True)
 
-    col_sel, col_map_check = st.columns([7, 3])
+    # 確実に横に並べるため、gapを「small」に固定
+    col_sel, col_map_check = st.columns([7, 3], gap="small")
+    
     with col_sel:
-        basho = st.selectbox("地点を選択", basho_list, index=current_idx, label_visibility="collapsed")
+        # label_visibility="collapsed" はスマホで不具合を起こしやすいため、
+        # ラベル自体に空文字を入れて、表示だけ消す安全な方法に変更
+        basho = st.selectbox("", basho_list, index=current_idx)
+        
     with col_map_check:
+        # チェックボックスの高さをセレクトボックスに合わせるための微調整
+        st.markdown('<div style="margin-top: 10px;">', unsafe_allow_html=True)
         show_map = st.checkbox("地図表示", value=st.session_state.get('show_map_state', False))
-        st.session_state.show_map_state = show_map
-
+        st.markdown('</div>', unsafe_allow_html=True)
+        
+    
     st.markdown(f"<p style='font-size:12px; color:#666; margin-top:-10px;'>グラフ描画地点： 緯度 {st.session_state.lat:.4f} / 経度 {st.session_state.lon:.4f}</p>", unsafe_allow_html=True)
 
     # 地点が変更された瞬間に座標をセットし、rerun()で即座に反映させる
