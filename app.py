@@ -155,6 +155,10 @@ def get_cached_graph(lat, lon, days, danger_v, selected_dirs_tuple):
     bars = ax1.bar(df['time'], df['wind_speed_10m'], color=df['color'], alpha=0.9, width=0.03)
     ax1.axhline(y=danger_v, color='red', linestyle='--', alpha=0.6) # 危険線
     ax1.set_ylabel('風速 (m/s)')
+    # y軸の表示範囲の「高さ」を取得して、テキスト間隔の基準にする
+    y_max = max(df['wind_speed_10m'].max() if not df['wind_speed_10m'].empty else 0, danger_v) + 5
+    ax1.set_ylim(0, y_max)
+    offset = y_max * 0.12  # y軸全高の約12%を天気テキストの間隔にする
     
     # --- 共通設定（現在時刻の線、X軸のメモリ設定） ---
     jst = timezone(timedelta(hours=9))
@@ -180,10 +184,10 @@ def get_cached_graph(lat, lon, days, danger_v, selected_dirs_tuple):
         if not pd.isna(df['wind_speed_10m'].iloc[i]) and i % wind_step == 0:
             h = bar.get_height()
             # 天気（晴、曇、雨）
-            ax1.text(bar.get_x() + bar.get_width()/2., h + 3.0, df['w_text'].iloc[i], ha='center', va='bottom', color=df['w_color'].iloc[i], fontweight='bold', fontsize=CONFIG["GRAPH_FONT_SIZE"])
+            ax1.text(bar.get_x() + bar.get_width()/2., h + offset, df['w_text'].iloc[i], ha='center', va='bottom', color=df['w_color'].iloc[i], fontweight='bold', fontsize=CONFIG["GRAPH_FONT_SIZE"])
             # 風向名、矢印、風速数値
             txt = f"{df['dir_name'].iloc[i]}\n{df['arrow'].iloc[i]}\n{round(df['wind_speed_10m'].iloc[i])}m"
-            ax1.text(bar.get_x() + bar.get_width()/2., h + 0.3 , txt, ha='center', va='bottom', fontweight='bold', color='black', fontsize=CONFIG["GRAPH_FONT_SIZE"])
+            ax1.text(bar.get_x() + bar.get_width()/2., h + (y_max * 0.02) , txt, ha='center', va='bottom', fontweight='bold', color='black', fontsize=CONFIG["GRAPH_FONT_SIZE"])
 
     # メモリ上の画像として保存し、HTML表示用にBase64変換
     buf = io.BytesIO(); fig.savefig(buf, format="png", bbox_inches='tight', pad_inches=0.1)
