@@ -59,10 +59,9 @@ def get_tide_level(times):
 
 def get_weather_info(code):
     if code is None: return "", "black"
-    # --- 修正：色をより濃く変更 ---
-    if code <= 2: return "晴", "#FF4500"  # 濃いオレンジ(OrangeRed)
+    if code <= 2: return "晴", "#FF4500" # 濃いオレンジ
     if code <= 48: return "曇", "#696969"
-    if code <= 99: return "雨", "#00008B"  # 濃い青(DarkBlue)
+    if code <= 99: return "雨", "#00008B" # 濃い青
     return "？", "black"
 
 def process_wind_data(df, target_dirs, danger_v):
@@ -139,7 +138,7 @@ def get_cached_graph(lat, lon, days, danger_v, selected_dirs_tuple):
 # 4. 地図UI（3x3マトリックス）
 # ======================================================================================
 def show_location_map():
-    st.info("地図の中央地点のグラフを描画表示することができます。")
+    st.info("地図の中央地点を確定できます。")
     st.markdown("""<style>
         div[data-testid="stHorizontalBlock"] { flex-wrap: nowrap !important; justify-content: center !important; }
         [data-testid="column"] { min-width: 0px !important; }
@@ -164,7 +163,7 @@ def show_location_map():
         if st.button("グラフ描画地点（地図中央）確定", use_container_width=True):
             st.session_state.lat, st.session_state.lon = map_out["center"]["lat"], map_out["center"]["lng"]
             st.session_state.last_basho = "地図で指定"
-            # 地図で確定した座標をURLにも保存
+            # URLを即時更新してリロード
             st.query_params.update({"lat": st.session_state.lat, "lon": st.session_state.lon, "basho": "地図で指定"})
             st.rerun()
 
@@ -175,43 +174,38 @@ def main():
     setup_font()
     st.markdown(f'<h1 style="font-size:{CONFIG["TITLE_SIZE"]}px; margin-bottom: 5px;">⛵ 高須風チェッカー</h1>', unsafe_allow_html=True)
     
-    coords_master = {
+    coords_m = {
         "高須沖(鹿児島県)":(31.337, 130.795), "柏原沖(鹿児島県)":(31.380, 131.020), "垂水港(鹿児島県)":(31.478, 130.668),
         "海潟(鹿児島県)":(31.539, 130.706), "磯海岸沖(鹿児島県)":(31.614, 130.577), "江口浜沖(鹿児島県)":(31.643, 130.322),
         "錦江湾(鹿児島県)":(31.590, 130.600), "地図で指定": (None, None)
     }
 
-    # --- 記憶機能の修正：起動時にURLパラメータがあればそれを優先してセッションを初期化 ---
+    # 起動時の初期化ロジック
     p = st.query_params
-    if 'initialized' not in st.session_state:
+    if 'lat' not in st.session_state:
         st.session_state.lat = float(p.get("lat", 31.337))
         st.session_state.lon = float(p.get("lon", 130.795))
         st.session_state.last_basho = p.get("basho", "高須沖(鹿児島県)")
-        st.session_state.initialized = True
 
-    # 選択肢のインデックス取得
-    try:
-        current_idx = list(coords_master.keys()).index(st.session_state.last_basho)
-    except ValueError:
-        current_idx = 0
-
-    basho = st.selectbox("地点を選択してください", list(coords_master.keys()), index=current_idx)
+    # UI表示
+    basho = st.selectbox("地点を選択", list(coords_m.keys()), index=list(coords_m.keys()).index(st.session_state.last_basho) if st.session_state.last_basho in coords_m else 0)
     show_map = st.checkbox("地図表示", value=st.session_state.get('show_map_state', False))
     st.session_state.show_map_state = show_map
 
     st.markdown(f"<p style='font-size:14px; color:#1e88e5; font-weight:bold; margin-top:-10px;'>📍 現在：{st.session_state.last_basho} ({st.session_state.lat:.4f}, {st.session_state.lon:.4f})</p>", unsafe_allow_html=True)
 
-    # 地点変更の反映
+    # 地点変更の検知
     if st.session_state.last_basho != basho:
-        if basho in coords_master and basho != "地図で指定":
-            st.session_state.lat, st.session_state.lon = coords_master[basho]
+        if basho != "地図で指定":
+            st.session_state.lat, st.session_state.lon = coords_m[basho]
         st.session_state.last_basho = basho
-        # URLパラメータを即時更新（これでブラウザを閉じても次回反映される）
+        # ここでURLを書き換えて強制リロード
         st.query_params.update({"lat": st.session_state.lat, "lon": st.session_state.lon, "basho": basho})
         st.rerun()
 
     if show_map: show_location_map()
     
+    # サイドバー
     st.sidebar.header("表示設定")
     days = st.sidebar.slider("表示日数", 1, 8, int(p.get("days", 8)))
     danger_v = st.sidebar.number_input("危険風速(m/s)", value=float(p.get("danger", 10.0)))
@@ -222,13 +216,9 @@ def main():
         with cols[i % 2]:
             if st.checkbox(d, value=(d in init_dirs), key=f"chk_{d}"): sel_dirs.append(d)
 
-    # 常にURLパラメータを同期
-    st.query_params.update({"lat":st.session_state.lat, "lon":st.session_state.lon, "days":days, "danger":danger_v, "dirs":",".join(sel_dirs), "basho":st.session_state.last_basho})
-
+    # グラフ描画
     img = get_cached_graph(st.session_state.lat, st.session_state.lon, days, danger_v, tuple(sel_dirs))
     if img:
-        with st.expander("📊 凡例"):
-            st.write(f"■ 3-6m/s ■ 6-10m/s ■ {danger_v}m/s以上")
         st.markdown(f'<div style="overflow-x: auto; background: white;"><img src="data:image/png;base64,{img}" style="height: 900px; max-width: none;"></div>', unsafe_allow_html=True)
 
 if __name__ == "__main__":
