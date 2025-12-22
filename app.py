@@ -28,7 +28,7 @@ CONFIG = {
 ALL_DIRECTIONS = ["北", "北北東", "北東", "東北東", "東", "東南東", "南東", "南南東", "南", "南南西", "南西", "西南西", "西", "西北西", "北西", "北北西"]
 
 # ======================================================================================
-# 2. 補助サブルーチン（フォント、データ取得、潮汐、加工）
+# 2. 補助サブルーチン
 # ======================================================================================
 def setup_font():
     font_url = "https://github.com/google/fonts/raw/main/ofl/notosansjp/NotoSansJP%5Bwght%5D.ttf"
@@ -97,7 +97,7 @@ def process_wind_data(df, target_dirs, danger_v):
     return df
 
 # ======================================================================================
-# 3. グラフ生成（動的オフセット版）
+# 3. グラフ生成（ユーザー設定の 0.20 を反映）
 # ======================================================================================
 @st.cache_data(show_spinner=False)
 def get_cached_graph(lat, lon, days, danger_v, selected_dirs_tuple):
@@ -127,7 +127,9 @@ def get_cached_graph(lat, lon, days, danger_v, selected_dirs_tuple):
     max_val = df['wind_speed_10m'].max() if not df['wind_speed_10m'].empty else 0
     y_limit = max(max_val, danger_v) + 5
     ax1.set_ylim(0, y_limit)
-    text_offset_weather = y_limit * 0.12
+    
+    # ユーザー指定のオフセット値を反映
+    text_offset_weather = y_limit * 0.20 
     text_offset_wind = y_limit * 0.02
 
     jst = timezone(timedelta(hours=9))
@@ -156,7 +158,7 @@ def get_cached_graph(lat, lon, days, danger_v, selected_dirs_tuple):
     return base64.b64encode(buf.getvalue()).decode()
 
 # ======================================================================================
-# 4. 地図UI（ボタン装飾版）
+# 4. 地図UI
 # ======================================================================================
 def show_location_map():
     st.info("地図の中央地点のグラフを描画表示することができます。")
@@ -191,38 +193,53 @@ def show_location_map():
             st.rerun()
 
 # ======================================================================================
-# 5. メインアプリ（記憶・表示不具合修正版）
+# 5. メインアプリ（スマホ表示・記憶機能の抜本的修正版）
 # ======================================================================================
 def main():
     setup_font()
     st.markdown(f'<h1 style="font-size:{CONFIG["TITLE_SIZE"]}px; margin: 0 0 5px 0; padding: 0;">⛵ 高須風チェッカー</h1>', unsafe_allow_html=True)
     
+    # 記憶ロジックの修正：URLパラメータを最優先でセッションに同期
     params = st.query_params
-    if 'lat' not in st.session_state: st.session_state.lat = float(params.get("lat", 31.337))
-    if 'lon' not in st.session_state: st.session_state.lon = float(params.get("lon", 130.795))
-    if 'last_basho' not in st.session_state: st.session_state.last_basho = params.get("basho", "高須沖(鹿児島県)")
+    if 'lat' not in st.session_state or params.get("lat"):
+        st.session_state.lat = float(params.get("lat", 31.337))
+    if 'lon' not in st.session_state or params.get("lon"):
+        st.session_state.lon = float(params.get("lon", 130.795))
+    if 'last_basho' not in st.session_state or params.get("basho"):
+        st.session_state.last_basho = params.get("basho", "高須沖(鹿児島県)")
 
     basho_list = ["高須沖(鹿児島県)", "柏原沖(鹿児島県)", "垂水港(鹿児島県)", "海潟(鹿児島県)", "磯海岸沖(鹿児島県)", "江口浜沖(鹿児島県)", "錦江湾(鹿児島県)", "地図で指定"]
     try: current_idx = basho_list.index(st.session_state.last_basho)
     except: current_idx = 0
 
+    # スマホ文字消え防止：CSSでの非表示をやめ、ラベルの高さを最小化する
     st.markdown("""
         <style>
-        div[data-testid="stHorizontalBlock"] { flex-wrap: nowrap !important; align-items: center !important; }
+        div[data-testid="stHorizontalBlock"] { flex-wrap: nowrap !important; align-items: flex-end !important; }
         [data-testid="column"] { min-width: 0px !important; }
-        div[data-testid="stSelectbox"] label { display: none !important; }
-        div[data-baseweb="select"] { min-height: 42px !important; }
+        /* ラベルのフォントサイズを0にして見えなくする（display:noneは使わない） */
+        div[data-testid="stSelectbox"] label p { font-size: 0px !important; }
+        div[data-baseweb="select"] { min-height: 45px !important; }
         </style>
     """, unsafe_allow_html=True)
 
     col_sel, col_map_check = st.columns([7, 3], gap="small")
     with col_sel:
-        basho = st.selectbox("地点", basho_list, index=current_idx)
+        # ラベルを表示状態にしておくことでスマホの描画バグを回避
+        basho = st.selectbox("Select Location", basho_list, index=current_idx)
     with col_map_check:
         show_map = st.checkbox("地図表示", value=st.session_state.get('show_map_state', False))
         st.session_state.show_map_state = show_map
 
-    st.markdown(f"<p style='font-size:12px; color:#666; margin: -5px 0 10px 0;'>地点：{st.session_state.lat:.3f}, {st.session_state.lon:.3f}</p>", unsafe_allow_html=True)
+    # 記憶の確認用表示（地点名を表示）
+    st.markdown(f"""
+        <div style="background-color: #f0f2f6; padding: 5px 10px; border-radius: 5px; margin-bottom: 10px;">
+            <p style="font-size: 12px; color: #333; margin: 0;">
+                <b>📍 現在の選択:</b> {st.session_state.last_basho} <br>
+                <b>🌍 座標:</b> {st.session_state.lat:.3f}, {st.session_state.lon:.3f}
+            </p>
+        </div>
+    """, unsafe_allow_html=True)
 
     if st.session_state.last_basho != basho:
         coords = {
@@ -233,11 +250,10 @@ def main():
         }
         if basho in coords:
             st.session_state.lat, st.session_state.lon = coords[basho]
-            st.session_state.last_basho = basho
-            st.query_params.update({"lat": st.session_state.lat, "lon": st.session_state.lon, "basho": basho})
-            st.rerun()
-        elif basho == "地図で指定":
-            st.session_state.last_basho = basho
+        st.session_state.last_basho = basho
+        # 強力な記憶：URLパラメータを即時書き換え
+        st.query_params.update({"lat": st.session_state.lat, "lon": st.session_state.lon, "basho": basho})
+        st.rerun()
 
     if show_map: show_location_map()
     
@@ -264,6 +280,7 @@ def main():
     if img_base64:
         with st.expander("📊 凡例・保存方法"):
             st.markdown(f'<p style="font-size:14px;"><span style="color:skyblue;">■</span> 3-6m/s <span style="color:orange;">■</span> 6-10m/s <span style="color:crimson;">■</span> {danger_v}m/s以上</p>', unsafe_allow_html=True)
+        # ユーザー指定の 900px を反映
         st.markdown(f'<div style="overflow-x: auto; background: white; border-radius: 8px; border: 1px solid #eee; margin-top: 5px;"><img src="data:image/png;base64,{img_base64}" style="height: 900px; max-width: none;"></div>', unsafe_allow_html=True)
 
 if __name__ == "__main__":
