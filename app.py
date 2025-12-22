@@ -238,17 +238,17 @@ def main():
     if 'last_basho' not in st.session_state: st.session_state.last_basho = "高須沖(鹿児島県)"
 
     # --- UI上部：地点選択 ---
-    basho_list = ["高須沖(鹿児島県)", "柏原沖(鹿児島県)", ...]
+    basho_list = ["高須沖(鹿児島県)", "柏原沖(鹿児島県)", 柏原沖(鹿児島県)", "垂水港(鹿児島県)", "海潟(鹿児島県)", "磯海岸沖(鹿児島県)", "江口浜沖(鹿児島県)", "錦江湾(鹿児島県)", "地図で指定"]
     col_sel, col_map_check = st.columns([7, 3])
     with col_sel:
-        basho = st.selectbox("地点を選択", basho_list, index=..., label_visibility="collapsed")
+        basho = st.selectbox("地点を選択", basho_list, index=current_idx, label_visibility="collapsed")
     with col_map_check:
         show_map = st.checkbox("地図表示", value=st.session_state.get('show_map_state', False))
         st.session_state.show_map_state = show_map
 
     # 地点（コンボボックス）が変更されたら座標を更新
     if st.session_state.last_basho != basho:
-        coords = {"高須沖(鹿児島県)":(31.337, 130.795), ...}
+        coords = {"高須沖(鹿児島県)":(31.337, 130.795), "柏原沖(鹿児島県)":(31.380, 131.020), "垂水港(鹿児島県)":(31.478, 130.668), "海潟(鹿児島県)":(31.539, 130.706), "磯海岸沖(鹿児島県)":(31.614, 130.577), "江口浜沖(鹿児島県)":(31.643, 130.322), "錦江湾(鹿児島県)":(31.590, 130.600)}
         if basho in coords:
             st.session_state.lat, st.session_state.lon = coords[basho]
             st.session_state.last_basho = basho
