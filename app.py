@@ -238,7 +238,7 @@ def main():
     if 'last_basho' not in st.session_state: st.session_state.last_basho = "高須沖(鹿児島県)"
 
     # --- UI上部：地点選択 ---
-    basho_list = ["高須沖(鹿児島県)", "柏原沖(鹿児島県)", 柏原沖(鹿児島県)", "垂水港(鹿児島県)", "海潟(鹿児島県)", "磯海岸沖(鹿児島県)", "江口浜沖(鹿児島県)", "錦江湾(鹿児島県)", "地図で指定"]
+    basho_list = ["高須沖(鹿児島県)", "柏原沖(鹿児島県)", "垂水港(鹿児島県)", "海潟(鹿児島県)", "磯海岸沖(鹿児島県)", "江口浜沖(鹿児島県)", "錦江湾(鹿児島県)", "地図で指定"]
     col_sel, col_map_check = st.columns([7, 3])
     with col_sel:
         basho = st.selectbox("地点を選択", basho_list, index=current_idx, label_visibility="collapsed")
