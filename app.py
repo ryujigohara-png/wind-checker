@@ -261,6 +261,6 @@ def main():
     if img_base64:
         with st.expander("📊 凡例・保存方法"):
             st.markdown(f'<p style="font-size:14px;"><span style="color:skyblue;">■</span> 3-6m/s <span style="color:orange;">■</span> 6-10m/s <span style="color:crimson;">■</span> {danger_v}m/s以上</p>', unsafe_allow_html=True)
-        st.markdown(f'<div style="overflow-x: auto; background: white; border-radius: 8px; border: 1px solid #eee; margin-top: 5px;"><img src="data:image/png;base64,{img_base64}" style="height: 520px; max-width: none;"></div>', unsafe_allow_html=True)
+        st.markdown(f'<div style="overflow-x: auto; background: white; border-radius: 8px; border: 1px solid #eee; margin-top: 5px;"><img src="data:image/png;base64,{img_base64}" style="height: 780px; max-width: none;"></div>', unsafe_allow_html=True)
 
 if __name__ == "__main__": main()
