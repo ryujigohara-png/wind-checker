@@ -193,30 +193,38 @@ def get_cached_graph(lat, lon, days, danger_v, selected_dirs_tuple):
     return base64.b64encode(buf.getvalue()).decode()
 
 # ======================================================================================
-# 地図UI：ユーザー体験向上のためのこだわり
+# 地図UI（ボタンの背景色とキャプションを修正）
 # ======================================================================================
 def show_location_map():
     st.info("地図の中央地点のグラフを描画表示することができます。")
-    # CSSで地図の中心を強調するための装飾
     st.markdown("""
         <style>
         div[data-testid="stHorizontalBlock"] { flex-wrap: nowrap !important; justify-content: center !important; }
         [data-testid="column"] { min-width: 0px !important; }
         .guide-arrow-main { color: crimson; font-size: 24px; font-weight: bold; text-align: center; }
+        /* ボタンの背景色を「ボタンらしい色（青）」に変更 */
+        div[data-testid="stButton"] button {
+            background-color: #007bff;
+            color: white;
+            border-radius: 5px;
+            border: none;
+            height: 3em;
+        }
+        div[data-testid="stButton"] button:hover {
+            background-color: #0056b3;
+            color: white;
+        }
         </style>
     """, unsafe_allow_html=True)
 
-    # 現在のセッション状態の座標で地図を作成
     m = folium.Map(location=[st.session_state.lat, st.session_state.lon], zoom_start=13)
     folium.Marker([st.session_state.lat, st.session_state.lon], icon=folium.Icon(color='red')).add_to(m)
 
-    # 地図を囲む「▼▶◀▲」ガイド表示
     col_l1, col_m1, col_r1 = st.columns([1, 18, 1])
     with col_m1: st.markdown("<div class='guide-arrow-main'>▼</div>", unsafe_allow_html=True)
 
     col_l2, col_m2, col_r2 = st.columns([1, 18, 1])
     with col_l2: st.markdown(f"<div style='line-height:{CONFIG['MAP_HEIGHT']}px; text-align:right;' class='guide-arrow-main'>▶</div>", unsafe_allow_html=True)
-    # st_foliumにより地図の操作（移動）後の中心座標を取得可能にする
     with col_m2: map_out = st_folium(m, width=None, height=CONFIG["MAP_HEIGHT"], key=f"map_{st.session_state.lat}", returned_objects=["center"])
     with col_r2: st.markdown(f"<div style='line-height:{CONFIG['MAP_HEIGHT']}px; text-align:left;' class='guide-arrow-main'>◀</div>", unsafe_allow_html=True)
         
@@ -224,68 +232,64 @@ def show_location_map():
     with col_m3: st.markdown("<div class='guide-arrow-main'>▲</div>", unsafe_allow_html=True)
 
     if map_out and map_out.get("center"):
-        if st.button("グラフ描画地点確定", use_container_width=True):
-            # 地図で選んだ新しい座標をセッションに上書き保存し、ページをリロード（再描画）
+        # キャプションを「グラフ描画地点（地図中央）確定」に変更
+        if st.button("グラフ描画地点（地図中央）確定", use_container_width=True):
             st.session_state.lat, st.session_state.lon = map_out["center"]["lat"], map_out["center"]["lng"]
             st.session_state.last_basho = "地図で指定"
             st.rerun()
 
 # ======================================================================================
-# メインアプリケーション：全体のオーケストレーション
+# メインアプリケーション（セレクトボックスの表示不具合を修正）
 # ======================================================================================
 def main():
     setup_font()
     st.markdown(f'<h1 style="font-size:{CONFIG["TITLE_SIZE"]}px; margin-bottom: 5px;">⛵ 高須風チェッカー</h1>', unsafe_allow_html=True)
     
-    # URLパラメータの取得（初期表示用）
     params = st.query_params
     init_lat = float(params.get("lat", 31.337))
     init_lon = float(params.get("lon", 130.795))
-    
-    # 【設計】セッションステートの初期化（未定義の場合のみ実行）
     if 'lat' not in st.session_state: st.session_state.lat = init_lat
     if 'lon' not in st.session_state: st.session_state.lon = init_lon
     if 'last_basho' not in st.session_state: st.session_state.last_basho = "高須沖(鹿児島県)"
 
     basho_list = ["高須沖(鹿児島県)", "柏原沖(鹿児島県)", "垂水港(鹿児島県)", "海潟(鹿児島県)", "磯海岸沖(鹿児島県)", "江口浜沖(鹿児島県)", "錦江湾(鹿児島県)", "地図で指定"]
     
-    # 【工夫】前回の選択をセレクトボックスに引き継ぐ
     try:
         current_idx = basho_list.index(st.session_state.last_basho)
     except ValueError:
         current_idx = 0
-    
-    # スマホでもカラムを横並びに維持し、セレクトボックスの文字を隠さないためのCSS
+
+    # --- 修正ポイント：CSSによる表示制御 ---
     st.markdown("""
         <style>
-        [data-testid="column"] {
-            min-width: 0px !important; /* カラムの最小幅を解除 */
+        /* カラムの横並びを維持 */
+        div[data-testid="stHorizontalBlock"] { flex-wrap: nowrap !important; }
+        [data-testid="column"] { min-width: 0px !important; }
+        
+        /* スマホで文字が消えないようラベル領域だけを消去する設定 */
+        div[data-testid="stSelectbox"] label {
+            display: none !important;
         }
-        /* セレクトボックスのコンテナの高さを確保し、文字切れを防ぐ */
-        .stSelectbox div[data-baseweb="select"] {
-            min-height: 40px;
+        /* セレクトボックス自体の高さを確保 */
+        div[data-baseweb="select"] {
+            min-height: 45px !important;
         }
         </style>
     """, unsafe_allow_html=True)
 
-    # 確実に横に並べるため、gapを「small」に固定
     col_sel, col_map_check = st.columns([7, 3], gap="small")
-    
     with col_sel:
-        # label_visibility="collapsed" はスマホで不具合を起こしやすいため、
-        # ラベル自体に空文字を入れて、表示だけ消す安全な方法に変更
-        basho = st.selectbox("", basho_list, index=current_idx)
-        
+        # label_visibility="collapsed" を使わず、CSS側で消すことでスマホの文字消えを回避
+        basho = st.selectbox("地点選択用ラベル", basho_list, index=current_idx)
     with col_map_check:
-        # チェックボックスの高さをセレクトボックスに合わせるための微調整
-        st.markdown('<div style="margin-top: 10px;">', unsafe_allow_html=True)
+        # チェックボックスの位置をセレクトボックスに合わせる
+        st.write('<div style="padding-top:5px;">', unsafe_allow_html=True)
         show_map = st.checkbox("地図表示", value=st.session_state.get('show_map_state', False))
-        st.markdown('</div>', unsafe_allow_html=True)
-        
-    
+        st.write('</div>', unsafe_allow_html=True)
+
+    # --- これ以降（地点変更ロジック、地図表示、サイドバー、グラフ生成）は変更なし ---
     st.markdown(f"<p style='font-size:12px; color:#666; margin-top:-10px;'>グラフ描画地点： 緯度 {st.session_state.lat:.4f} / 経度 {st.session_state.lon:.4f}</p>", unsafe_allow_html=True)
 
-    # 地点が変更された瞬間に座標をセットし、rerun()で即座に反映させる
     if st.session_state.last_basho != basho:
         coords = {
             "高須沖(鹿児島県)":(31.337, 130.795), "柏原沖(鹿児島県)":(31.380, 131.020), 
@@ -302,15 +306,12 @@ def main():
 
     if show_map: show_location_map()
     
-    # サイドバー設定：インタラクティブなフィルタリング
     st.sidebar.header("表示設定")
     days = st.sidebar.slider("表示日数", 1, 8, int(params.get("days", 8)))
     danger_v = st.sidebar.number_input("危険風速(m/s)", value=float(params.get("danger", 10.0)))
-    
     st.sidebar.markdown("---")
     st.sidebar.header("乗れる風向")
     
-    # ターゲット風向のチェックボックスリスト（初期値はURLパラメータから復元）
     init_dirs = params.get("dirs", "南,南南西,南西,西南西,西,西北西,北西,北北西").split(",")
     selected_target_dirs = []
     cols = st.sidebar.columns(2)
@@ -319,20 +320,18 @@ def main():
             if st.checkbox(d, value=(d in init_dirs), key=f"chk_{d}"):
                 selected_target_dirs.append(d)
 
-    # URLクエリパラメータを更新（現在のページURLをコピーして他人に共有可能にする）
     st.query_params.update({
         "lat": st.session_state.lat, "lon": st.session_state.lon, 
         "days": days, "danger": danger_v, "dirs": ",".join(selected_target_dirs)
     })
 
-    # グラフ描画実行
     img_base64 = get_cached_graph(st.session_state.lat, st.session_state.lon, days, danger_v, tuple(selected_target_dirs))
 
     if img_base64:
         with st.expander("📊 凡例・保存方法"):
             st.markdown(f'<p style="font-size:14px;"><span style="color:skyblue;">■</span> 3-6m/s <span style="color:orange;">■</span> 6-10m/s <span style="color:crimson;">■</span> {danger_v}m/s以上</p>', unsafe_allow_html=True)
-        # HTML/CSSを使用して、横スクロール可能なコンテナに高解像度画像を埋め込む
-        st.markdown(f'<div style="overflow-x: auto; background: white; border-radius: 8px; border: 1px solid #eee; margin-top: 5px;"><img src="data:image/png;base64,{img_base64}" style="height: 780px; max-width: none;"></div>', unsafe_allow_html=True)
+        st.markdown(f'<div style="overflow-x: auto; background: white; border-radius: 8px; border: 1px solid #eee; margin-top: 5px;"><img src="data:image/png;base64,{img_base64}" style="height: 900px; max-width: none;"></div>', unsafe_allow_html=True)
 
 if __name__ == "__main__":
     main()
+
