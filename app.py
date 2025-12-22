@@ -193,7 +193,7 @@ def get_cached_graph(lat, lon, days, danger_v, selected_dirs_tuple):
     return base64.b64encode(buf.getvalue()).decode()
 
 # ======================================================================================
-# 地図UI（ボタンの背景色とキャプションを修正）
+# 地図UI：ボタンの背景色とキャプションを修正
 # ======================================================================================
 def show_location_map():
     st.info("地図の中央地点のグラフを描画表示することができます。")
@@ -202,7 +202,7 @@ def show_location_map():
         div[data-testid="stHorizontalBlock"] { flex-wrap: nowrap !important; justify-content: center !important; }
         [data-testid="column"] { min-width: 0px !important; }
         .guide-arrow-main { color: crimson; font-size: 24px; font-weight: bold; text-align: center; }
-        /* ボタンの背景色を「ボタンらしい色（青）」に変更 */
+        /* ボタンの背景色を「ボタンらしい青」に変更 */
         div[data-testid="stButton"] button {
             background-color: #007bff;
             color: white;
@@ -232,25 +232,31 @@ def show_location_map():
     with col_m3: st.markdown("<div class='guide-arrow-main'>▲</div>", unsafe_allow_html=True)
 
     if map_out and map_out.get("center"):
-        # キャプションを「グラフ描画地点（地図中央）確定」に変更
+        # キャプションを変更
         if st.button("グラフ描画地点（地図中央）確定", use_container_width=True):
             st.session_state.lat, st.session_state.lon = map_out["center"]["lat"], map_out["center"]["lng"]
             st.session_state.last_basho = "地図で指定"
             st.rerun()
+            
+
+
 
 # ======================================================================================
-# メインアプリケーション（セレクトボックスの表示不具合を修正）
+# メインアプリケーション：表示不具合と記憶ロジックの修正版
 # ======================================================================================
 def main():
     setup_font()
-    st.markdown(f'<h1 style="font-size:{CONFIG["TITLE_SIZE"]}px; margin-bottom: 5px;">⛵ 高須風チェッカー</h1>', unsafe_allow_html=True)
+    # タイトルの余白を極限まで削り、1行表示を維持
+    st.markdown(f'<h1 style="font-size:{CONFIG["TITLE_SIZE"]}px; margin: 0 0 5px 0; padding: 0;">⛵ 高須風チェッカー</h1>', unsafe_allow_html=True)
     
+    # URLパラメータとセッションの同期（記憶機能）
     params = st.query_params
-    init_lat = float(params.get("lat", 31.337))
-    init_lon = float(params.get("lon", 130.795))
-    if 'lat' not in st.session_state: st.session_state.lat = init_lat
-    if 'lon' not in st.session_state: st.session_state.lon = init_lon
-    if 'last_basho' not in st.session_state: st.session_state.last_basho = "高須沖(鹿児島県)"
+    if 'lat' not in st.session_state:
+        st.session_state.lat = float(params.get("lat", 31.337))
+    if 'lon' not in st.session_state:
+        st.session_state.lon = float(params.get("lon", 130.795))
+    if 'last_basho' not in st.session_state:
+        st.session_state.last_basho = params.get("basho", "高須沖(鹿児島県)")
 
     basho_list = ["高須沖(鹿児島県)", "柏原沖(鹿児島県)", "垂水港(鹿児島県)", "海潟(鹿児島県)", "磯海岸沖(鹿児島県)", "江口浜沖(鹿児島県)", "錦江湾(鹿児島県)", "地図で指定"]
     
@@ -259,37 +265,28 @@ def main():
     except ValueError:
         current_idx = 0
 
-    # --- 修正ポイント：CSSによる表示制御 ---
+    # スマホでの横並び強制と文字表示維持のためのCSS
     st.markdown("""
         <style>
-        /* カラムの横並びを維持 */
-        div[data-testid="stHorizontalBlock"] { flex-wrap: nowrap !important; }
+        div[data-testid="stHorizontalBlock"] { flex-wrap: nowrap !important; align-items: center !important; }
         [data-testid="column"] { min-width: 0px !important; }
-        
-        /* スマホで文字が消えないようラベル領域だけを消去する設定 */
-        div[data-testid="stSelectbox"] label {
-            display: none !important;
-        }
-        /* セレクトボックス自体の高さを確保 */
-        div[data-baseweb="select"] {
-            min-height: 45px !important;
-        }
+        /* ラベルは隠すが、領域を潰さないことでスマホの文字消えを回避 */
+        div[data-testid="stSelectbox"] label { display: none !important; }
+        div[data-baseweb="select"] { min-height: 42px !important; }
         </style>
     """, unsafe_allow_html=True)
 
     col_sel, col_map_check = st.columns([7, 3], gap="small")
     with col_sel:
-        # label_visibility="collapsed" を使わず、CSS側で消すことでスマホの文字消えを回避
-        basho = st.selectbox("地点選択用ラベル", basho_list, index=current_idx)
+        # 内部的にはラベルを持たせることで高さを維持
+        basho = st.selectbox("地点", basho_list, index=current_idx)
     with col_map_check:
-        # チェックボックスの位置をセレクトボックスに合わせる
-        st.write('<div style="padding-top:5px;">', unsafe_allow_html=True)
         show_map = st.checkbox("地図表示", value=st.session_state.get('show_map_state', False))
-        st.write('</div>', unsafe_allow_html=True)
+        st.session_state.show_map_state = show_map
 
-    # --- これ以降（地点変更ロジック、地図表示、サイドバー、グラフ生成）は変更なし ---
-    st.markdown(f"<p style='font-size:12px; color:#666; margin-top:-10px;'>グラフ描画地点： 緯度 {st.session_state.lat:.4f} / 経度 {st.session_state.lon:.4f}</p>", unsafe_allow_html=True)
+    st.markdown(f"<p style='font-size:12px; color:#666; margin: -5px 0 10px 0;'>地点：{st.session_state.lat:.3f}, {st.session_state.lon:.3f}</p>", unsafe_allow_html=True)
 
+    # 地点変更の保存ロジック
     if st.session_state.last_basho != basho:
         coords = {
             "高須沖(鹿児島県)":(31.337, 130.795), "柏原沖(鹿児島県)":(31.380, 131.020), 
@@ -300,6 +297,8 @@ def main():
         if basho in coords:
             st.session_state.lat, st.session_state.lon = coords[basho]
             st.session_state.last_basho = basho
+            # URLを即時更新（次回起動時の記憶に必須）
+            st.query_params.update({"lat": st.session_state.lat, "lon": st.session_state.lon, "basho": basho})
             st.rerun()
         elif basho == "地図で指定":
             st.session_state.last_basho = basho
@@ -322,7 +321,8 @@ def main():
 
     st.query_params.update({
         "lat": st.session_state.lat, "lon": st.session_state.lon, 
-        "days": days, "danger": danger_v, "dirs": ",".join(selected_target_dirs)
+        "days": days, "danger": danger_v, "dirs": ",".join(selected_target_dirs),
+        "basho": st.session_state.last_basho
     })
 
     img_base64 = get_cached_graph(st.session_state.lat, st.session_state.lon, days, danger_v, tuple(selected_target_dirs))
@@ -331,7 +331,3 @@ def main():
         with st.expander("📊 凡例・保存方法"):
             st.markdown(f'<p style="font-size:14px;"><span style="color:skyblue;">■</span> 3-6m/s <span style="color:orange;">■</span> 6-10m/s <span style="color:crimson;">■</span> {danger_v}m/s以上</p>', unsafe_allow_html=True)
         st.markdown(f'<div style="overflow-x: auto; background: white; border-radius: 8px; border: 1px solid #eee; margin-top: 5px;"><img src="data:image/png;base64,{img_base64}" style="height: 900px; max-width: none;"></div>', unsafe_allow_html=True)
-
-if __name__ == "__main__":
-    main()
-
