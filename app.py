@@ -113,7 +113,7 @@ def get_cached_graph(lat, lon, days, danger_v, selected_dirs_tuple):
     time_step = (3 if days <= 2 else 6)
     
     fig_w = max(10, days * 4.5)
-    fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(fig_w, 10), dpi=CONFIG["DPI"], gridspec_kw={'height_ratios': [4, 1.2, 1.2})
+    fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(fig_w, 10), dpi=CONFIG["DPI"], gridspec_kw={'height_ratios': [4.2, 1.2, 1.0]})
     plt.subplots_adjust(hspace=0.6)
     jp_weeks = ["月", "火", "水", "木", "金", "土", "日"]
     def formatter(x, p):
