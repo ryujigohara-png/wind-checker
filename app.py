@@ -17,8 +17,8 @@ import folium
 CONFIG = {
     "TITLE_SIZE": 22,
     "SUBTITLE_SIZE": 16,
-    "GRAPH_FONT_SIZE": 14,
-    "LABEL_SIZE": 14,
+    "GRAPH_FONT_SIZE": 12,
+    "LABEL_SIZE": 12,
     "DPI": 300,
     "MAP_HEIGHT": 350
 }
