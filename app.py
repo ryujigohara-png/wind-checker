@@ -1,4 +1,4 @@
-import streamlit as st
+    import streamlit as st
 import requests
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -19,7 +19,7 @@ import folium
 CONFIG = {
     "TITLE_SIZE": 22,
     "SUBTITLE_SIZE": 16,
-    "GRAPH_FONT_SIZE": 12,
+    "GRAPH_FONT_SIZE": 13,
     "LABEL_SIZE": 12,
     "DPI": 300,
     "MAP_HEIGHT": 350
