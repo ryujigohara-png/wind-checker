@@ -184,11 +184,14 @@ def get_cached_graph(lat, lon, days, danger_v, selected_dirs_tuple):
         if not pd.isna(df['wind_speed_10m'].iloc[i]) and i % wind_step == 0:
             h = bar.get_height()
             # 天気（晴、曇、雨）
+            # 固定値 3.0 から、動的変数 offset に変更
             ax1.text(bar.get_x() + bar.get_width()/2., h + offset, df['w_text'].iloc[i], ha='center', va='bottom', color=df['w_color'].iloc[i], fontweight='bold', fontsize=CONFIG["GRAPH_FONT_SIZE"])
+            
             # 風向名、矢印、風速数値
+            # 下の文字との間隔も y_max * 0.02 (2%) 程度にするとより安定します
             txt = f"{df['dir_name'].iloc[i]}\n{df['arrow'].iloc[i]}\n{round(df['wind_speed_10m'].iloc[i])}m"
             ax1.text(bar.get_x() + bar.get_width()/2., h + (y_max * 0.02) , txt, ha='center', va='bottom', fontweight='bold', color='black', fontsize=CONFIG["GRAPH_FONT_SIZE"])
-
+    
     # メモリ上の画像として保存し、HTML表示用にBase64変換
     buf = io.BytesIO(); fig.savefig(buf, format="png", bbox_inches='tight', pad_inches=0.1)
     return base64.b64encode(buf.getvalue()).decode()
