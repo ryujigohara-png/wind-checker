@@ -97,7 +97,7 @@ def process_wind_data(df, target_dirs, danger_v):
     return df
 
 # ======================================================================================
-# 3. グラフ生成（ユーザー設定の 0.20 を反映）
+# 3. グラフ生成
 # ======================================================================================
 @st.cache_data(show_spinner=False)
 def get_cached_graph(lat, lon, days, danger_v, selected_dirs_tuple):
@@ -128,7 +128,6 @@ def get_cached_graph(lat, lon, days, danger_v, selected_dirs_tuple):
     y_limit = max(max_val, danger_v) + 5
     ax1.set_ylim(0, y_limit)
     
-    # ユーザー指定のオフセット値を反映
     text_offset_weather = y_limit * 0.20 
     text_offset_wind = y_limit * 0.02
 
@@ -190,73 +189,89 @@ def show_location_map():
         if st.button("グラフ描画地点（地図中央）確定", use_container_width=True):
             st.session_state.lat, st.session_state.lon = map_out["center"]["lat"], map_out["center"]["lng"]
             st.session_state.last_basho = "地図で指定"
+            # 独自実装側への反映のためquery_paramsも更新
+            st.query_params.update({"lat": st.session_state.lat, "lon": st.session_state.lon, "basho": "地図で指定"})
             st.rerun()
 
 # ======================================================================================
-# 5. メインアプリ（スマホ表示・記憶機能の抜本的修正版）
+# 5. メインアプリ（HTML方式コンボボックスと確実な記憶）
 # ======================================================================================
 def main():
     setup_font()
     st.markdown(f'<h1 style="font-size:{CONFIG["TITLE_SIZE"]}px; margin: 0 0 5px 0; padding: 0;">⛵ 高須風チェッカー</h1>', unsafe_allow_html=True)
     
-    # 記憶ロジックの修正：URLパラメータを最優先でセッションに同期
+    # --- A. 地点データの定義 ---
+    coords_master = {
+        "高須沖(鹿児島県)":(31.337, 130.795), "柏原沖(鹿児島県)":(31.380, 131.020), 
+        "垂水港(鹿児島県)":(31.478, 130.668), "海潟(鹿児島県)":(31.539, 130.706), 
+        "磯海岸沖(鹿児島県)":(31.614, 130.577), "江口浜沖(鹿児島県)":(31.643, 130.322), 
+        "錦江湾(鹿児島県)":(31.590, 130.600), "地図で指定": (None, None)
+    }
+    basho_list = list(coords_master.keys())
+
+    # --- B. 記憶ロジックの修正（URLパラメータとセッションの厳格同期） ---
     params = st.query_params
-    if 'lat' not in st.session_state or params.get("lat"):
+    if 'lat' not in st.session_state:
         st.session_state.lat = float(params.get("lat", 31.337))
-    if 'lon' not in st.session_state or params.get("lon"):
+    if 'lon' not in st.session_state:
         st.session_state.lon = float(params.get("lon", 130.795))
-    if 'last_basho' not in st.session_state or params.get("basho"):
+    if 'last_basho' not in st.session_state:
         st.session_state.last_basho = params.get("basho", "高須沖(鹿児島県)")
 
-    basho_list = ["高須沖(鹿児島県)", "柏原沖(鹿児島県)", "垂水港(鹿児島県)", "海潟(鹿児島県)", "磯海岸沖(鹿児島県)", "江口浜沖(鹿児島県)", "錦江湾(鹿児島県)", "地図で指定"]
-    try: current_idx = basho_list.index(st.session_state.last_basho)
-    except: current_idx = 0
-
-    # スマホ文字消え防止：CSSでの非表示をやめ、ラベルの高さを最小化する
-    st.markdown("""
-        <style>
-        div[data-testid="stHorizontalBlock"] { flex-wrap: nowrap !important; align-items: flex-end !important; }
-        [data-testid="column"] { min-width: 0px !important; }
-        /* ラベルのフォントサイズを0にして見えなくする（display:noneは使わない） */
-        div[data-testid="stSelectbox"] label p { font-size: 0px !important; }
-        div[data-baseweb="select"] { min-height: 45px !important; }
-        </style>
-    """, unsafe_allow_html=True)
-
+    # --- C. HTML/JS による独自コンボボックス（文字消え絶対回避） ---
     col_sel, col_map_check = st.columns([7, 3], gap="small")
+    
     with col_sel:
-        # ラベルを表示状態にしておくことでスマホの描画バグを回避
-        basho = st.selectbox("Select Location", basho_list, index=current_idx)
+        # 現在の選択に基づき、HTMLのセレクトオプションを生成
+        options_html = "".join([f'<option value="{b}" {"selected" if b == st.session_state.last_basho else ""}>{b}</option>' for b in basho_list])
+        
+        # JSで選択変更をStreamlitのURLパラメータに流し込む（これで記憶される）
+        custom_selectbox_html = f"""
+        <select id="basho_select" style="width: 100%; height: 42px; font-size: 16px; border-radius: 5px; border: 1px solid #ccc; padding-left: 5px;" 
+                onchange="window.parent.postMessage({{type: 'streamlit:set_query_params', query_params: {{basho: this.value}}}}, '*')">
+            {options_html}
+        </select>
+        <script>
+            // ページ全体のURLを監視し、変更があればリロード（擬似的な同期）
+            const select = document.getElementById('basho_select');
+            select.addEventListener('change', (e) => {{
+                const val = e.target.value;
+                const url = new URL(window.parent.location.href);
+                url.searchParams.set('basho', val);
+                window.parent.location.href = url.href;
+            }});
+        </script>
+        """
+        st.components.v1.html(custom_selectbox_html, height=50)
+
     with col_map_check:
+        st.markdown('<div style="height:10px;"></div>', unsafe_allow_html=True)
         show_map = st.checkbox("地図表示", value=st.session_state.get('show_map_state', False))
         st.session_state.show_map_state = show_map
 
-    # 記憶の確認用表示（地点名を表示）
+    # --- D. 選択変更の反映ロジック ---
+    # URLのbashoパラメータがセッションと食い違っていたら更新
+    new_basho_param = params.get("basho", st.session_state.last_basho)
+    if new_basho_param != st.session_state.last_basho:
+        st.session_state.last_basho = new_basho_param
+        if new_basho_param in coords_master and new_basho_param != "地図で指定":
+            st.session_state.lat, st.session_state.lon = coords_master[new_basho_param]
+        st.query_params.update({"lat": st.session_state.lat, "lon": st.session_state.lon, "basho": new_basho_param})
+        st.rerun()
+
+    # 確認用デバッグ表示
     st.markdown(f"""
-        <div style="background-color: #f0f2f6; padding: 5px 10px; border-radius: 5px; margin-bottom: 10px;">
-            <p style="font-size: 12px; color: #333; margin: 0;">
-                <b>📍 現在の選択:</b> {st.session_state.last_basho} <br>
-                <b>🌍 座標:</b> {st.session_state.lat:.3f}, {st.session_state.lon:.3f}
+        <div style="background-color: #f0f2f6; padding: 8px; border-radius: 5px; margin-bottom: 10px; border: 1px solid #ddd;">
+            <p style="font-size: 13px; color: #333; margin: 0; line-height: 1.5;">
+                <b>📍 現在の選択:</b> {st.session_state.last_basho}<br>
+                <b>🌍 座標:</b> {st.session_state.lat:.4f}, {st.session_state.lon:.4f}
             </p>
         </div>
     """, unsafe_allow_html=True)
 
-    if st.session_state.last_basho != basho:
-        coords = {
-            "高須沖(鹿児島県)":(31.337, 130.795), "柏原沖(鹿児島県)":(31.380, 131.020), 
-            "垂水港(鹿児島県)":(31.478, 130.668), "海潟(鹿児島県)":(31.539, 130.706), 
-            "磯海岸沖(鹿児島県)":(31.614, 130.577), "江口浜沖(鹿児島県)":(31.643, 130.322), 
-            "錦江湾(鹿児島県)":(31.590, 130.600)
-        }
-        if basho in coords:
-            st.session_state.lat, st.session_state.lon = coords[basho]
-        st.session_state.last_basho = basho
-        # 強力な記憶：URLパラメータを即時書き換え
-        st.query_params.update({"lat": st.session_state.lat, "lon": st.session_state.lon, "basho": basho})
-        st.rerun()
-
     if show_map: show_location_map()
     
+    # --- E. サイドバー設定 ---
     st.sidebar.header("表示設定")
     days = st.sidebar.slider("表示日数", 1, 8, int(params.get("days", 8)))
     danger_v = st.sidebar.number_input("危険風速(m/s)", value=float(params.get("danger", 10.0)))
@@ -270,17 +285,18 @@ def main():
             if st.checkbox(d, value=(d in init_dirs), key=f"chk_{d}"):
                 selected_target_dirs.append(d)
 
+    # 常にURLを最新状態に保つ
     st.query_params.update({
         "lat": st.session_state.lat, "lon": st.session_state.lon, 
         "days": days, "danger": danger_v, "dirs": ",".join(selected_target_dirs),
         "basho": st.session_state.last_basho
     })
 
+    # --- F. グラフ描画 ---
     img_base64 = get_cached_graph(st.session_state.lat, st.session_state.lon, days, danger_v, tuple(selected_target_dirs))
     if img_base64:
         with st.expander("📊 凡例・保存方法"):
             st.markdown(f'<p style="font-size:14px;"><span style="color:skyblue;">■</span> 3-6m/s <span style="color:orange;">■</span> 6-10m/s <span style="color:crimson;">■</span> {danger_v}m/s以上</p>', unsafe_allow_html=True)
-        # ユーザー指定の 900px を反映
         st.markdown(f'<div style="overflow-x: auto; background: white; border-radius: 8px; border: 1px solid #eee; margin-top: 5px;"><img src="data:image/png;base64,{img_base64}" style="height: 900px; max-width: none;"></div>', unsafe_allow_html=True)
 
 if __name__ == "__main__":
