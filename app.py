@@ -44,12 +44,7 @@ def fetch_weather_data(lat, lon, days):
         data = requests.get(url).json()
         df = pd.DataFrame(data["hourly"])
         df['time'] = pd.to_datetime(df['time'])
-        first_time = df['time'].iloc[0]
-        padding = pd.DataFrame({
-            'time': [first_time - timedelta(hours=i) for i in range(3, 0, -1)],
-            'temperature_2m': [None]*3, 'wind_speed_10m': [None]*3, 'wind_direction_10m': [None]*3, 'weather_code': [None]*3
-        })
-        return pd.concat([padding, df], ignore_index=True)
+        return df
     except: return None
 
 def get_tide_level(times):
@@ -57,8 +52,6 @@ def get_tide_level(times):
     cycle_hours = 12.42
     levels = []
     for t in times:
-        if pd.isna(t): 
-            levels.append(None); continue
         hours_from_base = (t - base_full_tide).total_seconds() / 3600
         level = 100 * np.cos(2 * np.pi * hours_from_base / cycle_hours)
         levels.append(level)
@@ -75,7 +68,6 @@ def process_wind_data(df, target_dirs, danger_v):
     dirs = ALL_DIRECTIONS + ["北"]
     arrows = ["↓", "↙", "↙", "↙", "←", "↖", "↖", "↖", "↑", "↗", "↗", "↗", "→", "↘", "↘", "↘", "↓"]
     def get_info(deg):
-        if pd.isna(deg): return "", ""
         idx = int((deg + 11.25) / 22.5) % 16
         return dirs[idx], arrows[idx]
     df['res'] = df['wind_direction_10m'].apply(get_info)
@@ -86,7 +78,6 @@ def process_wind_data(df, target_dirs, danger_v):
     df['w_color'] = [r[1] for r in weather_res]
     def judge(row):
         speed = row['wind_speed_10m']
-        if pd.isna(speed): return "none"
         if speed >= danger_v: return "crimson"
         if row['dir_name'] in target_dirs:
             if 6 <= speed < danger_v: return "orange"
@@ -104,33 +95,23 @@ def get_cached_graph(lat, lon, days, danger_v, selected_dirs_tuple):
     df = fetch_weather_data(lat, lon, days)
     if df is None: return None
     df = process_wind_data(df, list(selected_dirs_tuple), danger_v)
-
     wind_step = (1 if days <= 1 else (2 if days <= 3 else 3))
     time_step = (3 if days <= 2 else 6)
-    
     fig_w = max(10, days * 4.5)
     fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(fig_w, 10), dpi=CONFIG["DPI"], gridspec_kw={'height_ratios': [4.2, 1.2, 1.0]})
     plt.subplots_adjust(hspace=0.6)
-
     jp_weeks = ["月", "火", "水", "木", "金", "土", "日"]
     def formatter(x, p):
         dt = mdates.num2date(x)
-        if dt.hour == 0:
-            return dt.strftime('%m/%d') + f'\n({jp_weeks[dt.weekday()]})\n' + dt.strftime('%H:%M')
-        else:
-            return dt.strftime('%H:%M')
-    
+        if dt.hour == 0: return dt.strftime('%m/%d') + f'\n({jp_weeks[dt.weekday()]})\n' + dt.strftime('%H:%M')
+        else: return dt.strftime('%H:%M')
     bars = ax1.bar(df['time'], df['wind_speed_10m'], color=df['color'], alpha=0.9, width=0.03)
     ax1.axhline(y=danger_v, color='red', linestyle='--', alpha=0.6)
     ax1.set_ylabel('風速 (m/s)')
-    
-    max_val = df['wind_speed_10m'].max() if not df['wind_speed_10m'].empty else 0
-    y_limit = max(max_val, danger_v) + 5
+    max_val = df['wind_speed_10m'].max(); y_limit = max(max_val, danger_v) + 5
     ax1.set_ylim(0, y_limit)
-    
     text_offset_weather = y_limit * 0.20 
     text_offset_wind = y_limit * 0.02
-
     jst = timezone(timedelta(hours=9))
     now_jst = datetime.now(jst).replace(tzinfo=None)
     for ax in [ax1, ax2, ax3]:
@@ -139,49 +120,45 @@ def get_cached_graph(lat, lon, days, danger_v, selected_dirs_tuple):
         ax.xaxis.set_major_formatter(plt.FuncFormatter(formatter))
         ax.set_xlim(df['time'].iloc[0], df['time'].iloc[-1])
         ax.grid(True, linestyle=':', alpha=0.4, color='#000000')
-
     ax2.plot(df['time'], df['temperature_2m'], color='black', linewidth=1.5)
     ax2.set_ylabel('気温(℃)')
     ax3.plot(df['time'], df['tide_level'], color='royalblue', linewidth=2)
     ax3.fill_between(df['time'], df['tide_level'], -120, color='royalblue', alpha=0.2)
     ax3.set_ylabel('潮位'); ax3.set_yticks([])
-
     for i, bar in enumerate(bars):
-        if not pd.isna(df['wind_speed_10m'].iloc[i]) and i % wind_step == 0:
+        if i % wind_step == 0:
             h = bar.get_height()
             ax1.text(bar.get_x() + bar.get_width()/2., h + text_offset_weather, df['w_text'].iloc[i], ha='center', va='bottom', color=df['w_color'].iloc[i], fontweight='bold', fontsize=CONFIG["GRAPH_FONT_SIZE"])
             txt = f"{df['dir_name'].iloc[i]}\n{df['arrow'].iloc[i]}\n{round(df['wind_speed_10m'].iloc[i])}m"
             ax1.text(bar.get_x() + bar.get_width()/2., h + text_offset_wind, txt, ha='center', va='bottom', fontweight='bold', color='black', fontsize=CONFIG["GRAPH_FONT_SIZE"])
-
     buf = io.BytesIO(); fig.savefig(buf, format="png", bbox_inches='tight', pad_inches=0.1)
     return base64.b64encode(buf.getvalue()).decode()
 
 # ======================================================================================
-# 4. 地図UI
+# 4. 地図UI（復活！ 3x3マトリックス・セル）
 # ======================================================================================
 def show_location_map():
     st.info("地図の中央地点のグラフを描画表示することができます。")
-    st.markdown("""
-        <style>
+    st.markdown("""<style>
         div[data-testid="stHorizontalBlock"] { flex-wrap: nowrap !important; justify-content: center !important; }
         [data-testid="column"] { min-width: 0px !important; }
         .guide-arrow-main { color: crimson; font-size: 24px; font-weight: bold; text-align: center; }
-        div[data-testid="stButton"] button {
-            background-color: #007bff; color: white; border-radius: 5px; border: none; height: 3em;
-        }
-        div[data-testid="stButton"] button:hover { background-color: #0056b3; color: white; }
-        </style>
-    """, unsafe_allow_html=True)
+        div[data-testid="stButton"] button { background-color: #007bff; color: white; border-radius: 5px; height: 3em; }
+        div[data-testid="stButton"] button:hover { background-color: #0056b3; }
+        </style>""", unsafe_allow_html=True)
 
     m = folium.Map(location=[st.session_state.lat, st.session_state.lon], zoom_start=13)
     folium.Marker([st.session_state.lat, st.session_state.lon], icon=folium.Icon(color='red')).add_to(m)
 
+    # 3x3 セル構造の完全復活
     col_l1, col_m1, col_r1 = st.columns([1, 18, 1])
     with col_m1: st.markdown("<div class='guide-arrow-main'>▼</div>", unsafe_allow_html=True)
+    
     col_l2, col_m2, col_r2 = st.columns([1, 18, 1])
     with col_l2: st.markdown(f"<div style='line-height:{CONFIG['MAP_HEIGHT']}px; text-align:right;' class='guide-arrow-main'>▶</div>", unsafe_allow_html=True)
     with col_m2: map_out = st_folium(m, width=None, height=CONFIG["MAP_HEIGHT"], key=f"map_{st.session_state.lat}", returned_objects=["center"])
     with col_r2: st.markdown(f"<div style='line-height:{CONFIG['MAP_HEIGHT']}px; text-align:left;' class='guide-arrow-main'>◀</div>", unsafe_allow_html=True)
+        
     col_l3, col_m3, col_r3 = st.columns([1, 18, 1])
     with col_m3: st.markdown("<div class='guide-arrow-main'>▲</div>", unsafe_allow_html=True)
 
@@ -189,115 +166,63 @@ def show_location_map():
         if st.button("グラフ描画地点（地図中央）確定", use_container_width=True):
             st.session_state.lat, st.session_state.lon = map_out["center"]["lat"], map_out["center"]["lng"]
             st.session_state.last_basho = "地図で指定"
-            # 独自実装側への反映のためquery_paramsも更新
-            st.query_params.update({"lat": st.session_state.lat, "lon": st.session_state.lon, "basho": "地図で指定"})
             st.rerun()
 
 # ======================================================================================
-# 5. メインアプリ（HTML方式コンボボックスと確実な記憶）
+# 5. メインアプリ（文字消え対策・記憶機能強化）
 # ======================================================================================
 def main():
     setup_font()
-    st.markdown(f'<h1 style="font-size:{CONFIG["TITLE_SIZE"]}px; margin: 0 0 5px 0; padding: 0;">⛵ 高須風チェッカー</h1>', unsafe_allow_html=True)
+    st.markdown(f'<h1 style="font-size:{CONFIG["TITLE_SIZE"]}px; margin-bottom: 5px;">⛵ 高須風チェッカー</h1>', unsafe_allow_html=True)
     
-    # --- A. 地点データの定義 ---
     coords_master = {
-        "高須沖(鹿児島県)":(31.337, 130.795), "柏原沖(鹿児島県)":(31.380, 131.020), 
-        "垂水港(鹿児島県)":(31.478, 130.668), "海潟(鹿児島県)":(31.539, 130.706), 
-        "磯海岸沖(鹿児島県)":(31.614, 130.577), "江口浜沖(鹿児島県)":(31.643, 130.322), 
+        "高須沖(鹿児島県)":(31.337, 130.795), "柏原沖(鹿児島県)":(31.380, 131.020), "垂水港(鹿児島県)":(31.478, 130.668),
+        "海潟(鹿児島県)":(31.539, 130.706), "磯海岸沖(鹿児島県)":(31.614, 130.577), "江口浜沖(鹿児島県)":(31.643, 130.322),
         "錦江湾(鹿児島県)":(31.590, 130.600), "地図で指定": (None, None)
     }
-    basho_list = list(coords_master.keys())
 
-    # --- B. 記憶ロジックの修正（URLパラメータとセッションの厳格同期） ---
-    params = st.query_params
-    if 'lat' not in st.session_state:
-        st.session_state.lat = float(params.get("lat", 31.337))
-    if 'lon' not in st.session_state:
-        st.session_state.lon = float(params.get("lon", 130.795))
-    if 'last_basho' not in st.session_state:
-        st.session_state.last_basho = params.get("basho", "高須沖(鹿児島県)")
+    # 記憶の復元
+    p = st.query_params
+    if 'lat' not in st.session_state: st.session_state.lat = float(p.get("lat", 31.337))
+    if 'lon' not in st.session_state: st.session_state.lon = float(p.get("lon", 130.795))
+    if 'last_basho' not in st.session_state: st.session_state.last_basho = p.get("basho", "高須沖(鹿児島県)")
 
-    # --- C. HTML/JS による独自コンボボックス（文字消え絶対回避） ---
-    col_sel, col_map_check = st.columns([7, 3], gap="small")
-    
-    with col_sel:
-        # 現在の選択に基づき、HTMLのセレクトオプションを生成
-        options_html = "".join([f'<option value="{b}" {"selected" if b == st.session_state.last_basho else ""}>{b}</option>' for b in basho_list])
-        
-        # JSで選択変更をStreamlitのURLパラメータに流し込む（これで記憶される）
-        custom_selectbox_html = f"""
-        <select id="basho_select" style="width: 100%; height: 42px; font-size: 16px; border-radius: 5px; border: 1px solid #ccc; padding-left: 5px;" 
-                onchange="window.parent.postMessage({{type: 'streamlit:set_query_params', query_params: {{basho: this.value}}}}, '*')">
-            {options_html}
-        </select>
-        <script>
-            // ページ全体のURLを監視し、変更があればリロード（擬似的な同期）
-            const select = document.getElementById('basho_select');
-            select.addEventListener('change', (e) => {{
-                const val = e.target.value;
-                const url = new URL(window.parent.location.href);
-                url.searchParams.set('basho', val);
-                window.parent.location.href = url.href;
-            }});
-        </script>
-        """
-        st.components.v1.html(custom_selectbox_html, height=50)
+    # スマホでの文字消えを完全に防ぐためのUI配置
+    # カラムを使わず、コンボボックスを画面幅いっぱいに表示
+    basho = st.selectbox("地点を選択してください", list(coords_master.keys()), index=list(coords_master.keys()).index(st.session_state.last_basho))
+    show_map = st.checkbox("地図表示", value=st.session_state.get('show_map_state', False))
+    st.session_state.show_map_state = show_map
 
-    with col_map_check:
-        st.markdown('<div style="height:10px;"></div>', unsafe_allow_html=True)
-        show_map = st.checkbox("地図表示", value=st.session_state.get('show_map_state', False))
-        st.session_state.show_map_state = show_map
+    # 地点名と座標の確認表示
+    st.markdown(f"<p style='font-size:14px; color:#1e88e5; font-weight:bold; margin-top:-10px;'>📍 現在：{st.session_state.last_basho} ({st.session_state.lat:.4f}, {st.session_state.lon:.4f})</p>", unsafe_allow_html=True)
 
-    # --- D. 選択変更の反映ロジック ---
-    # URLのbashoパラメータがセッションと食い違っていたら更新
-    new_basho_param = params.get("basho", st.session_state.last_basho)
-    if new_basho_param != st.session_state.last_basho:
-        st.session_state.last_basho = new_basho_param
-        if new_basho_param in coords_master and new_basho_param != "地図で指定":
-            st.session_state.lat, st.session_state.lon = coords_master[new_basho_param]
-        st.query_params.update({"lat": st.session_state.lat, "lon": st.session_state.lon, "basho": new_basho_param})
+    # 地点変更の反映
+    if st.session_state.last_basho != basho:
+        if basho != "地図で指定":
+            st.session_state.lat, st.session_state.lon = coords_master[basho]
+        st.session_state.last_basho = basho
+        st.query_params.update({"lat": st.session_state.lat, "lon": st.session_state.lon, "basho": basho})
         st.rerun()
-
-    # 確認用デバッグ表示
-    st.markdown(f"""
-        <div style="background-color: #f0f2f6; padding: 8px; border-radius: 5px; margin-bottom: 10px; border: 1px solid #ddd;">
-            <p style="font-size: 13px; color: #333; margin: 0; line-height: 1.5;">
-                <b>📍 現在の選択:</b> {st.session_state.last_basho}<br>
-                <b>🌍 座標:</b> {st.session_state.lat:.4f}, {st.session_state.lon:.4f}
-            </p>
-        </div>
-    """, unsafe_allow_html=True)
 
     if show_map: show_location_map()
     
-    # --- E. サイドバー設定 ---
+    # サイドバー
     st.sidebar.header("表示設定")
-    days = st.sidebar.slider("表示日数", 1, 8, int(params.get("days", 8)))
-    danger_v = st.sidebar.number_input("危険風速(m/s)", value=float(params.get("danger", 10.0)))
-    st.sidebar.markdown("---")
-    st.sidebar.header("乗れる風向")
-    init_dirs = params.get("dirs", "南,南南西,南西,西南西,西,西北西,北西,北北西").split(",")
-    selected_target_dirs = []
+    days = st.sidebar.slider("表示日数", 1, 8, int(p.get("days", 8)))
+    danger_v = st.sidebar.number_input("危険風速(m/s)", value=float(p.get("danger", 10.0)))
+    init_dirs = p.get("dirs", "南,南南西,南西,西南西,西,西北西,北西,北北西").split(",")
+    sel_dirs = []
     cols = st.sidebar.columns(2)
     for i, d in enumerate(ALL_DIRECTIONS):
         with cols[i % 2]:
-            if st.checkbox(d, value=(d in init_dirs), key=f"chk_{d}"):
-                selected_target_dirs.append(d)
+            if st.checkbox(d, value=(d in init_dirs), key=f"chk_{d}"): sel_dirs.append(d)
 
-    # 常にURLを最新状態に保つ
-    st.query_params.update({
-        "lat": st.session_state.lat, "lon": st.session_state.lon, 
-        "days": days, "danger": danger_v, "dirs": ",".join(selected_target_dirs),
-        "basho": st.session_state.last_basho
-    })
-
-    # --- F. グラフ描画 ---
-    img_base64 = get_cached_graph(st.session_state.lat, st.session_state.lon, days, danger_v, tuple(selected_target_dirs))
-    if img_base64:
-        with st.expander("📊 凡例・保存方法"):
-            st.markdown(f'<p style="font-size:14px;"><span style="color:skyblue;">■</span> 3-6m/s <span style="color:orange;">■</span> 6-10m/s <span style="color:crimson;">■</span> {danger_v}m/s以上</p>', unsafe_allow_html=True)
-        st.markdown(f'<div style="overflow-x: auto; background: white; border-radius: 8px; border: 1px solid #eee; margin-top: 5px;"><img src="data:image/png;base64,{img_base64}" style="height: 900px; max-width: none;"></div>', unsafe_allow_html=True)
+    # グラフ描画
+    img = get_cached_graph(st.session_state.lat, st.session_state.lon, days, danger_v, tuple(sel_dirs))
+    if img:
+        with st.expander("📊 凡例"):
+            st.write(f"■ 3-6m/s ■ 6-10m/s ■ {danger_v}m/s以上")
+        st.markdown(f'<div style="overflow-x: auto; background: white;"><img src="data:image/png;base64,{img}" style="height: 900px; max-width: none;"></div>', unsafe_allow_html=True)
 
 if __name__ == "__main__":
     main()
