@@ -44,7 +44,7 @@ def fetch_weather_data(lat, lon, days):
         data = requests.get(url).json()
         df = pd.DataFrame(data["hourly"])
         df['time'] = pd.to_datetime(df['time'])
-        # --- 復活：左端の3時間空白パディング ---
+        # 復活：左端の3時間空白パディング
         first_time = df['time'].iloc[0]
         padding = pd.DataFrame({
             'time': [first_time - timedelta(hours=i) for i in range(3, 0, -1)],
@@ -185,17 +185,23 @@ def main():
         "海潟(鹿児島県)":(31.539, 130.706), "磯海岸沖(鹿児島県)":(31.614, 130.577), "江口浜沖(鹿児島県)":(31.643, 130.322),
         "錦江湾(鹿児島県)":(31.590, 130.600), "地図で指定": (None, None)
     }
+    
+    # URLパラメータの取得
     p = st.query_params
+    
+    # セッションの初期化（URLがあれば優先）
     if 'lat' not in st.session_state:
         st.session_state.lat = float(p.get("lat", 31.337))
         st.session_state.lon = float(p.get("lon", 130.795))
         st.session_state.last_basho = p.get("basho", "高須沖(鹿児島県)")
 
+    # 地点選択UI
     basho = st.selectbox("地点を選択", list(coords_m.keys()), index=list(coords_m.keys()).index(st.session_state.last_basho) if st.session_state.last_basho in coords_m else 0)
     show_map = st.checkbox("地図表示", value=st.session_state.get('show_map_state', False))
     st.session_state.show_map_state = show_map
     st.markdown(f"<p style='font-size:14px; color:#1e88e5; font-weight:bold; margin-top:-10px;'>📍 現在：{st.session_state.last_basho} ({st.session_state.lat:.4f}, {st.session_state.lon:.4f})</p>", unsafe_allow_html=True)
 
+    # 地点変更の反映
     if st.session_state.last_basho != basho:
         if basho != "地図で指定":
             st.session_state.lat, st.session_state.lon = coords_m[basho]
@@ -205,11 +211,12 @@ def main():
 
     if show_map: show_location_map()
     
+    # サイドバー設定
     st.sidebar.header("表示設定")
     days = st.sidebar.slider("表示日数", 1, 8, int(p.get("days", 8)))
     danger_v = st.sidebar.number_input("危険風速(m/s)", value=float(p.get("danger", 10.0)))
     
-    # --- 復活：風向きの保持ロジック ---
+    # 風向き設定（URLから復元）
     init_dirs = p.get("dirs", "南,南南西,南西,西南西,西,西北西,北西,北北西").split(",")
     sel_dirs = []
     st.sidebar.markdown("---")
@@ -217,15 +224,18 @@ def main():
     cols = st.sidebar.columns(2)
     for i, d in enumerate(ALL_DIRECTIONS):
         with cols[i % 2]:
-            if st.checkbox(d, value=(d in init_dirs), key=f"chk_{d}"):
+            # keyを固定することで再描画を防ぐ
+            if st.sidebar.checkbox(d, value=(d in init_dirs), key=f"chk_{d}"):
                 sel_dirs.append(d)
 
-    # パラメータ同期
-    st.query_params.update({
-        "lat":st.session_state.lat, "lon":st.session_state.lon, "basho":st.session_state.last_basho,
-        "days":days, "danger":danger_v, "dirs":",".join(sel_dirs)
-    })
+    # パラメータの同期（グラフ描画前に行い、変更があった場合のみ更新する）
+    current_dirs_str = ",".join(sel_dirs)
+    if (p.get("days") != str(days) or 
+        p.get("danger") != str(danger_v) or 
+        p.get("dirs") != current_dirs_str):
+        st.query_params.update({"days": days, "danger": danger_v, "dirs": current_dirs_str})
 
+    # グラフ描画（ここが実行されるように再設計）
     img = get_cached_graph(st.session_state.lat, st.session_state.lon, days, danger_v, tuple(sel_dirs))
     if img:
         st.markdown(f'<div style="overflow-x: auto; background: white;"><img src="data:image/png;base64,{img}" style="height: 900px; max-width: none;"></div>', unsafe_allow_html=True)
