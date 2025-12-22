@@ -139,7 +139,7 @@ def get_cached_graph(lat, lon, days, danger_v, selected_dirs_tuple):
     
     # グラフの描画領域作成（3段：風速、気温、潮位）
     fig_w = max(10, days * 4.5)
-    fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(fig_w, 10), dpi=CONFIG["DPI"], gridspec_kw={'height_ratios': [4.2, 1.2, 1.0})
+    fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(fig_w, 10), dpi=CONFIG["DPI"], gridspec_kw={'height_ratios': [4.2, 1.2, 1.0]})
     plt.subplots_adjust(hspace=0.6)
 
     # 日本語の曜日フォーマッター
