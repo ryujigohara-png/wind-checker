@@ -59,9 +59,10 @@ def get_tide_level(times):
 
 def get_weather_info(code):
     if code is None: return "", "black"
-    if code <= 2: return "晴", "#FF8C00"
+    # --- 修正：色をより濃く変更 ---
+    if code <= 2: return "晴", "#FF4500"  # 濃いオレンジ(OrangeRed)
     if code <= 48: return "曇", "#696969"
-    if code <= 99: return "雨", "#0000FF"
+    if code <= 99: return "雨", "#00008B"  # 濃い青(DarkBlue)
     return "？", "black"
 
 def process_wind_data(df, target_dirs, danger_v):
@@ -135,7 +136,7 @@ def get_cached_graph(lat, lon, days, danger_v, selected_dirs_tuple):
     return base64.b64encode(buf.getvalue()).decode()
 
 # ======================================================================================
-# 4. 地図UI（復活！ 3x3マトリックス・セル）
+# 4. 地図UI（3x3マトリックス）
 # ======================================================================================
 def show_location_map():
     st.info("地図の中央地点のグラフを描画表示することができます。")
@@ -150,15 +151,12 @@ def show_location_map():
     m = folium.Map(location=[st.session_state.lat, st.session_state.lon], zoom_start=13)
     folium.Marker([st.session_state.lat, st.session_state.lon], icon=folium.Icon(color='red')).add_to(m)
 
-    # 3x3 セル構造の完全復活
     col_l1, col_m1, col_r1 = st.columns([1, 18, 1])
     with col_m1: st.markdown("<div class='guide-arrow-main'>▼</div>", unsafe_allow_html=True)
-    
     col_l2, col_m2, col_r2 = st.columns([1, 18, 1])
     with col_l2: st.markdown(f"<div style='line-height:{CONFIG['MAP_HEIGHT']}px; text-align:right;' class='guide-arrow-main'>▶</div>", unsafe_allow_html=True)
     with col_m2: map_out = st_folium(m, width=None, height=CONFIG["MAP_HEIGHT"], key=f"map_{st.session_state.lat}", returned_objects=["center"])
     with col_r2: st.markdown(f"<div style='line-height:{CONFIG['MAP_HEIGHT']}px; text-align:left;' class='guide-arrow-main'>◀</div>", unsafe_allow_html=True)
-        
     col_l3, col_m3, col_r3 = st.columns([1, 18, 1])
     with col_m3: st.markdown("<div class='guide-arrow-main'>▲</div>", unsafe_allow_html=True)
 
@@ -166,10 +164,12 @@ def show_location_map():
         if st.button("グラフ描画地点（地図中央）確定", use_container_width=True):
             st.session_state.lat, st.session_state.lon = map_out["center"]["lat"], map_out["center"]["lng"]
             st.session_state.last_basho = "地図で指定"
+            # 地図で確定した座標をURLにも保存
+            st.query_params.update({"lat": st.session_state.lat, "lon": st.session_state.lon, "basho": "地図で指定"})
             st.rerun()
 
 # ======================================================================================
-# 5. メインアプリ（文字消え対策・記憶機能強化）
+# 5. メインアプリ
 # ======================================================================================
 def main():
     setup_font()
@@ -181,32 +181,37 @@ def main():
         "錦江湾(鹿児島県)":(31.590, 130.600), "地図で指定": (None, None)
     }
 
-    # 記憶の復元
+    # --- 記憶機能の修正：起動時にURLパラメータがあればそれを優先してセッションを初期化 ---
     p = st.query_params
-    if 'lat' not in st.session_state: st.session_state.lat = float(p.get("lat", 31.337))
-    if 'lon' not in st.session_state: st.session_state.lon = float(p.get("lon", 130.795))
-    if 'last_basho' not in st.session_state: st.session_state.last_basho = p.get("basho", "高須沖(鹿児島県)")
+    if 'initialized' not in st.session_state:
+        st.session_state.lat = float(p.get("lat", 31.337))
+        st.session_state.lon = float(p.get("lon", 130.795))
+        st.session_state.last_basho = p.get("basho", "高須沖(鹿児島県)")
+        st.session_state.initialized = True
 
-    # スマホでの文字消えを完全に防ぐためのUI配置
-    # カラムを使わず、コンボボックスを画面幅いっぱいに表示
-    basho = st.selectbox("地点を選択してください", list(coords_master.keys()), index=list(coords_master.keys()).index(st.session_state.last_basho))
+    # 選択肢のインデックス取得
+    try:
+        current_idx = list(coords_master.keys()).index(st.session_state.last_basho)
+    except ValueError:
+        current_idx = 0
+
+    basho = st.selectbox("地点を選択してください", list(coords_master.keys()), index=current_idx)
     show_map = st.checkbox("地図表示", value=st.session_state.get('show_map_state', False))
     st.session_state.show_map_state = show_map
 
-    # 地点名と座標の確認表示
     st.markdown(f"<p style='font-size:14px; color:#1e88e5; font-weight:bold; margin-top:-10px;'>📍 現在：{st.session_state.last_basho} ({st.session_state.lat:.4f}, {st.session_state.lon:.4f})</p>", unsafe_allow_html=True)
 
     # 地点変更の反映
     if st.session_state.last_basho != basho:
-        if basho != "地図で指定":
+        if basho in coords_master and basho != "地図で指定":
             st.session_state.lat, st.session_state.lon = coords_master[basho]
         st.session_state.last_basho = basho
+        # URLパラメータを即時更新（これでブラウザを閉じても次回反映される）
         st.query_params.update({"lat": st.session_state.lat, "lon": st.session_state.lon, "basho": basho})
         st.rerun()
 
     if show_map: show_location_map()
     
-    # サイドバー
     st.sidebar.header("表示設定")
     days = st.sidebar.slider("表示日数", 1, 8, int(p.get("days", 8)))
     danger_v = st.sidebar.number_input("危険風速(m/s)", value=float(p.get("danger", 10.0)))
@@ -217,7 +222,9 @@ def main():
         with cols[i % 2]:
             if st.checkbox(d, value=(d in init_dirs), key=f"chk_{d}"): sel_dirs.append(d)
 
-    # グラフ描画
+    # 常にURLパラメータを同期
+    st.query_params.update({"lat":st.session_state.lat, "lon":st.session_state.lon, "days":days, "danger":danger_v, "dirs":",".join(sel_dirs), "basho":st.session_state.last_basho})
+
     img = get_cached_graph(st.session_state.lat, st.session_state.lon, days, danger_v, tuple(sel_dirs))
     if img:
         with st.expander("📊 凡例"):
