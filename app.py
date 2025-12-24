@@ -339,26 +339,18 @@ def save_location_to_browser(lat, lon, basho):
 # 起動時にブラウザの記録を参照し、地点に応じて座標を復元する初期化処理
 #==========================================================================================
 def initialize_session_from_browser():
-    # 1. まずはデフォルト値をセット（画面が真っ白になるのを防ぐ）
+    # 1. デフォルト値のセット
     if 'last_basho' not in st.session_state:
         st.session_state.last_basho = CONFIG["DEFAULT_BASHO"]
-    if 'lat' not in st.session_state:
-        st.session_state.lat = CONFIG["DEFAULT_LAT"]
-    if 'lon' not in st.session_state:
-        st.session_state.lon = CONFIG["DEFAULT_LON"]
-    if 'selectmap_lat' not in st.session_state:
-        st.session_state.selectmap_lat = CONFIG["DEFAULT_LAT"]
-    if 'selectmap_lon' not in st.session_state:
-        st.session_state.selectmap_lon = CONFIG["DEFAULT_LON"]
+    # ... (中略：他の変数の初期化) ...
 
-    # 2. JavaScriptでブラウザの localStorage を読み取り、Pythonの「隠し要素」に渡す
-    # これにより、URLを汚さず、リロードもせずに値を吸い上げます
-    st.markdown("""<style>.hide-element { display: none; }</style>""", unsafe_allow_html=True)
+    # 2. 隠し入力枠（ブラウザからの受取口）
+    # ※ label_visibility="collapsed" でユーザーには見えません
+    st.text_input("storage_sync_data", key="sync_box", label_visibility="collapsed")
     
-    # 隠し入力枠
-    sync_val = st.text_input("sync_box", key="sync_box", label_visibility="collapsed")
-    
-    js_code = """
+    # 3. 起動時のみブラウザから吸い上げるJS
+    if "already_read" not in st.session_state:
+        js_read = """
         <script>
             const data = {
                 basho: localStorage.getItem('wind_checker_basho'),
@@ -367,34 +359,26 @@ def initialize_session_from_browser():
                 slat: localStorage.getItem('selectmap_lat'),
                 slon: localStorage.getItem('selectmap_lon')
             };
-            // Streamlitの入力枠を探して、JSON形式で値を流し込む
-            const windowParent = window.parent;
-            const input = windowParent.document.querySelector('input[aria-label="sync_box"]');
+            const input = window.parent.document.querySelector('input[aria-label="storage_sync_data"]');
             if (input && data.basho) {
                 input.value = JSON.stringify(data);
                 input.dispatchEvent(new Event('input', { bubbles: true }));
-                input.dispatchEvent(new Event('change', { bubbles: true }));
             }
         </script>
-    """
-    components.html(js_code, height=0)
+        """
+        components.html(js_read, height=0)
+        st.session_state.already_read = True
 
-    # 3. 隠し入力枠にデータが入ってきたら、セッション変数を上書き（書き写し）
+    # 4. 隠し枠にデータがあれば変数に書き写す
     if st.session_state.sync_box:
         try:
-            saved_data = json.loads(st.session_state.sync_box)
-            st.session_state.last_basho = saved_data['basho']
-            st.session_state.lat = float(saved_data['lat'])
-            st.session_state.lon = float(saved_data['lon'])
-            st.session_state.selectmap_lat = float(saved_data['slat'])
-            st.session_state.selectmap_lon = float(saved_data['slon'])
-        except:
-            pass
-
-    # 4. 地図指定の時の最終書き換え
-    if st.session_state.last_basho == "地図で指定":
-        st.session_state.lat = st.session_state.selectmap_lat
-        st.session_state.lon = st.session_state.selectmap_lon
+            saved = json.loads(st.session_state.sync_box)
+            st.session_state.last_basho = saved['basho']
+            st.session_state.lat = float(saved['lat'])
+            st.session_state.lon = float(saved['lon'])
+            st.session_state.selectmap_lat = float(saved['slat'])
+            st.session_state.selectmap_lon = float(saved['slon'])
+        except: pass
         
 #==========================================================================================
 # 地点が変更された場合に更新・リロードするサブルーチン
