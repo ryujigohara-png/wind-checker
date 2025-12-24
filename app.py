@@ -310,7 +310,7 @@ def save_location_to_browser(lat, lon, basho):
             localStorage.setItem('wind_checker_lat', '{lat}');
             localStorage.setItem('wind_checker_lon', '{lon}');
             localStorage.setItem('wind_checker_basho', '{basho}');
-            console.log('✅ LocalStorage Updated [{exec_id}]: {basho}');
+            console.log('V LocalStorage Updated [{exec_id}]: {basho}');
         </script>
     """
     # keyパラメータを指定するのが最大のポイントです
