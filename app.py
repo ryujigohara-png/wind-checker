@@ -338,7 +338,7 @@ def save_location_to_browser(lat, lon, basho):
 # 起動時にブラウザの記録を参照し、地点に応じて座標を復元する初期化処理
 #==========================================================================================
 def initialize_session_from_browser():
-    # --- 1. まずデフォルト値をセット（空の状態を作らない） ---
+    # --- 1. まずセッション変数の枠組みをデフォルト値で作成 ---
     if 'last_basho' not in st.session_state:
         st.session_state.last_basho = CONFIG["DEFAULT_BASHO"]
     if 'lat' not in st.session_state:
@@ -350,27 +350,26 @@ def initialize_session_from_browser():
     if 'selectmap_lon' not in st.session_state:
         st.session_state.selectmap_lon = CONFIG["DEFAULT_LON"]
 
-    # --- 2. ブラウザが持っている記録（URLパラメータ）を直接変数に書き写す ---
-    # ブラウザの仕様上、URLに付与された値が「現在：」や「グラフ」の元データになります
+    # --- 2. ブラウザの記録（URLパラメータ）を Python の変数にそのまま書き写す ---
     params = st.query_params
     
-    # 地点名（basho）の復元
-    if 'basho' in params:
-        st.session_state.last_basho = params['basho']
+    # 地点名の復元：localStorage名 'wind_checker_basho' に合わせる
+    if 'wind_checker_basho' in params:
+        st.session_state.last_basho = params['wind_checker_basho']
     
-    # 座標の復元（地図専用枠 selectmap）
-    if 'sm_lat' in params:
-        st.session_state.selectmap_lat = float(params['sm_lat'])
-    if 'sm_lon' in params:
-        st.session_state.sm_lon = float(params['sm_lon'])
+    # 表示座標の復元：localStorage名 'wind_checker_lat/lon' に合わせる
+    if 'wind_checker_lat' in params:
+        st.session_state.lat = float(params['wind_checker_lat'])
+    if 'wind_checker_lon' in params:
+        st.session_state.lon = float(params['wind_checker_lon'])
         
-    # 現在の表示用座標（wind_checker_lat相当）の復元
-    if 'lat' in params:
-        st.session_state.lat = float(params['lat'])
-    if 'lon' in params:
-        st.session_state.lon = float(params['lon'])
+    # 地図専用座標の復元：localStorage名 'selectmap_lat/lon' に合わせる
+    if 'selectmap_lat' in params:
+        st.session_state.selectmap_lat = float(params['selectmap_lat'])
+    if 'selectmap_lon' in params:
+        st.session_state.selectmap_lon = float(params['selectmap_lon'])
 
-    # --- 3. 【ご提案のロジック】地点名が「地図で指定」のときは専用座標を優先 ---
+    # --- 3. 地点名が「地図で指定」の場合は、専用座標を優先してグラフを書き換える ---
     if st.session_state.last_basho == "地図で指定":
         st.session_state.lat = st.session_state.selectmap_lat
         st.session_state.lon = st.session_state.selectmap_lon
