@@ -333,69 +333,32 @@ def save_location_to_browser(lat, lon, basho):
     """
     components.html(js_code, height=0)
 
-def sync_from_browser_storage():
-    # URLに既に synced があるなら、吸い上げ済みなので即終了
-    if "synced" in st.query_params:
-        return
 
-    # ブラウザから値を読み取り、URLを書き換えるJS
-    js_code = """
-        <script>
-            const basho = localStorage.getItem('wind_checker_basho');
-            const lat = localStorage.getItem('wind_checker_lat');
-            const lon = localStorage.getItem('wind_checker_lon');
-            const sm_lat = localStorage.getItem('selectmap_lat');
-            const sm_lon = localStorage.getItem('selectmap_lon');
-
-            const params = new URLSearchParams(window.location.search);
-            if (basho) {
-                params.set('basho', basho);
-                params.set('lat', lat);
-                params.set('lon', lon);
-                params.set('sm_lat', sm_lat);
-                params.set('sm_lon', sm_lon);
-            }
-            params.set('synced', 'true');
-            // URLを更新してリロード
-            window.location.href = window.location.pathname + '?' + params.toString();
-        </script>
-    """
-    # 画面にJSを配置
-    components.html(js_code, height=0)
-    
-    # 読み込み中であることを表示して、リロードされるのを待つ
-    st.info("データを読み込み中です...")
-    st.stop()
-
+#============================================================
+# ブラウザの記録を参照し、地点に応じて座標を復元する初期化処理
+#============================================================
 def initialize_session_from_browser():
-    # --- URLパラメータから値を吸い上げる ---
-    if "synced" in st.query_params:
-        # 文字列として取得されるので、数値に変換する
-        try:
-            st.session_state.last_basho = st.query_params.get("basho", CONFIG["DEFAULT_BASHO"])
-            st.session_state.lat = float(st.query_params.get("lat", CONFIG["DEFAULT_LAT"]))
-            st.session_state.lon = float(st.query_params.get("lon", CONFIG["DEFAULT_LON"]))
-            st.session_state.selectmap_lat = float(st.query_params.get("sm_lat", CONFIG["DEFAULT_LAT"]))
-            st.session_state.selectmap_lon = float(st.query_params.get("sm_lon", CONFIG["DEFAULT_LON"]))
-        except (ValueError, TypeError):
-            # 変換に失敗した場合はデフォルト値
-            pass
-
-    # --- 未定義項目の補完 ---
+    # セッション状態の初期化（未定義の場合に CONFIG のデフォルト値をセット）
     if 'last_basho' not in st.session_state:
         st.session_state.last_basho = CONFIG["DEFAULT_BASHO"]
+        
     if 'lat' not in st.session_state:
         st.session_state.lat = CONFIG["DEFAULT_LAT"]
+        
     if 'lon' not in st.session_state:
         st.session_state.lon = CONFIG["DEFAULT_LON"]
+
+    # 「地図で指定」用の専用変数（selectmap）も CONFIG値で初期化
     if 'selectmap_lat' not in st.session_state:
         st.session_state.selectmap_lat = CONFIG["DEFAULT_LAT"]
+        
     if 'selectmap_lon' not in st.session_state:
         st.session_state.selectmap_lon = CONFIG["DEFAULT_LON"]
+
     if 'show_map_state' not in st.session_state:
         st.session_state.show_map_state = False
 
-    # --- 「地図で指定」の場合の座標復元 ---
+    # 地点名に応じた座標の切り替え
     if st.session_state.last_basho == "地図で指定":
         st.session_state.lat = st.session_state.selectmap_lat
         st.session_state.lon = st.session_state.selectmap_lon
@@ -425,21 +388,46 @@ def handle_location_change(basho, coords_master):
         time.sleep(0.1)
         st.rerun()
         
-#==========================================================================================
-# サイドバーの入力コントロールを生成するサブルーチン
-#==========================================================================================
+#============================================================
+# サイドメニュー表示
+#============================================================
 def show_sidebar_controls():
-    st.sidebar.header("表示設定")
-    days = st.sidebar.slider("表示日数", 1, 8, 8)
-    danger_v = st.sidebar.number_input("危険風速(m/s)", value=10.0)
-    init_dirs = ["南", "南南西", "南西", "西南西", "西", "西北西", "北西", "北北西"]
-    sel_dirs = []
-    cols = st.sidebar.columns(2)
-    for i, d in enumerate(ALL_DIRECTIONS):
-        with cols[i % 2]:
-            if st.checkbox(d, value=(d in init_dirs), key=f"chk_{d}"):
-                sel_dirs.append(d)
+    # --- 地図指定座標の確認・編集 ---
+    st.sidebar.markdown("### 📍 地図指定の座標設定")
+    
+    # サイドメニューで数値を直接入力・変更できるようにする
+    new_sm_lat = st.sidebar.number_input(
+        "指定緯度", 
+        value=float(st.session_state.selectmap_lat),
+        format="%.6f",
+        step=0.0001
+    )
+    new_sm_lon = st.sidebar.number_input(
+        "指定経度", 
+        value=float(st.session_state.selectmap_lon),
+        format="%.6f",
+        step=0.0001
+    )
+    
+    # 入力値が変わったら専用変数を更新
+    if (new_sm_lat != st.session_state.selectmap_lat) or (new_sm_lon != st.session_state.selectmap_lon):
+        st.session_state.selectmap_lat = new_sm_lat
+        st.session_state.selectmap_lon = new_sm_lon
+        # 「地図で指定」選択中なら、即座に現在の座標(lat/lon)にも反映
+        if st.session_state.last_basho == "地図で指定":
+            st.session_state.lat = new_sm_lat
+            st.session_state.lon = new_sm_lon
+
+    st.sidebar.divider()
+
+    # --- 既存のコントロール（日数、風速など） ---
+    # ※ここにお使いの既存コード（days = ... 等）を続けてください
+    days = st.sidebar.slider("表示日数", 1, 7, 3)
+    danger_v = st.sidebar.number_input("注意風速(m/s)", 0.0, 20.0, 5.0)
+    sel_dirs = st.sidebar.multiselect("注意風向", ["N","NE","E","SE","S","SW","W","NW"], ["NW","N","NE"])
+
     return days, danger_v, sel_dirs
+    
 
 #==========================================================================================
 # グラフ画像と凡例をメイン画面に描画するサブルーチン
@@ -456,9 +444,9 @@ def display_graph_section(lat, lon, days, danger_v, sel_dirs):
 #==========================================================================================
 def main():
     #============================================================
-    # ブラウザのLocalStorageから値を吸い上げる（初回起動時のみ実行）
+    # ページ設定（一番最初に記述）
     #============================================================
-    sync_from_browser_storage()
+    st.set_page_config(page_title="高須風チェッカー", layout="wide")
 
     #============================================================
     # ブラウザの記録を参照し、地点に応じて座標を復元する初期化処理
@@ -488,7 +476,6 @@ def main():
 
     #============================================================
     # 気象データの取得とグラフ描画（現在の座標 st.session_state.lat/lon を使用）
-    # ここに気象データ取得・グラフ表示の関数を記述
     #============================================================
     display_current_location_info()
 
@@ -499,12 +486,12 @@ def main():
         show_location_map()
 
     #============================================================
-    # サイドメニュー表示
+    # サイドメニュー表示（ここで座標も調整可能）
     #============================================================
     days, danger_v, sel_dirs = show_sidebar_controls()
 
     #============================================================
-    # グラフ描画セクション（ここが重い）
+    # グラフ描画セクション
     #============================================================
     display_graph_section(st.session_state.lat, st.session_state.lon, days, danger_v, sel_dirs)
 
