@@ -333,14 +333,12 @@ def save_location_to_browser(lat, lon, basho):
     """
     components.html(js_code, height=0)
 
-#==========================================================================================
-# 起動時に一度だけブラウザの LocalStorage から値を吸い上げる
-#==========================================================================================
 def sync_from_browser_storage():
-    # すでにURLパラメータがある場合は、読み込み済みと判断してスキップ
+    # URLに既に synced があるなら、吸い上げ済みなので即終了
     if "synced" in st.query_params:
         return
 
+    # ブラウザから値を読み取り、URLを書き換えるJS
     js_code = """
         <script>
             const basho = localStorage.getItem('wind_checker_basho');
@@ -349,35 +347,41 @@ def sync_from_browser_storage():
             const sm_lat = localStorage.getItem('selectmap_lat');
             const sm_lon = localStorage.getItem('selectmap_lon');
 
+            const params = new URLSearchParams(window.location.search);
             if (basho) {
-                const params = new URLSearchParams(window.location.search);
                 params.set('basho', basho);
                 params.set('lat', lat);
                 params.set('lon', lon);
                 params.set('sm_lat', sm_lat);
                 params.set('sm_lon', sm_lon);
-                params.set('synced', 'true');
-                // URLに値をのせてリロード（一度だけ実行される）
-                window.location.search = params.toString();
             }
+            params.set('synced', 'true');
+            // URLを更新してリロード
+            window.location.href = window.location.pathname + '?' + params.toString();
         </script>
     """
+    # 画面にJSを配置
     components.html(js_code, height=0)
-    st.stop() # JSが実行されるまで一旦停止
+    
+    # 読み込み中であることを表示して、リロードされるのを待つ
+    st.info("データを読み込み中です...")
+    st.stop()
 
-#==========================================================================================
-# 起動時にブラウザの記録を参照し、地点に応じて座標を復元する初期化処理
-#==========================================================================================
 def initialize_session_from_browser():
-    # --- URLパラメータ（ブラウザからの吸い上げ値）があれば優先採用 ---
+    # --- URLパラメータから値を吸い上げる ---
     if "synced" in st.query_params:
-        st.session_state.last_basho = st.query_params.get("basho", CONFIG["DEFAULT_BASHO"])
-        st.session_state.lat = float(st.query_params.get("lat", CONFIG["DEFAULT_LAT"]))
-        st.session_state.lon = float(st.query_params.get("lon", CONFIG["DEFAULT_LON"]))
-        st.session_state.selectmap_lat = float(st.query_params.get("sm_lat", CONFIG["DEFAULT_LAT"]))
-        st.session_state.selectmap_lon = float(st.query_params.get("sm_lon", CONFIG["DEFAULT_LON"]))
+        # 文字列として取得されるので、数値に変換する
+        try:
+            st.session_state.last_basho = st.query_params.get("basho", CONFIG["DEFAULT_BASHO"])
+            st.session_state.lat = float(st.query_params.get("lat", CONFIG["DEFAULT_LAT"]))
+            st.session_state.lon = float(st.query_params.get("lon", CONFIG["DEFAULT_LON"]))
+            st.session_state.selectmap_lat = float(st.query_params.get("sm_lat", CONFIG["DEFAULT_LAT"]))
+            st.session_state.selectmap_lon = float(st.query_params.get("sm_lon", CONFIG["DEFAULT_LON"]))
+        except (ValueError, TypeError):
+            # 変換に失敗した場合はデフォルト値
+            pass
 
-    # --- 基本項目の初期化（値が空の場合のみ CONFIG を使う） ---
+    # --- 未定義項目の補完 ---
     if 'last_basho' not in st.session_state:
         st.session_state.last_basho = CONFIG["DEFAULT_BASHO"]
     if 'lat' not in st.session_state:
@@ -391,7 +395,7 @@ def initialize_session_from_browser():
     if 'show_map_state' not in st.session_state:
         st.session_state.show_map_state = False
 
-    # --- 【提案ロジック】地点名に応じた座標の最終切り替え ---
+    # --- 「地図で指定」の場合の座標復元 ---
     if st.session_state.last_basho == "地図で指定":
         st.session_state.lat = st.session_state.selectmap_lat
         st.session_state.lon = st.session_state.selectmap_lon
