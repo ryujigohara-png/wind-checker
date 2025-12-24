@@ -178,13 +178,12 @@ def plot_temperature_graph(ax2, df):
     ax2.set_ylabel('気温(℃)')
 
 #==========================================================================================
-# 潮位グラフを描画するサブルーチン（比率0の場合も枠は生成されるため制御）
+# 潮位グラフを描画するサブルーチン
 #==========================================================================================
 def plot_tide_graph(ax3, df):
-    if CONFIG["HEIGHT_RATIOS"][2] > 0.1:
-        ax3.plot(df['time'], df['tide_level'], color='royalblue', linewidth=2)
-        ax3.fill_between(df['time'], df['tide_level'], -120, color='royalblue', alpha=0.2)
-        ax3.set_ylabel('潮位')
+    ax3.plot(df['time'], df['tide_level'], color='royalblue', linewidth=2)
+    ax3.fill_between(df['time'], df['tide_level'], -120, color='royalblue', alpha=0.2)
+    ax3.set_ylabel('潮位')
     ax3.set_yticks([])
 
 #==========================================================================================
@@ -255,9 +254,7 @@ def show_location_map():
 
     if map_out and map_out.get("center"):
         if st.button("グラフ描画地点（地図中央）確定", use_container_width=True):
-            st.session_state.lat, st.session_state.lon = map_out["center"]["lat"], map_out["center"]["lng"]
-            st.session_state.last_basho = "地図で指定"
-            st.query_params.update({"lat": st.session_state.lat, "lon": st.session_state.lon, "basho": "地図で指定"})
+            save_location_to_browser(map_out["center"]["lat"], map_out["center"]["lng"], "地図で指定")
             st.rerun()
 
 #==========================================================================================
@@ -294,34 +291,49 @@ def display_current_location_info():
     st.markdown(f"<p style='{style}'>{text}</p>", unsafe_allow_html=True)
 
 #==========================================================================================
-# アプリ起動時にURLパラメータから初期設定を復元するサブルーチン
+# 場所、緯度、経度をブラウザに記録（セッションに保存）するサブルーチン
 #==========================================================================================
-def initialize_session_from_url(p):
+def save_location_to_browser(lat, lon, basho):
+    st.session_state.lat = lat
+    st.session_state.lon = lon
+    st.session_state.last_basho = basho
+
+#==========================================================================================
+# 起動時にブラウザから情報を読み込み初期表示するサブルーチン
+#==========================================================================================
+def initialize_session_from_browser():
     if 'initialized' not in st.session_state:
-        st.session_state.lat = float(p.get("lat", CONFIG["DEFAULT_LAT"]))
-        st.session_state.lon = float(p.get("lon", CONFIG["DEFAULT_LON"]))
-        st.session_state.last_basho = p.get("basho", CONFIG["DEFAULT_BASHO"])
+        # ブラウザ（セッション）に記憶がなければデフォルト、あればそれを使用
+        st.session_state.lat = st.session_state.get('lat', CONFIG["DEFAULT_LAT"])
+        st.session_state.lon = st.session_state.get('lon', CONFIG["DEFAULT_LON"])
+        st.session_state.last_basho = st.session_state.get('last_basho', CONFIG["DEFAULT_BASHO"])
         st.session_state.initialized = True
+        st.session_state.first_run = True # 起動直後判定フラグ
 
 #==========================================================================================
 # 地点が変更された場合に更新・リロードするサブルーチン
 #==========================================================================================
 def handle_location_change(basho, coords_master):
     if st.session_state.last_basho != basho:
+        # コンボボックス変更時に「地図表示」をオフにする（起動後最初の変更時などの制御）
+        st.session_state.show_map_state = False
+        
         if basho in coords_master and basho != "地図で指定":
-            st.session_state.lat, st.session_state.lon = coords_master[basho]
-        st.session_state.last_basho = basho
-        st.query_params.update({"lat": st.session_state.lat, "lon": st.session_state.lon, "basho": basho})
+            lat, lon = coords_master[basho]
+            save_location_to_browser(lat, lon, basho)
+        else:
+            st.session_state.last_basho = basho
+            
         st.rerun()
 
 #==========================================================================================
 # サイドバーの入力コントロールを生成するサブルーチン
 #==========================================================================================
-def show_sidebar_controls(p):
+def show_sidebar_controls():
     st.sidebar.header("表示設定")
-    days = st.sidebar.slider("表示日数", 1, 8, int(p.get("days", 8)))
-    danger_v = st.sidebar.number_input("危険風速(m/s)", value=float(p.get("danger", 10.0)))
-    init_dirs = p.get("dirs", "南,南南西,南西,西南西,西,西北西,北西,北北西").split(",")
+    days = st.sidebar.slider("表示日数", 1, 8, 8)
+    danger_v = st.sidebar.number_input("危険風速(m/s)", value=10.0)
+    init_dirs = ["南", "南南西", "南西", "西南西", "西", "西北西", "北西", "北北西"]
     sel_dirs = []
     cols = st.sidebar.columns(2)
     for i, d in enumerate(ALL_DIRECTIONS):
@@ -348,8 +360,7 @@ def main():
     st.markdown(f'<h1 style="font-size:{CONFIG["TITLE_SIZE"]}px; margin-bottom: 5px;">⛵ 高須風チェッカー</h1>', unsafe_allow_html=True)
     
     coords_master = get_location_master()
-    p = st.query_params
-    initialize_session_from_url(p)
+    initialize_session_from_browser()
 
     basho, show_map = show_location_selector(coords_master)
     display_current_location_info()
@@ -359,12 +370,7 @@ def main():
     if show_map:
         show_location_map()
     
-    days, danger_v, sel_dirs = show_sidebar_controls(p)
-
-    st.query_params.update({
-        "lat": st.session_state.lat, "lon": st.session_state.lon, 
-        "days": days, "danger": danger_v, "dirs": ",".join(sel_dirs), "basho": st.session_state.last_basho
-    })
+    days, danger_v, sel_dirs = show_sidebar_controls()
 
     display_graph_section(st.session_state.lat, st.session_state.lon, days, danger_v, sel_dirs)
 
