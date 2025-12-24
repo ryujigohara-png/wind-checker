@@ -291,12 +291,23 @@ def display_current_location_info():
     st.markdown(f"<p style='{style}'>{text}</p>", unsafe_allow_html=True)
 
 #==========================================================================================
-# 場所、緯度、経度をブラウザに記録（セッションに保存）するサブルーチン
+# 場所、緯度、経度をブラウザのローカルストレージに記録するサブルーチン
 #==========================================================================================
 def save_location_to_browser(lat, lon, basho):
+    # 1. Python側のセッション状態を更新
     st.session_state.lat = lat
     st.session_state.lon = lon
     st.session_state.last_basho = basho
+
+    # 2. ブラウザのローカルストレージを直接書き換えるJavaScript
+    js_code = f"""
+        <script>
+            localStorage.setItem('wind_checker_lat', '{lat}');
+            localStorage.setItem('wind_checker_lon', '{lon}');
+            localStorage.setItem('wind_checker_basho', '{basho}');
+        </script>
+    """
+    st.components.v1.html(js_code, height=0)
 
 #==========================================================================================
 # 起動時にブラウザから情報を読み込み初期表示するサブルーチン
@@ -322,7 +333,7 @@ def handle_location_change(basho, coords_master):
         else:
             new_lat, new_lon = st.session_state.lat, st.session_state.lon
 
-        # ブラウザのセッション情報を更新
+        # ブラウザのローカルストレージとセッションを同時に更新
         save_location_to_browser(new_lat, new_lon, basho)
         
         # 地図表示フラグは現在のON/OFF状態を維持したまま再描画
