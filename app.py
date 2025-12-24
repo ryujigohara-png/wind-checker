@@ -44,11 +44,16 @@ ALL_DIRECTIONS = ["北", "北北東", "北東", "東北東", "東", "東南東",
 def setup_font():
     font_url = "https://github.com/google/fonts/raw/main/ofl/notosansjp/NotoSansJP%5Bwght%5D.ttf"
     font_path = "NotoSansJP.ttf"
-    if not os.path.exists(font_path):
-        urllib.request.urlretrieve(font_url, font_path)
-    fm.fontManager.addfont(font_path)
-    plt.rc('font', family='Noto Sans JP', size=CONFIG["GRAPH_FONT_SIZE"])
-
+    try:
+        if not os.path.exists(font_path):
+            # タイムアウトを短めに設定してダウンロードを試みる
+            urllib.request.urlretrieve(font_url, font_path)
+        fm.fontManager.addfont(font_path)
+        plt.rc('font', family='Noto Sans JP', size=CONFIG["GRAPH_FONT_SIZE"])
+    except Exception:
+        # ダウンロード失敗時はエラーにせず、システムの標準フォントで代用
+        plt.rc('font', family='sans-serif', size=CONFIG["GRAPH_FONT_SIZE"])
+        
 #==========================================================================================
 # Open-Meteo APIから気象データを取得するサブルーチン
 #==========================================================================================
@@ -295,26 +300,25 @@ def display_current_location_info():
 # 場所、緯度、経度をブラウザのローカルストレージに記録するサブルーチン
 #==========================================================================================
 def save_location_to_browser(lat, lon, basho):
-    # 1. Python側の状態を即時更新
+    # Python側の状態を更新
     st.session_state.lat = lat
     st.session_state.lon = lon
     st.session_state.last_basho = basho
 
-    # 2. JavaScriptの作成（一意にするためのコメントをJS内に入れる）
+    # JavaScriptの作成（実行タイミングを識別するためのタイムスタンプを入れる）
     import time
-    now = time.time()
     js_code = f"""
         <script>
-            // {now}
+            // {time.time()}
             localStorage.setItem('wind_checker_lat', '{lat}');
             localStorage.setItem('wind_checker_lon', '{lon}');
             localStorage.setItem('wind_checker_basho', '{basho}');
             console.log('LocalStorage Updated: {basho}');
         </script>
     """
-    # 3. 画面の最上部にJSを送り込む
-    # keyを指定せず、直接components.htmlを呼び出します
+    # 実行。components.html が import されている前提です
     components.html(js_code, height=0)
+    
 
 #==========================================================================================
 # 起動時にブラウザから情報を読み込み初期表示するサブルーチン
@@ -333,18 +337,18 @@ def initialize_session_from_browser():
 #==========================================================================================
 def handle_location_change(basho, coords_master):
     if st.session_state.last_basho != basho:
-        # 新しい座標を決定
+        # 地図表示状態などは維持
         if basho in coords_master and basho != "地図で指定":
             new_lat, new_lon = coords_master[basho]
         else:
             new_lat, new_lon = st.session_state.lat, st.session_state.lon
 
-        # ストレージに保存
+        # ブラウザストレージに保存命令を送信
         save_location_to_browser(new_lat, new_lon, basho)
         
-        # rerun()の前に、少しだけ待機（JSがブラウザに届く確率を最大化）
+        # rerunによる中断の前に、ブラウザがパケットを受け取る時間を0.1秒だけ稼ぐ
         import time
-        time.sleep(0.1) 
+        time.sleep(0.1)
         
         st.rerun()
 
