@@ -12,6 +12,7 @@ from datetime import datetime, timedelta, timezone
 import matplotlib.dates as mdates
 from streamlit_folium import st_folium
 import folium
+import streamlit.components.v1 as components # これを追加
 
 # ======================================================================================
 # 1. 定数・基本設定 (CONFIG)
@@ -291,7 +292,7 @@ def display_current_location_info():
     st.markdown(f"<p style='{style}'>{text}</p>", unsafe_allow_html=True)
 
 #==========================================================================================
-# 場所、緯度、経度をブラウザのローカルストレージに記録するサブルーチン (決定版)
+# 場所、緯度、経度をブラウザのローカルストレージに記録するサブルーチン
 #==========================================================================================
 def save_location_to_browser(lat, lon, basho):
     # 1. Python側の状態を更新
@@ -299,23 +300,21 @@ def save_location_to_browser(lat, lon, basho):
     st.session_state.lon = lon
     st.session_state.last_basho = basho
 
-    # 2. 実行用の一意のIDを作成（これがないとブラウザが実行をスキップする）
+    # 2. 実行用の一意のIDを作成（浮動小数点を避けるためintに変換）
     import time
-    exec_id = time.time()
+    exec_id = int(time.time() * 1000)
     
     # 3. JavaScriptの作成
-    # key={exec_id} を st.components に渡すことで、毎回「新しい要素」として強制実行させる
     js_code = f"""
         <script>
             localStorage.setItem('wind_checker_lat', '{lat}');
             localStorage.setItem('wind_checker_lon', '{lon}');
             localStorage.setItem('wind_checker_basho', '{basho}');
-            console.log('V LocalStorage Updated [{exec_id}]: {basho}');
+            console.log('LocalStorage Updated: {basho}');
         </script>
     """
-    # keyパラメータを指定するのが最大のポイントです
-    st.components.v1.html(js_code, height=0, key=f"save_js_{exec_id}")
-
+    # 修正：st.components.v1.html ではなく components.html を使用
+    components.html(js_code, height=0, key=f"save_js_{exec_id}")
 
 #==========================================================================================
 # 起動時にブラウザから情報を読み込み初期表示するサブルーチン
@@ -334,23 +333,21 @@ def initialize_session_from_browser():
 #==========================================================================================
 def handle_location_change(basho, coords_master):
     if st.session_state.last_basho != basho:
+        # 地図表示の状態を維持（前回の要望通り、ここではFalseにしない）
+        
+        # 新しい座標の決定
         if basho in coords_master and basho != "地図で指定":
-            # 「地図で指定」が選ばれた場合は現在の設定座標
             new_lat, new_lon = coords_master[basho]
         else:
-            # プリセット地点が選ばれた場合はその座標を取得し、
+            # 「地図で指定」の場合は、現在のセッション値を維持
             new_lat, new_lon = st.session_state.lat, st.session_state.lon
 
-        # ブラウザのローカルストレージとセッションを同時に更新
+        # ブラウザストレージに保存（JS実行）
         save_location_to_browser(new_lat, new_lon, basho)
         
-        # セッションの状態を確定させてからリロード
-        # st.session_state.last_basho = basho
-        
-        # 地図表示フラグは現在のON/OFF状態を維持したまま再描画
-        # ⚠️ st.rerun() をあえて外してみるか、
-        # もし画面が更新されないなら下記のように最後に1回だけ実行します
+        # rerunすることで、新しい地点に基づいたグラフ描画サイクルに入る
         st.rerun()
+
 
 #==========================================================================================
 # サイドバーの入力コントロールを生成するサブルーチン
