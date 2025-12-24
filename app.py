@@ -15,7 +15,7 @@ import folium
 import streamlit.components.v1 as components
 
 # ======================================================================================
-# 1. 定数・基本設定（CONFIGを元の仕様に戻しました）
+# 1. 定数・基本設定 (仕様通りのCONFIG)
 # ======================================================================================
 CONFIG = {
     "TITLE_SIZE": 22,
@@ -45,7 +45,7 @@ def fetch_weather_data(lat, lon, days):
         data = requests.get(url).json()
         df = pd.DataFrame(data["hourly"])
         df['time'] = pd.to_datetime(df['time'])
-        # 【仕様】左端の3時間空白パディングを維持
+        # 【仕様】3時間空白パディング
         first_time = df['time'].iloc[0]
         padding = pd.DataFrame({
             'time': [first_time - timedelta(hours=i) for i in range(3, 0, -1)],
@@ -58,7 +58,7 @@ def get_weather_info(code):
     if code is None: return "", "black"
     if code <= 2: return "晴", "#FF4500" # 【仕様】濃いオレンジ
     if code <= 48: return "曇", "#696969"
-    if code <= 99: return "雨", "#00008B" # 【仕様】濃いブルー
+    if code <= 99: return "雨", "#00008B" # 【仕様】濃い青
     return "？", "black"
 
 def process_wind_data(df, target_dirs, danger_v):
@@ -83,7 +83,6 @@ def process_wind_data(df, target_dirs, danger_v):
             if 3 <= speed < 6: return "skyblue"
         return "#D3D3D3"
     df['color'] = df.apply(judge, axis=1)
-    # 簡易潮位計算
     base_full_tide = datetime(2025, 1, 1, 6, 0)
     df['tide_level'] = df['time'].apply(lambda t: 100 * np.cos(2 * np.pi * (t - base_full_tide).total_seconds() / 3600 / 12.42) if pd.notna(t) else None)
     return df
@@ -115,7 +114,6 @@ def get_cached_graph(lat, lon, days, danger_v, selected_dirs_tuple):
     ax1.set_ylim(0, y_limit)
     text_offset_weather = y_limit * 0.20 
     text_offset_wind = y_limit * 0.02
-
     now_jst = datetime.now(timezone(timedelta(hours=9))).replace(tzinfo=None)
     for ax in [ax1, ax2, ax3]:
         ax.axvline(now_jst, color='blue', linestyle='-', alpha=0.6, linewidth=2.5)
@@ -147,7 +145,6 @@ def show_location_map():
     st.info("地図の中央地点を確定できます。")
     m = folium.Map(location=[st.session_state.lat, st.session_state.lon], zoom_start=13)
     folium.Marker([st.session_state.lat, st.session_state.lon], icon=folium.Icon(color='red')).add_to(m)
-    
     col_l1, col_m1, col_r1 = st.columns([1, 18, 1])
     with col_m1: st.markdown("<div style='color:crimson; font-size:24px; font-weight:bold; text-align:center;'>▼</div>", unsafe_allow_html=True)
     col_l2, col_m2, col_r2 = st.columns([1, 18, 1])
@@ -161,7 +158,7 @@ def show_location_map():
         if st.button("グラフ描画地点（地図中央）確定", use_container_width=True):
             st.session_state.lat, st.session_state.lon = map_out["center"]["lat"], map_out["center"]["lng"]
             st.session_state.last_basho = "地図で指定"
-            # 地図で指定した場合も記憶させる
+            # 地図座標も記憶
             js_save = f"""<script>localStorage.setItem('wind_checker_basho', '地図で指定'); localStorage.setItem('wind_checker_lat', '{st.session_state.lat}'); localStorage.setItem('wind_checker_lon', '{st.session_state.lon}');</script>"""
             components.html(js_save, height=0)
             st.rerun()
@@ -179,72 +176,64 @@ def main():
         "錦江湾(鹿児島県)":(31.590, 130.600), "地図で指定": (None, None)
     }
 
-    # --- 記憶の自動同期ロジック ---
-    if "loaded" not in st.session_state:
+    # --- 端末記憶の自動読み取り ---
+    # ブラウザのlocalStorageに値があればURLパラメータを書き換えてリロード（初回のみ）
+    if "init_loaded" not in st.session_state:
         components.html("""
             <script>
             const b = localStorage.getItem('wind_checker_basho');
-            const lat = localStorage.getItem('wind_checker_lat');
-            const lon = localStorage.getItem('wind_checker_lon');
             const url = new URL(window.location.href);
             if (b && url.searchParams.get('basho') !== b) {
                 url.searchParams.set('basho', b);
-                if(lat) url.searchParams.set('lat', lat);
-                if(lon) url.searchParams.set('lon', lon);
                 window.location.href = url.href;
             }
             </script>
         """, height=0)
-        st.session_state.loaded = True
+        st.session_state.init_loaded = True
 
-    # 読み込み
-    p = st.query_params
-    q_basho = p.get("basho", "高須沖(鹿児島県)")
+    # URLパラメータから地点を決定
+    q_basho = st.query_params.get("basho", "高須沖(鹿児島県)")
     if q_basho not in coords_m: q_basho = "高須沖(鹿児島県)"
     
-    st.session_state.last_basho = q_basho
-    if q_basho == "地図で指定" and "lat" in p:
-        st.session_state.lat, st.session_state.lon = float(p["lat"]), float(p["lon"])
-    else:
+    # セッション状態をURLに同期
+    if 'last_basho' not in st.session_state or st.session_state.last_basho != q_basho:
+        st.session_state.last_basho = q_basho
         st.session_state.lat, st.session_state.lon = coords_m[q_basho]
 
-    # UI
+    # UIコンポーネント
     basho = st.selectbox("地点を選択", list(coords_m.keys()), index=list(coords_m.keys()).index(st.session_state.last_basho))
     show_map = st.checkbox("地図表示", value=st.session_state.get('show_map_state', False))
     st.session_state.show_map_state = show_map
     
-    # 【仕様】現在地点を太字で表示
     st.markdown(f"📍 現在：**{st.session_state.last_basho}** ({st.session_state.lat:.4f}, {st.session_state.lon:.4f})")
 
+    # 地点変更時の処理
     if basho != st.session_state.last_basho:
-        st.session_state.last_basho = basho
-        target_lat, target_lon = (st.session_state.lat, st.session_state.lon) if basho == "地図で指定" else coords_m[basho]
+        lat, lon = coords_m[basho]
         components.html(f"""
             <script>
             localStorage.setItem('wind_checker_basho', '{basho}');
-            localStorage.setItem('wind_checker_lat', '{target_lat}');
-            localStorage.setItem('wind_checker_lon', '{target_lon}');
             const url = new URL(window.location.href);
             url.searchParams.set('basho', '{basho}');
-            url.searchParams.set('lat', '{target_lat}');
-            url.searchParams.set('lon', '{target_lon}');
             window.location.href = url.href;
             </script>
         """, height=0)
-        st.stop()
+        st.stop() # JSのリロードを待つ
 
-    if show_map: show_location_map()
+    if show_map:
+        show_location_map()
     
     # サイドバー
     st.sidebar.header("表示設定")
     days = st.sidebar.slider("表示日数", 1, 8, 8)
     danger_v = st.sidebar.number_input("危険風速(m/s)", value=10.0)
     st.sidebar.header("乗れる風向")
-    sel_dirs = [d for d in ALL_DIRECTIONS if st.sidebar.checkbox(d, value=(d in ["南", "南西", "西", "北西"]), key=d)]
+    sel_dirs = [d for d in ALL_DIRECTIONS if st.sidebar.checkbox(d, value=(d in ["南", "南西", "西", "北西"]), key=f"sidebar_{d}")]
 
+    # グラフ描画
     img = get_cached_graph(st.session_state.lat, st.session_state.lon, days, danger_v, tuple(sel_dirs))
     if img:
-        st.markdown(f'<div style="overflow-x: auto;"><img src="data:image/png;base64,{img}" style="height: 900px; max-width: none;"></div>', unsafe_allow_html=True)
+        st.markdown(f'<div style="overflow-x: auto; background: white;"><img src="data:image/png;base64,{img}" style="height: 900px; max-width: none;"></div>', unsafe_allow_html=True)
 
 if __name__ == "__main__":
     main()
