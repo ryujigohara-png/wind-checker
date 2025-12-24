@@ -334,11 +334,11 @@ def save_location_to_browser(lat, lon, basho):
     components.html(js_code, height=0)
 
 
-#============================================================
-# ブラウザの記録を参照し、地点に応じて座標を復元する初期化処理
-#============================================================
+#==========================================================================================
+# 起動時にブラウザの記録を参照し、地点に応じて座標を復元する初期化処理
+#==========================================================================================
 def initialize_session_from_browser():
-    # --- A. まずはセッション変数の枠組みをデフォルト値で作成 ---
+    # --- 1. まずデフォルト値をセット（空の状態を作らない） ---
     if 'last_basho' not in st.session_state:
         st.session_state.last_basho = CONFIG["DEFAULT_BASHO"]
     if 'lat' not in st.session_state:
@@ -349,47 +349,28 @@ def initialize_session_from_browser():
         st.session_state.selectmap_lat = CONFIG["DEFAULT_LAT"]
     if 'selectmap_lon' not in st.session_state:
         st.session_state.selectmap_lon = CONFIG["DEFAULT_LON"]
-    if 'show_map_state' not in st.session_state:
-        st.session_state.show_map_state = False
 
-    # --- B. ブラウザの LocalStorage から値を吸い上げる (立ち上げ時のみ実行) ---
-    # Python側が「同期済み」でない場合、JSを実行してURLパラメータ経由で値を戻す
-    if "synced" not in st.session_state:
-        import streamlit.components.v1 as components
-        js_code = """
-            <script>
-                const basho = localStorage.getItem('wind_checker_basho');
-                const lat = localStorage.getItem('wind_checker_lat');
-                const lon = localStorage.getItem('wind_checker_lon');
-                const sm_lat = localStorage.getItem('selectmap_lat');
-                const sm_lon = localStorage.getItem('selectmap_lon');
-
-                if (basho) {
-                    const params = new URLSearchParams(window.location.search);
-                    params.set('b', basho);
-                    params.set('la', lat);
-                    params.set('lo', lon);
-                    params.set('sla', sm_lat);
-                    params.set('slo', sm_lon);
-                    params.set('s', '1'); // synced flag
-                    window.location.search = params.toString();
-                }
-            </script>
-        """
-        components.html(js_code, height=0)
-        st.session_state.synced = True # JSを送った印。一度送ったらリロードされるのを待つ
-        st.stop() # リロードを走らせるために一旦停止
-
-    # --- C. URLパラメータに値が戻ってきたら、セッション変数を上書き ---
+    # --- 2. ブラウザが持っている記録（URLパラメータ）を直接変数に書き写す ---
+    # ブラウザの仕様上、URLに付与された値が「現在：」や「グラフ」の元データになります
     params = st.query_params
-    if "s" in params:
-        st.session_state.last_basho = params.get("b", CONFIG["DEFAULT_BASHO"])
-        st.session_state.lat = float(params.get("la", CONFIG["DEFAULT_LAT"]))
-        st.session_state.lon = float(params.get("lo", CONFIG["DEFAULT_LON"]))
-        st.session_state.selectmap_lat = float(params.get("sla", CONFIG["DEFAULT_LAT"]))
-        st.session_state.selectmap_lon = float(params.get("slo", CONFIG["DEFAULT_LON"]))
+    
+    # 地点名（basho）の復元
+    if 'basho' in params:
+        st.session_state.last_basho = params['basho']
+    
+    # 座標の復元（地図専用枠 selectmap）
+    if 'sm_lat' in params:
+        st.session_state.selectmap_lat = float(params['sm_lat'])
+    if 'sm_lon' in params:
+        st.session_state.sm_lon = float(params['sm_lon'])
+        
+    # 現在の表示用座標（wind_checker_lat相当）の復元
+    if 'lat' in params:
+        st.session_state.lat = float(params['lat'])
+    if 'lon' in params:
+        st.session_state.lon = float(params['lon'])
 
-    # --- D. 【ご提案のロジック】地点名に応じた座標の切り替え ---
+    # --- 3. 【ご提案のロジック】地点名が「地図で指定」のときは専用座標を優先 ---
     if st.session_state.last_basho == "地図で指定":
         st.session_state.lat = st.session_state.selectmap_lat
         st.session_state.lon = st.session_state.selectmap_lon
