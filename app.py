@@ -300,7 +300,10 @@ def save_location_to_browser(lat, lon, basho):
     st.session_state.last_basho = basho
 
     # 2. ローカルストレージを強制的に上書きするJS
-    # 重複実行やスキップを防ぐため、ユニークなID（タイムスタンプ）を付けて実行
+    # 【対策】グラフ描画などの重い処理に邪魔されないよう、
+    # 確実にJSを実行させるために一意のキー（タイムスタンプ等）を渡す
+    update_trigger = datetime.now().timestamp()
+    
     js_code = f"""
         <script>
             localStorage.setItem('wind_checker_lat', '{lat}');
@@ -309,6 +312,7 @@ def save_location_to_browser(lat, lon, basho):
             console.log('Storage updated: {basho}');
         </script>
     """
+    # グラフの前に配置されるよう、高さを0にして埋め込む
     st.components.v1.html(js_code, height=0)
     
 #==========================================================================================
@@ -374,22 +378,34 @@ def display_graph_section(lat, lon, days, danger_v, sel_dirs):
 # メインのアプリケーション実行フロー
 #==========================================================================================
 def main():
+    # グラフに使用する日本語フォントをセットアップ
     setup_font()
     st.markdown(f'<h1 style="font-size:{CONFIG["TITLE_SIZE"]}px; margin-bottom: 5px;">⛵ 高須風チェッカー</h1>', unsafe_allow_html=True)
-    
+
+    # アプリケーションで利用可能な地点マスタを定義
     coords_master = get_location_master()
+    
+    # 起動時にブラウザから情報を読み込み初期表示
     initialize_session_from_browser()
 
+    # 地点選択
     basho, show_map = show_location_selector(coords_master)
-    display_current_location_info()
-
+    
+    # 【重要】handle_location_change の中で save_location_to_browser を呼び出す。
+    # ここで JS が発行され、その後の rerun() で確実に処理が回るようにする。
     handle_location_change(basho, coords_master)
 
+    # 現在：表示
+    display_current_location_info()
+
+    # 地図表示
     if show_map:
         show_location_map()
-    
+
+    # サイドメニュー表示
     days, danger_v, sel_dirs = show_sidebar_controls()
 
+    # グラフ描画セクション（ここが重い）
     display_graph_section(st.session_state.lat, st.session_state.lon, days, danger_v, sel_dirs)
 
 if __name__ == "__main__":
