@@ -295,26 +295,26 @@ def display_current_location_info():
 # 場所、緯度、経度をブラウザのローカルストレージに記録するサブルーチン
 #==========================================================================================
 def save_location_to_browser(lat, lon, basho):
-    # 1. Python側の状態を更新
+    # 1. Python側の状態を即時更新
     st.session_state.lat = lat
     st.session_state.lon = lon
     st.session_state.last_basho = basho
 
-    # 2. 実行用の一意のIDを作成（浮動小数点を避けるためintに変換）
+    # 2. JavaScriptの作成（一意にするためのコメントをJS内に入れる）
     import time
-    exec_id = int(time.time() * 1000)
-    
-    # 3. JavaScriptの作成
+    now = time.time()
     js_code = f"""
         <script>
+            // {now}
             localStorage.setItem('wind_checker_lat', '{lat}');
             localStorage.setItem('wind_checker_lon', '{lon}');
             localStorage.setItem('wind_checker_basho', '{basho}');
             console.log('LocalStorage Updated: {basho}');
         </script>
     """
-    # 修正：st.components.v1.html ではなく components.html を使用
-    components.html(js_code, height=0, key=f"save_js_{exec_id}")
+    # 3. 画面の最上部にJSを送り込む
+    # keyを指定せず、直接components.htmlを呼び出します
+    components.html(js_code, height=0)
 
 #==========================================================================================
 # 起動時にブラウザから情報を読み込み初期表示するサブルーチン
@@ -333,21 +333,20 @@ def initialize_session_from_browser():
 #==========================================================================================
 def handle_location_change(basho, coords_master):
     if st.session_state.last_basho != basho:
-        # 地図表示の状態を維持（前回の要望通り、ここではFalseにしない）
-        
-        # 新しい座標の決定
+        # 新しい座標を決定
         if basho in coords_master and basho != "地図で指定":
             new_lat, new_lon = coords_master[basho]
         else:
-            # 「地図で指定」の場合は、現在のセッション値を維持
             new_lat, new_lon = st.session_state.lat, st.session_state.lon
 
-        # ブラウザストレージに保存（JS実行）
+        # ストレージに保存
         save_location_to_browser(new_lat, new_lon, basho)
         
-        # rerunすることで、新しい地点に基づいたグラフ描画サイクルに入る
+        # rerun()の前に、少しだけ待機（JSがブラウザに届く確率を最大化）
+        import time
+        time.sleep(0.1) 
+        
         st.rerun()
-
 
 #==========================================================================================
 # サイドバーの入力コントロールを生成するサブルーチン
