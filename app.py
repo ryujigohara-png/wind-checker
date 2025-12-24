@@ -245,25 +245,24 @@ def draw_map_matrix(m):
 #==========================================================================================
 def show_location_map():
     st.info("地図の中央地点のグラフを描画表示することができます。")
+    # デザイン用スタイル（省略せず記述）
     st.markdown("""<style>
-        div[data-testid="stHorizontalBlock"] { flex-wrap: nowrap !important; justify-content: center !important; }
-        [data-testid="column"] { min-width: 0px !important; }
         .guide-arrow-main { color: crimson; font-size: 24px; font-weight: bold; text-align: center; }
         div[data-testid="stButton"] button { background-color: #007bff; color: white; border-radius: 5px; height: 3em; }
-        div[data-testid="stButton"] button:hover { background-color: #0056b3; }
         </style>""", unsafe_allow_html=True)
 
+    # 地図の初期位置は現在の lat, lon
     m = folium.Map(location=[st.session_state.lat, st.session_state.lon], zoom_start=13)
     folium.Marker([st.session_state.lat, st.session_state.lon], icon=folium.Icon(color='red')).add_to(m)
 
     map_out = draw_map_matrix(m)
 
     if map_out and map_out.get("center"):
-        # 要望②：確定ボタンが押されたらその地点を「地図で指定」の座標として記録
+        # ① 確定ボタン押下時
         if st.button("グラフ描画地点（地図中央）確定", use_container_width=True):
             new_lat = map_out["center"]["lat"]
             new_lon = map_out["center"]["lng"]
-            # ブラウザに現在の座標と「地図で指定」という名称を保存
+            # 「地図で指定」というラベルで保存（これで内部的に selectmap_lat も更新される）
             save_location_to_browser(new_lat, new_lon, "地図で指定")
             st.rerun()
             
@@ -307,25 +306,32 @@ def display_current_location_info():
 # 場所、緯度、経度をブラウザのローカルストレージに記録するサブルーチン
 #==========================================================================================
 def save_location_to_browser(lat, lon, basho):
-    # Python側の状態を更新
+    # 1. Python側の状態を更新
     st.session_state.lat = lat
     st.session_state.lon = lon
     st.session_state.last_basho = basho
 
-    # JavaScriptの作成（実行タイミングを識別するためのタイムスタンプを入れる）
+    # 地図で確定された場所の場合、専用の保存枠も更新する
+    if basho == "地図で指定":
+        st.session_state.selectmap_lat = lat
+        st.session_state.selectmap_lon = lon
+
+    # 2. JavaScriptでブラウザに物理保存
     import time
     js_code = f"""
         <script>
-            // {time.time()}
             localStorage.setItem('wind_checker_lat', '{lat}');
             localStorage.setItem('wind_checker_lon', '{lon}');
             localStorage.setItem('wind_checker_basho', '{basho}');
-            console.log('LocalStorage Updated: {basho}');
+            // 専用保存枠の更新
+            if ('{basho}' === '地図で指定') {{
+                localStorage.setItem('selectmap_lat', '{lat}');
+                localStorage.setItem('selectmap_lon', '{lon}');
+            }}
+            console.log('Storage Updated: {basho}');
         </script>
     """
-    # 実行。components.html が import されている前提です
     components.html(js_code, height=0)
-    
 
 #==========================================================================================
 # 起動時にブラウザから情報を読み込み初期表示するサブルーチン
@@ -343,21 +349,23 @@ def initialize_session_from_browser():
 # 地点が変更された場合に更新・リロードするサブルーチン
 #==========================================================================================
 def handle_location_change(basho, coords_master):
-    if st.session_state.last_basho != basho:
-        # 要望①：「地図で指定」が選ばれたら地図表示を強制ONにする
+    if st.session_state.get('last_basho') != basho:
+        
         if basho == "地図で指定":
             st.session_state.show_map_state = True
-            # 要望③：再選択時は現在保持している座標をそのまま使用する
-            new_lat, new_lon = st.session_state.lat, st.session_state.lon
+            # ② 専用の変数（selectmap_lat/lon）から復元する
+            # まだ一度も確定していない場合はデフォルト値を使う
+            new_lat = st.session_state.get('selectmap_lat', CONFIG["DEFAULT_LAT"])
+            new_lon = st.session_state.get('selectmap_lon', CONFIG["DEFAULT_LON"])
         
-        elif basho in coords_master:
-            # プリセット地点の場合はマスタから座標を取得
+        elif basho in coords_master and basho != "地図で指定":
             new_lat, new_lon = coords_master[basho]
         else:
             new_lat, new_lon = st.session_state.lat, st.session_state.lon
 
         # 保存と再描画
         save_location_to_browser(new_lat, new_lon, basho)
+        
         import time
         time.sleep(0.1)
         st.rerun()
