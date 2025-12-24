@@ -259,10 +259,14 @@ def show_location_map():
     map_out = draw_map_matrix(m)
 
     if map_out and map_out.get("center"):
+        # 要望②：確定ボタンが押されたらその地点を「地図で指定」の座標として記録
         if st.button("グラフ描画地点（地図中央）確定", use_container_width=True):
-            save_location_to_browser(map_out["center"]["lat"], map_out["center"]["lng"], "地図で指定")
+            new_lat = map_out["center"]["lat"]
+            new_lon = map_out["center"]["lng"]
+            # ブラウザに現在の座標と「地図で指定」という名称を保存
+            save_location_to_browser(new_lat, new_lon, "地図で指定")
             st.rerun()
-
+            
 #==========================================================================================
 # アプリケーションで利用可能な地点マスタを定義するサブルーチン
 #==========================================================================================
@@ -284,10 +288,13 @@ def show_location_selector(coords_master):
         current_idx = 0
     
     basho = st.selectbox("地点を選択してください", list(coords_master.keys()), index=current_idx)
+    
+    # セッション内の状態をデフォルト値として使用
     show_map = st.checkbox("地図表示", value=st.session_state.get('show_map_state', False))
     st.session_state.show_map_state = show_map
+    
     return basho, show_map
-
+    
 #==========================================================================================
 # 現在選択されている地点情報を表示するサブルーチン
 #==========================================================================================
@@ -337,21 +344,24 @@ def initialize_session_from_browser():
 #==========================================================================================
 def handle_location_change(basho, coords_master):
     if st.session_state.last_basho != basho:
-        # 地図表示状態などは維持
-        if basho in coords_master and basho != "地図で指定":
+        # 要望①：「地図で指定」が選ばれたら地図表示を強制ONにする
+        if basho == "地図で指定":
+            st.session_state.show_map_state = True
+            # 要望③：再選択時は現在保持している座標をそのまま使用する
+            new_lat, new_lon = st.session_state.lat, st.session_state.lon
+        
+        elif basho in coords_master:
+            # プリセット地点の場合はマスタから座標を取得
             new_lat, new_lon = coords_master[basho]
         else:
             new_lat, new_lon = st.session_state.lat, st.session_state.lon
 
-        # ブラウザストレージに保存命令を送信
+        # 保存と再描画
         save_location_to_browser(new_lat, new_lon, basho)
-        
-        # rerunによる中断の前に、ブラウザがパケットを受け取る時間を0.1秒だけ稼ぐ
         import time
         time.sleep(0.1)
-        
         st.rerun()
-
+        
 #==========================================================================================
 # サイドバーの入力コントロールを生成するサブルーチン
 #==========================================================================================
