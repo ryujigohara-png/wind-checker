@@ -13,6 +13,7 @@ import matplotlib.dates as mdates
 from streamlit_folium import st_folium
 import folium
 import streamlit.components.v1 as components # これを追加
+import json
 
 # ======================================================================================
 # 1. 定数・基本設定 (CONFIG)
@@ -338,48 +339,62 @@ def save_location_to_browser(lat, lon, basho):
 # 起動時にブラウザの記録を参照し、地点に応じて座標を復元する初期化処理
 #==========================================================================================
 def initialize_session_from_browser():
-    # 1. ブラウザの記録（URLパラメータ）を取得
-    params = st.query_params
-
-    # 2. 地点名（wind_checker_basho）を最優先で取得、なければ CONFIG のデフォルト
-    if 'wind_checker_basho' in params:
-        st.session_state.last_basho = params['wind_checker_basho']
-    elif 'last_basho' not in st.session_state:
+    # 1. まずはデフォルト値をセット（画面が真っ白になるのを防ぐ）
+    if 'last_basho' not in st.session_state:
         st.session_state.last_basho = CONFIG["DEFAULT_BASHO"]
-
-    # 3. 緯度・経度もブラウザの記録を最優先。なければ CONFIG のデフォルト
-    # --- 表示用緯度 ---
-    if 'wind_checker_lat' in params:
-        st.session_state.lat = float(params['wind_checker_lat'])
-    elif 'lat' not in st.session_state:
+    if 'lat' not in st.session_state:
         st.session_state.lat = CONFIG["DEFAULT_LAT"]
-
-    # --- 表示用経度 ---
-    if 'wind_checker_lon' in params:
-        st.session_state.lon = float(params['wind_checker_lon'])
-    elif 'lon' not in st.session_state:
+    if 'lon' not in st.session_state:
         st.session_state.lon = CONFIG["DEFAULT_LON"]
-
-    # --- 地図専用緯度 (selectmap_lat) ---
-    if 'selectmap_lat' in params:
-        st.session_state.selectmap_lat = float(params['selectmap_lat'])
-    elif 'selectmap_lat' not in st.session_state:
+    if 'selectmap_lat' not in st.session_state:
         st.session_state.selectmap_lat = CONFIG["DEFAULT_LAT"]
-
-    # --- 地図専用経度 (selectmap_lon) ---
-    if 'selectmap_lon' in params:
-        st.session_state.selectmap_lon = float(params['selectmap_lon'])
-    elif 'selectmap_lon' not in st.session_state:
+    if 'selectmap_lon' not in st.session_state:
         st.session_state.selectmap_lon = CONFIG["DEFAULT_LON"]
 
-    # 4. 「地図で指定」が選ばれている場合、保存されていた専用座標を「現在地」に書き写す
+    # 2. JavaScriptでブラウザの localStorage を読み取り、Pythonの「隠し要素」に渡す
+    # これにより、URLを汚さず、リロードもせずに値を吸い上げます
+    st.markdown("""<style>.hide-element { display: none; }</style>""", unsafe_allow_html=True)
+    
+    # 隠し入力枠
+    sync_val = st.text_input("sync_box", key="sync_box", label_visibility="collapsed")
+    
+    js_code = """
+        <script>
+            const data = {
+                basho: localStorage.getItem('wind_checker_basho'),
+                lat: localStorage.getItem('wind_checker_lat'),
+                lon: localStorage.getItem('wind_checker_lon'),
+                slat: localStorage.getItem('selectmap_lat'),
+                slon: localStorage.getItem('selectmap_lon')
+            };
+            // Streamlitの入力枠を探して、JSON形式で値を流し込む
+            const windowParent = window.parent;
+            const input = windowParent.document.querySelector('input[aria-label="sync_box"]');
+            if (input && data.basho) {
+                input.value = JSON.stringify(data);
+                input.dispatchEvent(new Event('input', { bubbles: true }));
+                input.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+        </script>
+    """
+    components.html(js_code, height=0)
+
+    # 3. 隠し入力枠にデータが入ってきたら、セッション変数を上書き（書き写し）
+    if st.session_state.sync_box:
+        try:
+            saved_data = json.loads(st.session_state.sync_box)
+            st.session_state.last_basho = saved_data['basho']
+            st.session_state.lat = float(saved_data['lat'])
+            st.session_state.lon = float(saved_data['lon'])
+            st.session_state.selectmap_lat = float(saved_data['slat'])
+            st.session_state.selectmap_lon = float(saved_data['slon'])
+        except:
+            pass
+
+    # 4. 地図指定の時の最終書き換え
     if st.session_state.last_basho == "地図で指定":
         st.session_state.lat = st.session_state.selectmap_lat
         st.session_state.lon = st.session_state.selectmap_lon
-    
-    # マップ表示フラグの初期化
-    if 'show_map_state' not in st.session_state:
-        st.session_state.show_map_state = False
         
 #==========================================================================================
 # 地点が変更された場合に更新・リロードするサブルーチン
