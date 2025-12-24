@@ -45,7 +45,6 @@ def fetch_weather_data(lat, lon, days):
         data = requests.get(url).json()
         df = pd.DataFrame(data["hourly"])
         df['time'] = pd.to_datetime(df['time'])
-        # 左端の3時間空白パディング
         first_time = df['time'].iloc[0]
         padding = pd.DataFrame({
             'time': [first_time - timedelta(hours=i) for i in range(3, 0, -1)],
@@ -153,7 +152,6 @@ def show_location_map():
     st.info("地図の中央地点を確定できます。")
     m = folium.Map(location=[st.session_state.lat, st.session_state.lon], zoom_start=13)
     folium.Marker([st.session_state.lat, st.session_state.lon], icon=folium.Icon(color='red')).add_to(m)
-    
     col_l1, col_m1, col_r1 = st.columns([1, 18, 1])
     with col_m1: st.markdown("<div style='color:crimson; font-size:24px; font-weight:bold; text-align:center;'>▼</div>", unsafe_allow_html=True)
     col_l2, col_m2, col_r2 = st.columns([1, 18, 1])
@@ -162,7 +160,6 @@ def show_location_map():
     with col_r2: st.markdown(f"<div style='line-height:{CONFIG['MAP_HEIGHT']}px; text-align:left; color:crimson; font-size:24px; font-weight:bold;'>◀</div>", unsafe_allow_html=True)
     col_l3, col_m3, col_r3 = st.columns([1, 18, 1])
     with col_m3: st.markdown("<div style='color:crimson; font-size:24px; font-weight:bold; text-align:center;'>▲</div>", unsafe_allow_html=True)
-    
     if map_out and map_out.get("center"):
         if st.button("グラフ描画地点（地図中央）確定", use_container_width=True):
             st.session_state.lat, st.session_state.lon = map_out["center"]["lat"], map_out["center"]["lng"]
@@ -182,30 +179,30 @@ def main():
         "錦江湾(鹿児島県)":(31.590, 130.600), "地図で指定": (None, None)
     }
 
-    # --- 記憶の自動読み出し（JavaScript連携） ---
-    # 初回起動時のみ、ブラウザからデータを読み取るためのスクリプト
-    if 'initialized_from_storage' not in st.session_state:
-        st.session_state.lat = 31.337
-        st.session_state.lon = 130.795
-        st.session_state.last_basho = "高須沖(鹿児島県)"
-        st.session_state.initialized_from_storage = True
+    # --- 記憶の自動同期ロジック ---
+    # URLパラメータに何も無いときだけ、JS経由でLocalStorageから値を引っ張ってURLに付与する
+    if not st.query_params:
+        js_load = """
+        <script>
+        const b = localStorage.getItem('wind_checker_basho');
+        if(b){
+            const url = new URL(window.location);
+            url.searchParams.set('basho', b);
+            window.location.href = url.href;
+        }
+        </script>
+        """
+        components.html(js_load, height=0)
 
-    # 記憶ボタン（確認用）
-    with st.expander("🛠 端末の記憶を確認"):
-        if st.button("前回の設定を端末から呼び出す"):
-            # JSでLocalストレージから値を取得し、URLパラメータとして再セットする
-            # ※Streamlitの制約上、JSから直接Python変数を書き換えるより、この方法が確実です
-            js_load = """
-            <script>
-            const b = localStorage.getItem('wind_checker_basho');
-            if(b){
-                const url = new URL(window.location);
-                url.searchParams.set('basho', b);
-                window.location.href = url.href;
-            }
-            </script>
-            """
-            components.html(js_load, height=0)
+    p = st.query_params
+    if 'lat' not in st.session_state:
+        # URLにbashoがあれば優先、なければデフォルト
+        st.session_state.last_basho = p.get("basho", "高須沖(鹿児島県)")
+        if st.session_state.last_basho in coords_m and st.session_state.last_basho != "地図で指定":
+            st.session_state.lat, st.session_state.lon = coords_m[st.session_state.last_basho]
+        else:
+            st.session_state.lat = float(p.get("lat", 31.337))
+            st.session_state.lon = float(p.get("lon", 130.795))
 
     # UI
     basho = st.selectbox("地点を選択", list(coords_m.keys()), index=list(coords_m.keys()).index(st.session_state.last_basho) if st.session_state.last_basho in coords_m else 0)
@@ -213,18 +210,25 @@ def main():
     st.session_state.show_map_state = show_map
     st.markdown(f"<p style='font-size:14px; color:#1e88e5; font-weight:bold; margin-top:-10px;'>📍 現在：{st.session_state.last_basho} ({st.session_state.lat:.4f}, {st.session_state.lon:.4f})</p>", unsafe_allow_html=True)
 
+    # 地点変更時の保存処理
     if st.session_state.last_basho != basho:
         if basho != "地図で指定":
             st.session_state.lat, st.session_state.lon = coords_m[basho]
         st.session_state.last_basho = basho
-        # 変更されたら即座に端末（Local Storage）に保存
-        save_script = f"""<script>localStorage.setItem('wind_checker_basho', '{basho}');</script>"""
+        # JSでLocalStorageに書き込みつつ、URLも更新してリロード
+        save_script = f"""
+        <script>
+        localStorage.setItem('wind_checker_basho', '{basho}');
+        const url = new URL(window.location);
+        url.searchParams.set('basho', '{basho}');
+        window.location.href = url.href;
+        </script>
+        """
         components.html(save_script, height=0)
-        st.rerun()
+        st.stop() # リロードを待つ
 
     if show_map: show_location_map()
     
-    # サイドバー
     st.sidebar.header("表示設定")
     days = st.sidebar.slider("表示日数", 1, 8, 8)
     danger_v = st.sidebar.number_input("危険風速(m/s)", value=10.0)
@@ -238,7 +242,6 @@ def main():
             if st.sidebar.checkbox(d, value=(d in init_dirs), key=f"chk_{d}"):
                 sel_dirs.append(d)
 
-    # グラフ描画
     img = get_cached_graph(st.session_state.lat, st.session_state.lon, days, danger_v, tuple(sel_dirs))
     if img:
         st.markdown(f'<div style="overflow-x: auto; background: white;"><img src="data:image/png;base64,{img}" style="height: 900px; max-width: none;"></div>', unsafe_allow_html=True)
