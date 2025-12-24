@@ -338,41 +338,48 @@ def save_location_to_browser(lat, lon, basho):
 # 起動時にブラウザの記録を参照し、地点に応じて座標を復元する初期化処理
 #==========================================================================================
 def initialize_session_from_browser():
-    # --- 1. まずセッション変数の枠組みをデフォルト値で作成 ---
-    if 'last_basho' not in st.session_state:
-        st.session_state.last_basho = CONFIG["DEFAULT_BASHO"]
-    if 'lat' not in st.session_state:
-        st.session_state.lat = CONFIG["DEFAULT_LAT"]
-    if 'lon' not in st.session_state:
-        st.session_state.lon = CONFIG["DEFAULT_LON"]
-    if 'selectmap_lat' not in st.session_state:
-        st.session_state.selectmap_lat = CONFIG["DEFAULT_LAT"]
-    if 'selectmap_lon' not in st.session_state:
-        st.session_state.selectmap_lon = CONFIG["DEFAULT_LON"]
-
-    # --- 2. ブラウザの記録（URLパラメータ）を Python の変数にそのまま書き写す ---
+    # 1. ブラウザの記録（URLパラメータ）を取得
     params = st.query_params
-    
-    # 地点名の復元：localStorage名 'wind_checker_basho' に合わせる
+
+    # 2. 地点名（wind_checker_basho）を最優先で取得、なければ CONFIG のデフォルト
     if 'wind_checker_basho' in params:
         st.session_state.last_basho = params['wind_checker_basho']
-    
-    # 表示座標の復元：localStorage名 'wind_checker_lat/lon' に合わせる
+    elif 'last_basho' not in st.session_state:
+        st.session_state.last_basho = CONFIG["DEFAULT_BASHO"]
+
+    # 3. 緯度・経度もブラウザの記録を最優先。なければ CONFIG のデフォルト
+    # --- 表示用緯度 ---
     if 'wind_checker_lat' in params:
         st.session_state.lat = float(params['wind_checker_lat'])
+    elif 'lat' not in st.session_state:
+        st.session_state.lat = CONFIG["DEFAULT_LAT"]
+
+    # --- 表示用経度 ---
     if 'wind_checker_lon' in params:
         st.session_state.lon = float(params['wind_checker_lon'])
-        
-    # 地図専用座標の復元：localStorage名 'selectmap_lat/lon' に合わせる
+    elif 'lon' not in st.session_state:
+        st.session_state.lon = CONFIG["DEFAULT_LON"]
+
+    # --- 地図専用緯度 (selectmap_lat) ---
     if 'selectmap_lat' in params:
         st.session_state.selectmap_lat = float(params['selectmap_lat'])
+    elif 'selectmap_lat' not in st.session_state:
+        st.session_state.selectmap_lat = CONFIG["DEFAULT_LAT"]
+
+    # --- 地図専用経度 (selectmap_lon) ---
     if 'selectmap_lon' in params:
         st.session_state.selectmap_lon = float(params['selectmap_lon'])
+    elif 'selectmap_lon' not in st.session_state:
+        st.session_state.selectmap_lon = CONFIG["DEFAULT_LON"]
 
-    # --- 3. 地点名が「地図で指定」の場合は、専用座標を優先してグラフを書き換える ---
+    # 4. 「地図で指定」が選ばれている場合、保存されていた専用座標を「現在地」に書き写す
     if st.session_state.last_basho == "地図で指定":
         st.session_state.lat = st.session_state.selectmap_lat
         st.session_state.lon = st.session_state.selectmap_lon
+    
+    # マップ表示フラグの初期化
+    if 'show_map_state' not in st.session_state:
+        st.session_state.show_map_state = False
         
 #==========================================================================================
 # 地点が変更された場合に更新・リロードするサブルーチン
