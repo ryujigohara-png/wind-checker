@@ -109,7 +109,7 @@ def get_cached_graph(lat, lon, days, danger_v, selected_dirs_tuple):
     wind_step = (1 if days <= 1 else (2 if days <= 3 else 3))
     time_step = (3 if days <= 2 else 6)
     fig_w = max(10, days * 4.5)
-    fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(fig_w, 10), dpi=CONFIG["DPI"], gridspec_kw={'height_ratios': [4.4, 1.2, 0.8]})
+    fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(fig_w, 10), dpi=CONFIG["DPI"], gridspec_kw={'height_ratios': [4.2, 1.2, 1.0]})
     plt.subplots_adjust(hspace=0.6)
     jp_weeks = ["月", "火", "水", "木", "金", "土", "日"]
     def formatter(x, p):
@@ -182,21 +182,30 @@ def main():
         "錦江湾(鹿児島県)":(31.590, 130.600), "地図で指定": (None, None)
     }
 
-    # セッション初期化
-    if 'lat' not in st.session_state: st.session_state.lat = 31.337
-    if 'lon' not in st.session_state: st.session_state.lon = 130.795
-    if 'last_basho' not in st.session_state: st.session_state.last_basho = "高須沖(鹿児島県)"
+    # --- 記憶の自動読み出し（JavaScript連携） ---
+    # 初回起動時のみ、ブラウザからデータを読み取るためのスクリプト
+    if 'initialized_from_storage' not in st.session_state:
+        st.session_state.lat = 31.337
+        st.session_state.lon = 130.795
+        st.session_state.last_basho = "高須沖(鹿児島県)"
+        st.session_state.initialized_from_storage = True
 
-    # ブラウザ自体に設定を保存するJS（Local Storage）
-    # これにより、お気に入りから開くだけで前回の設定が復元されます
-    save_script = f"""
-    <script>
-    localStorage.setItem('wind_checker_lat', '{st.session_state.lat}');
-    localStorage.setItem('wind_checker_lon', '{st.session_state.lon}');
-    localStorage.setItem('wind_checker_basho', '{st.session_state.last_basho}');
-    </script>
-    """
-    components.html(save_script, height=0)
+    # 記憶ボタン（確認用）
+    with st.expander("🛠 端末の記憶を確認"):
+        if st.button("前回の設定を端末から呼び出す"):
+            # JSでLocalストレージから値を取得し、URLパラメータとして再セットする
+            # ※Streamlitの制約上、JSから直接Python変数を書き換えるより、この方法が確実です
+            js_load = """
+            <script>
+            const b = localStorage.getItem('wind_checker_basho');
+            if(b){
+                const url = new URL(window.location);
+                url.searchParams.set('basho', b);
+                window.location.href = url.href;
+            }
+            </script>
+            """
+            components.html(js_load, height=0)
 
     # UI
     basho = st.selectbox("地点を選択", list(coords_m.keys()), index=list(coords_m.keys()).index(st.session_state.last_basho) if st.session_state.last_basho in coords_m else 0)
@@ -208,6 +217,9 @@ def main():
         if basho != "地図で指定":
             st.session_state.lat, st.session_state.lon = coords_m[basho]
         st.session_state.last_basho = basho
+        # 変更されたら即座に端末（Local Storage）に保存
+        save_script = f"""<script>localStorage.setItem('wind_checker_basho', '{basho}');</script>"""
+        components.html(save_script, height=0)
         st.rerun()
 
     if show_map: show_location_map()
