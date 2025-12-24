@@ -12,6 +12,7 @@ from datetime import datetime, timedelta, timezone
 import matplotlib.dates as mdates
 from streamlit_folium import st_folium
 import folium
+import streamlit.components.v1 as components
 
 # ======================================================================================
 # 1. 定数・基本設定
@@ -44,7 +45,7 @@ def fetch_weather_data(lat, lon, days):
         data = requests.get(url).json()
         df = pd.DataFrame(data["hourly"])
         df['time'] = pd.to_datetime(df['time'])
-        # 復活：左端の3時間空白パディング
+        # 左端の3時間空白パディング
         first_time = df['time'].iloc[0]
         padding = pd.DataFrame({
             'time': [first_time - timedelta(hours=i) for i in range(3, 0, -1)],
@@ -146,32 +147,26 @@ def get_cached_graph(lat, lon, days, danger_v, selected_dirs_tuple):
     return base64.b64encode(buf.getvalue()).decode()
 
 # ======================================================================================
-# 4. 地図UI（3x3マトリックス）
+# 4. 地図UI
 # ======================================================================================
 def show_location_map():
     st.info("地図の中央地点を確定できます。")
-    st.markdown("""<style>
-        div[data-testid="stHorizontalBlock"] { flex-wrap: nowrap !important; justify-content: center !important; }
-        [data-testid="column"] { min-width: 0px !important; }
-        .guide-arrow-main { color: crimson; font-size: 24px; font-weight: bold; text-align: center; }
-        div[data-testid="stButton"] button { background-color: #007bff; color: white; border-radius: 5px; height: 3em; }
-        div[data-testid="stButton"] button:hover { background-color: #0056b3; }
-        </style>""", unsafe_allow_html=True)
     m = folium.Map(location=[st.session_state.lat, st.session_state.lon], zoom_start=13)
     folium.Marker([st.session_state.lat, st.session_state.lon], icon=folium.Icon(color='red')).add_to(m)
+    
     col_l1, col_m1, col_r1 = st.columns([1, 18, 1])
-    with col_m1: st.markdown("<div class='guide-arrow-main'>▼</div>", unsafe_allow_html=True)
+    with col_m1: st.markdown("<div style='color:crimson; font-size:24px; font-weight:bold; text-align:center;'>▼</div>", unsafe_allow_html=True)
     col_l2, col_m2, col_r2 = st.columns([1, 18, 1])
-    with col_l2: st.markdown(f"<div style='line-height:{CONFIG['MAP_HEIGHT']}px; text-align:right;' class='guide-arrow-main'>▶</div>", unsafe_allow_html=True)
+    with col_l2: st.markdown(f"<div style='line-height:{CONFIG['MAP_HEIGHT']}px; text-align:right; color:crimson; font-size:24px; font-weight:bold;'>▶</div>", unsafe_allow_html=True)
     with col_m2: map_out = st_folium(m, width=None, height=CONFIG["MAP_HEIGHT"], key=f"map_{st.session_state.lat}", returned_objects=["center"])
-    with col_r2: st.markdown(f"<div style='line-height:{CONFIG['MAP_HEIGHT']}px; text-align:left;' class='guide-arrow-main'>◀</div>", unsafe_allow_html=True)
+    with col_r2: st.markdown(f"<div style='line-height:{CONFIG['MAP_HEIGHT']}px; text-align:left; color:crimson; font-size:24px; font-weight:bold;'>◀</div>", unsafe_allow_html=True)
     col_l3, col_m3, col_r3 = st.columns([1, 18, 1])
-    with col_m3: st.markdown("<div class='guide-arrow-main'>▲</div>", unsafe_allow_html=True)
+    with col_m3: st.markdown("<div style='color:crimson; font-size:24px; font-weight:bold; text-align:center;'>▲</div>", unsafe_allow_html=True)
+    
     if map_out and map_out.get("center"):
         if st.button("グラフ描画地点（地図中央）確定", use_container_width=True):
             st.session_state.lat, st.session_state.lon = map_out["center"]["lat"], map_out["center"]["lng"]
             st.session_state.last_basho = "地図で指定"
-            st.query_params.update({"lat": st.session_state.lat, "lon": st.session_state.lon, "basho": "地図で指定"})
             st.rerun()
 
 # ======================================================================================
@@ -180,62 +175,58 @@ def show_location_map():
 def main():
     setup_font()
     st.markdown(f'<h1 style="font-size:{CONFIG["TITLE_SIZE"]}px; margin-bottom: 5px;">⛵ 高須風チェッカー</h1>', unsafe_allow_html=True)
+    
     coords_m = {
         "高須沖(鹿児島県)":(31.337, 130.795), "柏原沖(鹿児島県)":(31.380, 131.020), "垂水港(鹿児島県)":(31.478, 130.668),
         "海潟(鹿児島県)":(31.539, 130.706), "磯海岸沖(鹿児島県)":(31.614, 130.577), "江口浜沖(鹿児島県)":(31.643, 130.322),
         "錦江湾(鹿児島県)":(31.590, 130.600), "地図で指定": (None, None)
     }
-    
-    # URLパラメータの取得
-    p = st.query_params
-    
-    # セッションの初期化（URLがあれば優先）
-    if 'lat' not in st.session_state:
-        st.session_state.lat = float(p.get("lat", 31.337))
-        st.session_state.lon = float(p.get("lon", 130.795))
-        st.session_state.last_basho = p.get("basho", "高須沖(鹿児島県)")
 
-    # 地点選択UI
+    # セッション初期化
+    if 'lat' not in st.session_state: st.session_state.lat = 31.337
+    if 'lon' not in st.session_state: st.session_state.lon = 130.795
+    if 'last_basho' not in st.session_state: st.session_state.last_basho = "高須沖(鹿児島県)"
+
+    # ブラウザ自体に設定を保存するJS（Local Storage）
+    # これにより、お気に入りから開くだけで前回の設定が復元されます
+    save_script = f"""
+    <script>
+    localStorage.setItem('wind_checker_lat', '{st.session_state.lat}');
+    localStorage.setItem('wind_checker_lon', '{st.session_state.lon}');
+    localStorage.setItem('wind_checker_basho', '{st.session_state.last_basho}');
+    </script>
+    """
+    components.html(save_script, height=0)
+
+    # UI
     basho = st.selectbox("地点を選択", list(coords_m.keys()), index=list(coords_m.keys()).index(st.session_state.last_basho) if st.session_state.last_basho in coords_m else 0)
     show_map = st.checkbox("地図表示", value=st.session_state.get('show_map_state', False))
     st.session_state.show_map_state = show_map
     st.markdown(f"<p style='font-size:14px; color:#1e88e5; font-weight:bold; margin-top:-10px;'>📍 現在：{st.session_state.last_basho} ({st.session_state.lat:.4f}, {st.session_state.lon:.4f})</p>", unsafe_allow_html=True)
 
-    # 地点変更の反映
     if st.session_state.last_basho != basho:
         if basho != "地図で指定":
             st.session_state.lat, st.session_state.lon = coords_m[basho]
         st.session_state.last_basho = basho
-        st.query_params.update({"lat": st.session_state.lat, "lon": st.session_state.lon, "basho": basho})
         st.rerun()
 
     if show_map: show_location_map()
     
-    # サイドバー設定
+    # サイドバー
     st.sidebar.header("表示設定")
-    days = st.sidebar.slider("表示日数", 1, 8, int(p.get("days", 8)))
-    danger_v = st.sidebar.number_input("危険風速(m/s)", value=float(p.get("danger", 10.0)))
+    days = st.sidebar.slider("表示日数", 1, 8, 8)
+    danger_v = st.sidebar.number_input("危険風速(m/s)", value=10.0)
     
-    # 風向き設定（URLから復元）
-    init_dirs = p.get("dirs", "南,南南西,南西,西南西,西,西北西,北西,北北西").split(",")
+    init_dirs = ["南", "南南西", "南西", "西南西", "西", "西北西", "北西", "北北西"]
     sel_dirs = []
-    st.sidebar.markdown("---")
     st.sidebar.header("乗れる風向")
     cols = st.sidebar.columns(2)
     for i, d in enumerate(ALL_DIRECTIONS):
         with cols[i % 2]:
-            # keyを固定することで再描画を防ぐ
             if st.sidebar.checkbox(d, value=(d in init_dirs), key=f"chk_{d}"):
                 sel_dirs.append(d)
 
-    # パラメータの同期（グラフ描画前に行い、変更があった場合のみ更新する）
-    current_dirs_str = ",".join(sel_dirs)
-    if (p.get("days") != str(days) or 
-        p.get("danger") != str(danger_v) or 
-        p.get("dirs") != current_dirs_str):
-        st.query_params.update({"days": days, "danger": danger_v, "dirs": current_dirs_str})
-
-    # グラフ描画（ここが実行されるように再設計）
+    # グラフ描画
     img = get_cached_graph(st.session_state.lat, st.session_state.lon, days, danger_v, tuple(sel_dirs))
     if img:
         st.markdown(f'<div style="overflow-x: auto; background: white;"><img src="data:image/png;base64,{img}" style="height: 900px; max-width: none;"></div>', unsafe_allow_html=True)
