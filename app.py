@@ -315,15 +315,17 @@ def initialize_session_from_browser():
 #==========================================================================================
 def handle_location_change(basho, coords_master):
     if st.session_state.last_basho != basho:
-        # コンボボックス変更時に「地図表示」をオフにする（起動後最初の変更時などの制御）
-        st.session_state.show_map_state = False
-        
+        # プリセット地点が選ばれた場合はその座標を取得し、
+        # 「地図で指定」が選ばれた場合は現在の座標を維持する
         if basho in coords_master and basho != "地図で指定":
-            lat, lon = coords_master[basho]
-            save_location_to_browser(lat, lon, basho)
+            new_lat, new_lon = coords_master[basho]
         else:
-            st.session_state.last_basho = basho
-            
+            new_lat, new_lon = st.session_state.lat, st.session_state.lon
+
+        # ブラウザのセッション情報を更新
+        save_location_to_browser(new_lat, new_lon, basho)
+        
+        # 地図表示フラグは現在のON/OFF状態を維持したまま再描画
         st.rerun()
 
 #==========================================================================================
