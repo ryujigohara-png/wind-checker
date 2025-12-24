@@ -339,46 +339,43 @@ def save_location_to_browser(lat, lon, basho):
 # 起動時にブラウザの記録を参照し、地点に応じて座標を復元する初期化処理
 #==========================================================================================
 def initialize_session_from_browser():
-    # 1. デフォルト値のセット
+    # --- 1. まずデフォルト値をセット（ここで None を防ぐ） ---
     if 'last_basho' not in st.session_state:
         st.session_state.last_basho = CONFIG["DEFAULT_BASHO"]
-    # ... (中略：他の変数の初期化) ...
+    if 'lat' not in st.session_state:
+        st.session_state.lat = CONFIG["DEFAULT_LAT"]
+    if 'lon' not in st.session_state:
+        st.session_state.lon = CONFIG["DEFAULT_LON"]
+    if 'selectmap_lat' not in st.session_state:
+        st.session_state.selectmap_lat = CONFIG["DEFAULT_LAT"]
+    if 'selectmap_lon' not in st.session_state:
+        st.session_state.selectmap_lon = CONFIG["DEFAULT_LON"]
 
-    # 2. 隠し入力枠（ブラウザからの受取口）
-    # ※ label_visibility="collapsed" でユーザーには見えません
+    # --- 2. 隠し要素の設置（ブラウザからの受取口） ---
+    # 同期用のテキスト入力。key名を合わせます
     st.text_input("storage_sync_data", key="sync_box", label_visibility="collapsed")
-    
-    # 3. 起動時のみブラウザから吸い上げるJS
-    if "already_read" not in st.session_state:
-        js_read = """
-        <script>
-            const data = {
-                basho: localStorage.getItem('wind_checker_basho'),
-                lat: localStorage.getItem('wind_checker_lat'),
-                lon: localStorage.getItem('wind_checker_lon'),
-                slat: localStorage.getItem('selectmap_lat'),
-                slon: localStorage.getItem('selectmap_lon')
-            };
-            const input = window.parent.document.querySelector('input[aria-label="storage_sync_data"]');
-            if (input && data.basho) {
-                input.value = JSON.stringify(data);
-                input.dispatchEvent(new Event('input', { bubbles: true }));
-            }
-        </script>
-        """
-        components.html(js_read, height=0)
-        st.session_state.already_read = True
 
-    # 4. 隠し枠にデータがあれば変数に書き写す
-    if st.session_state.sync_box:
+    # --- 3. 隠し枠にデータが入ってきたら、変数を「書き写す」 ---
+    sync_data_str = st.session_state.get("sync_box")
+    if sync_data_str:
         try:
-            saved = json.loads(st.session_state.sync_box)
-            st.session_state.last_basho = saved['basho']
-            st.session_state.lat = float(saved['lat'])
-            st.session_state.lon = float(saved['lon'])
-            st.session_state.selectmap_lat = float(saved['slat'])
-            st.session_state.selectmap_lon = float(saved['slon'])
-        except: pass
+            import json
+            saved = json.loads(sync_data_str)
+            if saved.get('basho'):
+                st.session_state.last_basho = saved['basho']
+                # float()変換。万が一空文字 '' などが来てもデフォルト値に逃がす
+                st.session_state.lat = float(saved.get('lat') or CONFIG["DEFAULT_LAT"])
+                st.session_state.lon = float(saved.get('lon') or CONFIG["DEFAULT_LON"])
+                st.session_state.selectmap_lat = float(saved.get('slat') or CONFIG["DEFAULT_LAT"])
+                st.session_state.selectmap_lon = float(saved.get('slon') or CONFIG["DEFAULT_LON"])
+        except:
+            pass
+
+    # --- 4. 「地図で指定」の場合の座標復元 ---
+    if st.session_state.last_basho == "地図で指定":
+        st.session_state.lat = st.session_state.selectmap_lat
+        st.session_state.lon = st.session_state.selectmap_lon
+        
         
 #==========================================================================================
 # 地点が変更された場合に更新・リロードするサブルーチン
