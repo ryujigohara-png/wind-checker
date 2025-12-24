@@ -334,16 +334,67 @@ def save_location_to_browser(lat, lon, basho):
     components.html(js_code, height=0)
 
 #==========================================================================================
-# 起動時にブラウザから情報を読み込み初期表示するサブルーチン
+# 起動時に一度だけブラウザの LocalStorage から値を吸い上げる
+#==========================================================================================
+def sync_from_browser_storage():
+    # すでにURLパラメータがある場合は、読み込み済みと判断してスキップ
+    if "synced" in st.query_params:
+        return
+
+    js_code = """
+        <script>
+            const basho = localStorage.getItem('wind_checker_basho');
+            const lat = localStorage.getItem('wind_checker_lat');
+            const lon = localStorage.getItem('wind_checker_lon');
+            const sm_lat = localStorage.getItem('selectmap_lat');
+            const sm_lon = localStorage.getItem('selectmap_lon');
+
+            if (basho) {
+                const params = new URLSearchParams(window.location.search);
+                params.set('basho', basho);
+                params.set('lat', lat);
+                params.set('lon', lon);
+                params.set('sm_lat', sm_lat);
+                params.set('sm_lon', sm_lon);
+                params.set('synced', 'true');
+                // URLに値をのせてリロード（一度だけ実行される）
+                window.location.search = params.toString();
+            }
+        </script>
+    """
+    components.html(js_code, height=0)
+    st.stop() # JSが実行されるまで一旦停止
+
+#==========================================================================================
+# 起動時にブラウザの記録を参照し、地点に応じて座標を復元する初期化処理
 #==========================================================================================
 def initialize_session_from_browser():
-    if 'initialized' not in st.session_state:
-        # ブラウザ（セッション）に記憶がなければデフォルト、あればそれを使用
-        st.session_state.lat = st.session_state.get('lat', CONFIG["DEFAULT_LAT"])
-        st.session_state.lon = st.session_state.get('lon', CONFIG["DEFAULT_LON"])
-        st.session_state.last_basho = st.session_state.get('last_basho', CONFIG["DEFAULT_BASHO"])
-        st.session_state.initialized = True
-        st.session_state.first_run = True # 起動直後判定フラグ
+    # --- URLパラメータ（ブラウザからの吸い上げ値）があれば優先採用 ---
+    if "synced" in st.query_params:
+        st.session_state.last_basho = st.query_params.get("basho", CONFIG["DEFAULT_BASHO"])
+        st.session_state.lat = float(st.query_params.get("lat", CONFIG["DEFAULT_LAT"]))
+        st.session_state.lon = float(st.query_params.get("lon", CONFIG["DEFAULT_LON"]))
+        st.session_state.selectmap_lat = float(st.query_params.get("sm_lat", CONFIG["DEFAULT_LAT"]))
+        st.session_state.selectmap_lon = float(st.query_params.get("sm_lon", CONFIG["DEFAULT_LON"]))
+
+    # --- 基本項目の初期化（値が空の場合のみ CONFIG を使う） ---
+    if 'last_basho' not in st.session_state:
+        st.session_state.last_basho = CONFIG["DEFAULT_BASHO"]
+    if 'lat' not in st.session_state:
+        st.session_state.lat = CONFIG["DEFAULT_LAT"]
+    if 'lon' not in st.session_state:
+        st.session_state.lon = CONFIG["DEFAULT_LON"]
+    if 'selectmap_lat' not in st.session_state:
+        st.session_state.selectmap_lat = CONFIG["DEFAULT_LAT"]
+    if 'selectmap_lon' not in st.session_state:
+        st.session_state.selectmap_lon = CONFIG["DEFAULT_LON"]
+    if 'show_map_state' not in st.session_state:
+        st.session_state.show_map_state = False
+
+    # --- 【提案ロジック】地点名に応じた座標の最終切り替え ---
+    if st.session_state.last_basho == "地図で指定":
+        st.session_state.lat = st.session_state.selectmap_lat
+        st.session_state.lon = st.session_state.selectmap_lon
 
 #==========================================================================================
 # 地点が変更された場合に更新・リロードするサブルーチン
@@ -400,34 +451,57 @@ def display_graph_section(lat, lon, days, danger_v, sel_dirs):
 # メインのアプリケーション実行フロー
 #==========================================================================================
 def main():
-    # グラフに使用する日本語フォントをセットアップ
+    #============================================================
+    # ブラウザのLocalStorageから値を吸い上げる（初回起動時のみ実行）
+    #============================================================
+    sync_from_browser_storage()
+
+    #============================================================
+    # ブラウザの記録を参照し、地点に応じて座標を復元する初期化処理
+    #============================================================
+    initialize_session_from_browser()
+    
+    #============================================================
+    # グラフ用フォントのセットアップ
     setup_font()
     st.markdown(f'<h1 style="font-size:{CONFIG["TITLE_SIZE"]}px; margin-bottom: 5px;">⛵ 高須風チェッカー</h1>', unsafe_allow_html=True)
+    #============================================================
 
-    # アプリケーションで利用可能な地点マスタを定義
+    #============================================================
+    # 地点マスタ（名前と緯度経度の対応表）
+    #============================================================
     coords_master = get_location_master()
     
-    # 起動時にブラウザから情報を読み込み初期表示
-    initialize_session_from_browser()
-
-    # 地点選択
+    #============================================================
+    # 地点選択UI（セレクトボックスと地図チェック）
+    #============================================================
     basho, show_map = show_location_selector(coords_master)
     
-    # 【重要】handle_location_change の中で save_location_to_browser を呼び出す。
-    # ここで JS が発行され、その後の rerun() で確実に処理が回るようにする。
+    #============================================================
+    # 地点が変更された場合の処理（座標の更新と保存）
+    #============================================================
     handle_location_change(basho, coords_master)
 
-    # 現在：表示
+    #============================================================
+    # 気象データの取得とグラフ描画（現在の座標 st.session_state.lat/lon を使用）
+    # ここに気象データ取得・グラフ表示の関数を記述
+    #============================================================
     display_current_location_info()
 
-    # 地図表示
+    #============================================================
+    # 地図表示UI（チェックボックスがONの場合のみ表示）
+    #============================================================
     if show_map:
         show_location_map()
 
+    #============================================================
     # サイドメニュー表示
+    #============================================================
     days, danger_v, sel_dirs = show_sidebar_controls()
 
+    #============================================================
     # グラフ描画セクション（ここが重い）
+    #============================================================
     display_graph_section(st.session_state.lat, st.session_state.lon, days, danger_v, sel_dirs)
 
 if __name__ == "__main__":
