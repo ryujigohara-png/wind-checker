@@ -293,65 +293,74 @@ def show_location_map():
             st.session_state.last_basho = "地図で指定"
             st.rerun()
 
-#==========================================================================================
-# サイドバー設定 (既存維持)
-#==========================================================================================
-def show_sidebar_controls():
-    st.sidebar.header("表示設定")
-    danger_v = st.sidebar.number_input("危険風速ライン(m/s)", value=12.0, step=0.5)
-    st.sidebar.write("色付風向")
-    init_dirs = ["南","南南西","南西","西南西","西","西北西","北西","北北西"]
-    sel_dirs = []
-    cols = st.sidebar.columns(2)
-    for i, d in enumerate(ALL_DIRECTIONS):
-        with cols[i % 2]:
-            if st.checkbox(d, value=(d in init_dirs), key=f"chk_{d}"):
-                sel_dirs.append(d)
-    return danger_v, sel_dirs
-
 # ======================================================================================
-# ブラウザのLocalStorageとSessionStateを同期するサブルーチン (Plan A)
+# ブラウザのLocalStorageとSessionStateを同期する（全設定対応版）
 # ======================================================================================
-def sync_local_storage_plan_a():
-    """
-    streamlit-js-evalを使用して、ブラウザのLocalStorageを読み書きする。
-    """
-    # 1. 保存用のキー
+def sync_all_settings():
     STORAGE_KEY = CONFIG['STORAGE_KEY']
 
-    # 2. 読み込み (ブラウザから値を取得)
-    # 起動時に一度だけLocalStorageから値を取り出し、SessionStateに反映する
-    if st.session_state.get("initialized") is None:
+    # 1. 読み込み (初回起動時のみ)
+    if "initialized" not in st.session_state:
         stored_data = streamlit_js_eval(js_expressions=f"localStorage.getItem('{STORAGE_KEY}')", key="load_storage")
         
         if stored_data:
             try:
                 data = json.loads(stored_data)
-                st.session_state.lat = float(data["lat"])
-                st.session_state.lon = float(data["lon"])
-                st.session_state.last_basho = data["basho"]
+                st.session_state.lat = float(data.get("lat", CONFIG["DEFAULT_LAT"]))
+                st.session_state.lon = float(data.get("lon", CONFIG["DEFAULT_LON"]))
+                st.session_state.last_basho = data.get("basho", CONFIG["DEFAULT_BASHO"])
+                st.session_state.danger_v = float(data.get("danger_v", 12.0))
+                st.session_state.sel_dirs = data.get("sel_dirs", ["南","南南西","南西","西南西","西","西北西","北西","北北西"])
                 st.session_state.initialized = True
                 st.rerun()
-            except Exception as e:
-                # 読み込み失敗時はデフォルトを使用
+            except:
                 st.session_state.initialized = True
-        elif stored_data == "": # データが存在しない場合
+        elif stored_data == "":
             st.session_state.initialized = True
+        
+        if "initialized" not in st.session_state:
+            st.stop()
 
-    # 3. 保存 (現在のSessionStateをブラウザに書き込む)
-    # 地点が変わるたびに実行されるよう、現在の状態をシリアライズしてJSに渡す
-    current_data = json.dumps({
+    # 2. 保存 (現在の状態をパッケージング)
+    # sel_dirs はサイドバーで取得した最新値を反映させるため、ここでの直接保存はせず
+    # 状態が変わるポイントで localStorage.setItem を呼ぶ構成にします。
+    save_data = {
         "lat": st.session_state.lat,
         "lon": st.session_state.lon,
-        "basho": st.session_state.last_basho
-    })
+        "basho": st.session_state.last_basho,
+        "danger_v": st.session_state.get("danger_v", 12.0),
+        "sel_dirs": st.session_state.get("sel_dirs", [])
+    }
+    js_save = f"localStorage.setItem('{STORAGE_KEY}', '{json.dumps(save_data)}')"
+    streamlit_js_eval(js_expressions=js_save, key="save_storage")
+
+# ======================================================================================
+# サイドバー設定 (保存対応版)
+# ======================================================================================
+def show_sidebar_controls():
+    st.sidebar.header("表示設定")
     
-    # JavaScriptを直接実行してLocalStorageに保存
-    streamlit_js_eval(js_expressions=f"localStorage.setItem('{STORAGE_KEY}', '{current_data}')", key="save_storage")
+    # 復元された値、もしくはデフォルト値を使用
+    default_v = st.session_state.get("danger_v", 12.0)
+    danger_v = st.sidebar.number_input("危険風速ライン(m/s)", value=default_v, step=0.5)
+    st.session_state.danger_v = danger_v # 保存用に更新
     
-#==========================================================================================
+    st.sidebar.write("色付風向")
+    saved_dirs = st.session_state.get("sel_dirs", ["南","南南西","南西","西南西","西","西北西","北西","北北西"])
+    
+    sel_dirs = []
+    cols = st.sidebar.columns(2)
+    for i, d in enumerate(ALL_DIRECTIONS):
+        with cols[i % 2]:
+            if st.checkbox(d, value=(d in saved_dirs), key=f"chk_{d}"):
+                sel_dirs.append(d)
+    
+    st.session_state.sel_dirs = sel_dirs # 保存用に更新
+    return danger_v, sel_dirs
+
+# ======================================================================================
 # メインフロー
-#==========================================================================================
+# ======================================================================================
 def main():
     setup_font()
     st.markdown(f'<h1 style="font-size:{CONFIG["TITLE_SIZE"]}px;">⛵ 高須風チェッカー</h1>', unsafe_allow_html=True)
@@ -361,14 +370,14 @@ def main():
     if 'lon' not in st.session_state: st.session_state.lon = CONFIG["DEFAULT_LON"]
     if 'last_basho' not in st.session_state: st.session_state.last_basho = CONFIG["DEFAULT_BASHO"]
 
-# --- 外部ライブラリによる同期 ---
-    sync_local_storage_plan_a()
-    
+    # --- LocalStorage同期 ---
+    sync_all_settings()
+
     master = {
         "高須沖(鹿児島県)":(31.337, 130.795), "柏原沖(鹿児島県)":(31.380, 131.020), 
         "垂水港(鹿児島県)":(31.478, 130.668), "海潟(鹿児島県)":(31.539, 130.706), 
         "磯海岸沖(鹿児島県)":(31.614, 130.577), "江口浜沖(鹿児島県)":(31.643, 130.322),
-        "錦江湾(鹿児島県)":(31.590, 130.600), "地図で指定": (None, None)
+        "錦江湾(鹿児島県)":(31.590, 130.600), "地図で指定": (st.session_state.lat, st.session_state.lon)
     }
     
     current_idx = 0
@@ -381,9 +390,6 @@ def main():
         st.session_state.last_basho = basho
         if basho != "地図で指定":
             st.session_state.lat, st.session_state.lon = master[basho]
-            st.session_state.show_map_state = False
-        else:
-            st.session_state.show_map_state = True
         st.rerun()
 
     show_map = st.checkbox("地図表示", value=st.session_state.get('show_map_state', False))
@@ -391,12 +397,19 @@ def main():
     if show_map:
         show_location_map()
 
-    st.markdown(f"<p style='font-size:{CONFIG['LOC_INFO_FONT_SIZE']}; color:{CONFIG['LOC_INFO_COLOR']}; font-weight:bold;'>📍 現在：{st.session_state.last_basho} ({st.session_state.lat:.4f}, {st.session_state.lon:.4f})</p>", unsafe_allow_html=True)
+    # 時刻と更新ボタンのレイアウト
+    c1, c2 = st.columns([7, 3])
+    with c1:
+        now = datetime.now(timezone(timedelta(hours=9)))
+        st.markdown(f"<p style='font-size:{CONFIG['LOC_INFO_FONT_SIZE']}; color:{CONFIG['LOC_INFO_COLOR']}; font-weight:bold;'>📍 現在：{st.session_state.last_basho} ({st.session_state.lat:.4f}, {st.session_state.lon:.4f})<br><span style='font-size:12px; color:gray;'>取得時刻: {now.strftime('%Y/%m/%d %H:%M:%S')}</span></p>", unsafe_allow_html=True)
+    with c2:
+        if st.button("🔄 グラフ更新", use_container_width=True):
+            st.cache_data.clear() # グラフのキャッシュを消して再取得
+            st.rerun()
     
     danger_v, sel_dirs = show_sidebar_controls()
     img = generate_high_res_graph(st.session_state.lat, st.session_state.lon, danger_v, tuple(sel_dirs))
+    
     if img:
         st.markdown(f'<div style="overflow-x: auto; background: white;"><img src="data:image/png;base64,{img}" style="height: 850px; max-width: none;"></div>', unsafe_allow_html=True)
-
-if __name__ == "__main__":
-    main()
+        
