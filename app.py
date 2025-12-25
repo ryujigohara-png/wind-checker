@@ -16,10 +16,6 @@ import folium
 import streamlit.components.v1 as components
 import json
 from streamlit_js_eval import streamlit_js_eval
-# CONFIGに追記（既存のものは維持）
-CONFIG.update({
-    "SYNC_TIMEOUT_COUNT": 5  # 同期試行回数
-})
 
 # ======================================================================================
 # 1. 定数・基本設定 (CONFIG)
