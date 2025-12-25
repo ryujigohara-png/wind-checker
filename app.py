@@ -16,6 +16,10 @@ import folium
 import streamlit.components.v1 as components
 import json
 from streamlit_js_eval import streamlit_js_eval
+# CONFIGに追記（既存のものは維持）
+CONFIG.update({
+    "SYNC_TIMEOUT_COUNT": 5  # 同期試行回数
+})
 
 # ======================================================================================
 # 1. 定数・基本設定 (CONFIG)
@@ -262,15 +266,18 @@ def show_location_map():
             st.rerun()
 
 #==========================================================================================
-# ブラウザのLocalStorageとSessionStateを同期するサブルーチン
+# ブラウザのLocalStorageとSessionStateを同期するサブルーチン (スマホ対応強化版)
 #==========================================================================================
 def sync_all_settings():
     STORAGE_KEY = CONFIG['STORAGE_KEY']
 
+    # 1. 読み込み処理
     if "initialized" not in st.session_state:
+        # スマホ環境ではJSの実行結果が返るまで時間がかかることがある
         stored_data = streamlit_js_eval(js_expressions=f"localStorage.getItem('{STORAGE_KEY}')", key="load_storage")
         
-        if stored_data:
+        # 値が取得できた場合
+        if stored_data and isinstance(stored_data, str) and stored_data.startswith('{'):
             try:
                 data = json.loads(stored_data)
                 st.session_state.lat = float(data.get("lat", CONFIG["DEFAULT_LAT"]))
@@ -280,23 +287,33 @@ def sync_all_settings():
                 st.session_state.sel_dirs = data.get("sel_dirs", CONFIG["DEFAULT_DIRS"])
                 st.session_state.initialized = True
                 st.rerun()
-            except:
-                st.session_state.initialized = True
-        elif stored_data == "":
-            st.session_state.initialized = True
+            except Exception:
+                st.session_state.initialized = True # パース失敗時はデフォルトで進む
         
-        if "initialized" not in st.session_state:
-            st.stop()
-
-    save_data = {
-        "lat": st.session_state.lat,
-        "lon": st.session_state.lon,
-        "basho": st.session_state.last_basho,
-        "danger_v": st.session_state.get("danger_v", CONFIG["DEFAULT_DANGER_V"]),
-        "sel_dirs": st.session_state.get("sel_dirs", CONFIG["DEFAULT_DIRS"])
-    }
-    js_save = f"localStorage.setItem('{STORAGE_KEY}', '{json.dumps(save_data)}')"
-    streamlit_js_eval(js_expressions=js_save, key="save_storage")
+        # 取得結果が「空」であることが確定した場合（LocalStorageが未作成）
+        elif stored_data == "" or stored_data is None:
+            # 何度か試行してダメなら、デフォルト値を使用して初期化完了とする
+            if "retry_count" not in st.session_state:
+                st.session_state.retry_count = 0
+            
+            st.session_state.retry_count += 1
+            if st.session_state.retry_count > 2: # 2回リロードしても空ならデフォルト
+                st.session_state.initialized = True
+                st.rerun()
+            else:
+                st.stop() # JSの応答待ち
+    
+    # 2. 保存処理 (常に最新の状態を書き込む)
+    if st.session_state.get("initialized"):
+        save_data = {
+            "lat": st.session_state.lat,
+            "lon": st.session_state.lon,
+            "basho": st.session_state.last_basho,
+            "danger_v": st.session_state.get("danger_v", CONFIG["DEFAULT_DANGER_V"]),
+            "sel_dirs": st.session_state.get("sel_dirs", CONFIG["DEFAULT_DIRS"])
+        }
+        js_save = f"localStorage.setItem('{STORAGE_KEY}', '{json.dumps(save_data)}')"
+        streamlit_js_eval(js_expressions=js_save, key="save_storage")
 
 #==========================================================================================
 # 地点選択のロジックを制御するサブルーチン
@@ -355,40 +372,45 @@ def render_header_info():
             st.rerun()
 
 #==========================================================================================
-# メインフロー
+# メインフロー (スマホ表示安定化版)
 #==========================================================================================
 def main():
     setup_font()
     st.markdown(f'<h1 style="font-size:{CONFIG["TITLE_SIZE"]}px;">⛵ 高須風チェッカー</h1>', unsafe_allow_html=True)
     
-    # SessionState初期化
+    # SessionState初期化（最優先）
     if 'lat' not in st.session_state: st.session_state.lat = CONFIG["DEFAULT_LAT"]
     if 'lon' not in st.session_state: st.session_state.lon = CONFIG["DEFAULT_LON"]
     if 'last_basho' not in st.session_state: st.session_state.last_basho = CONFIG["DEFAULT_BASHO"]
 
-    # --- LocalStorage同期 (復元と保存を自動実行) ---
+    # LocalStorage同期
     sync_all_settings()
 
-    # 地点選択
+    # 同期が完了していない場合はスピナーを表示して待機
+    if "initialized" not in st.session_state:
+        with st.spinner("設定を読み込み中..."):
+            st.stop()
+
+    # --- 以下、通常通りの表示処理 ---
     handle_location_selection()
 
-    # 地図表示トグル
     show_map = st.checkbox("地図表示", value=st.session_state.get('show_map_state', False))
     st.session_state.show_map_state = show_map
     if show_map:
         show_location_map()
 
-    # 時刻・座標・更新ボタン表示
     render_header_info()
-    
-    # サイドバー設定取得
     danger_v, sel_dirs = show_sidebar_controls()
     
-    # グラフ描画
     img = generate_high_res_graph(st.session_state.lat, st.session_state.lon, danger_v, tuple(sel_dirs))
     
     if img:
-        st.markdown(f'<div style="overflow-x: auto; background: white;"><img src="data:image/png;base64,{img}" style="height: 850px; max-width: none;"></div>', unsafe_allow_html=True)
+        # スマホでの横スクロールを考慮したCSS
+        st.markdown(f'''
+            <div style="overflow-x: auto; background: white; -webkit-overflow-scrolling: touch;">
+                <img src="data:image/png;base64,{img}" style="height: 600px; max-width: none;">
+            </div>
+            ''', unsafe_allow_html=True)
 
 if __name__ == "__main__":
     main()
