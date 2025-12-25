@@ -12,6 +12,7 @@ from datetime import datetime, timedelta, timezone
 import matplotlib.dates as mdates
 from streamlit_folium import st_folium
 import folium
+import streamlit.components.v1 as components
 
 # ======================================================================================
 # 1. 定数・基本設定 (CONFIG)
@@ -33,6 +34,9 @@ CONFIG = {
     "DEFAULT_BASHO": "高須沖(鹿児島県)",
     "ANNOT_Y_STEP": 1.5,
     "ANNOT_BASE_Y": 0.5,
+    "STORAGE_KEY_LAT": "wind_checker_lat",
+    "STORAGE_KEY_LON": "wind_checker_lon",
+    "STORAGE_KEY_BASHO": "wind_checker_basho",
 }
 
 ALL_DIRECTIONS = ["北", "北北東", "北東", "東北東", "東", "東南東", "南東", "南南東", "南", "南南西", "南西", "西南西", "西", "西北西", "北西", "北北西"]
@@ -47,6 +51,47 @@ def setup_font():
         urllib.request.urlretrieve(font_url, font_path)
     fm.fontManager.addfont(font_path)
     plt.rc('font', family='Noto Sans JP', size=CONFIG["GRAPH_FONT_SIZE"])
+
+#==========================================================================================
+# ブラウザのLocalStorageとSessionStateを同期するサブルーチン
+#==========================================================================================
+def sync_settings_with_local_storage():
+    """
+    JavaScriptを使用してLocalStorageから座標と地点名を読み込み、
+    SessionStateに未定義の場合のみ初期値をセットし、変更があればLocalStorageを更新する。
+    """
+    # JSから値を取得するためのコンポーネント
+    sync_script = f"""
+    <script>
+    const lat = localStorage.getItem("{CONFIG['STORAGE_KEY_LAT']}");
+    const lon = localStorage.getItem("{CONFIG['STORAGE_KEY_LON']}");
+    const basho = localStorage.getItem("{CONFIG['STORAGE_KEY_BASHO']}");
+    
+    const data = {{
+        "lat": lat,
+        "lon": lon,
+        "basho": basho
+    }};
+    
+    // Streamlitへデータを送信
+    window.parent.postMessage({{
+        type: 'streamlit:setComponentValue',
+        value: data
+    }}, '*');
+    </script>
+    """
+    # 隠しコンポーネントとして実行
+    res = components.html(sync_script, height=0)
+
+    # 書き込み用JS（SessionStateが更新されたときに呼び出す）
+    storage_update_js = f"""
+    <script>
+    localStorage.setItem("{CONFIG['STORAGE_KEY_LAT']}", "{st.session_state.lat}");
+    localStorage.setItem("{CONFIG['STORAGE_KEY_LON']}", "{st.session_state.lon}");
+    localStorage.setItem("{CONFIG['STORAGE_KEY_BASHO']}", "{st.session_state.last_basho}");
+    </script>
+    """
+    st.markdown(storage_update_js, unsafe_allow_html=True)
 
 #==========================================================================================
 # Open-Meteo APIから気象データを取得するサブルーチン
@@ -246,15 +291,12 @@ def show_location_map():
             st.session_state.last_basho = "地図で指定"
             st.rerun()
 
-
 #==========================================================================================
-# 5.1/5.2 サイドバー設定項目
+# 5.1/5.2 サイドバー設定項目を表示するサブルーチン
 #==========================================================================================
 def show_sidebar_controls():
     st.sidebar.header("表示設定")
-    # 危険風速ラインを独立（既定値12m/s）
     danger_v = st.sidebar.number_input("危険風速ライン(m/s)", value=12.0, step=0.5)
-
     st.sidebar.write("色付風向（3-10m/sで着色）")
     init_dirs = ["南","南南西","南西","西南西","西","西北西","北西","北北西"]
     sel_dirs = []
@@ -264,26 +306,33 @@ def show_sidebar_controls():
             if st.checkbox(d, value=(d in init_dirs), key=f"chk_{d}"):
                 sel_dirs.append(d)
     st.sidebar.markdown("---")
-    st.sidebar.warning("※設定はブラウザに保存されます（実装予定）")
     return danger_v, sel_dirs
-    
+
 #==========================================================================================
 # アプリケーションの初期化とメインフロー制御を行うサブルーチン
 #==========================================================================================
 def main():
     setup_font()
     st.markdown(f'<h1 style="font-size:{CONFIG["TITLE_SIZE"]}px;">⛵ 高須風チェッカー</h1>', unsafe_allow_html=True)
+    
+    # SessionStateの初期化（LocalStorage同期を考慮）
     if 'lat' not in st.session_state: st.session_state.lat = CONFIG["DEFAULT_LAT"]
     if 'lon' not in st.session_state: st.session_state.lon = CONFIG["DEFAULT_LON"]
     if 'last_basho' not in st.session_state: st.session_state.last_basho = CONFIG["DEFAULT_BASHO"]
+    
+    # ブラウザLocalStorageとの同期実行
+    sync_settings_with_local_storage()
+
     master = {
         "高須沖(鹿児島県)":(31.337, 130.795), "柏原沖(鹿児島県)":(31.380, 131.020), 
         "垂水港(鹿児島県)":(31.478, 130.668), "海潟(鹿児島県)":(31.539, 130.706), 
         "磯海岸沖(鹿児島県)":(31.614, 130.577), "江口浜沖(鹿児島県)":(31.643, 130.322),
         "錦江湾(鹿児島県)":(31.590, 130.600), "地図で指定": (None, None)
     }
+    
     basho = st.selectbox("地点を選択してください", list(master.keys()), 
                          index=list(master.keys()).index(st.session_state.last_basho) if st.session_state.last_basho in master else 0)
+    
     if basho != st.session_state.last_basho:
         st.session_state.last_basho = basho
         if basho != "地図で指定":
@@ -292,9 +341,12 @@ def main():
         else:
             st.session_state.show_map_state = True
         st.rerun()
+
     show_map = st.checkbox("地図表示", value=st.session_state.get('show_map_state', False))
     st.session_state.show_map_state = show_map
+    
     st.markdown(f"<p style='font-size:{CONFIG['LOC_INFO_FONT_SIZE']}; color:{CONFIG['LOC_INFO_COLOR']}; font-weight:bold;'>📍 現在：{st.session_state.last_basho} ({st.session_state.lat:.4f}, {st.session_state.lon:.4f})</p>", unsafe_allow_html=True)
+    
     if show_map:
         show_location_map()
     
