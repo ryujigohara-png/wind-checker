@@ -34,6 +34,8 @@ CONFIG = {
     "DEFAULT_LAT": 31.337,
     "DEFAULT_LON": 130.795,
     "DEFAULT_BASHO": "高須沖(鹿児島県)",
+    "DEFAULT_DANGER_V": 12.0,
+    "DEFAULT_DIRS": ["南","南南西","南西","西南西","西","西北西","北西","北北西"],
     "ANNOT_Y_STEP": 1.5,
     "ANNOT_BASE_Y": 0.5,
     "STORAGE_KEY": "wind_checker_settings"
@@ -51,72 +53,6 @@ def setup_font():
         urllib.request.urlretrieve(font_url, font_path)
     fm.fontManager.addfont(font_path)
     plt.rc('font', family='Noto Sans JP', size=CONFIG["GRAPH_FONT_SIZE"])
-
-#==========================================================================================
-# LocalStorageとの同期を司るサブルーチン (Plan B)
-#==========================================================================================
-def sync_local_storage_v3():
-    """
-    JavaScriptを用いてLocalStorageとPython間の値を非表示の入力欄経由で同期する。
-    """
-    # 1. 保存用のJavaScript
-    # SessionStateが変わるたびに実行され、LocalStorageを更新する
-    current_data = {
-        "lat": st.session_state.lat,
-        "lon": st.session_state.lon,
-        "basho": st.session_state.last_basho
-    }
-    save_js = f"""
-    <script>
-    localStorage.setItem("{CONFIG['STORAGE_KEY']}", '{json.dumps(current_data)}');
-    </script>
-    """
-    st.markdown(save_js, unsafe_allow_html=True)
-
-    # 2. 読み込み用のJavaScript (初回ロード時のみ隠しテキストエリアに値を流し込む)
-    st.markdown("""
-        <style>div[data-testid="stFormSubmitButton"] {display: none;}</style>
-        """, unsafe_allow_html=True)
-    
-    load_js = f"""
-    <script>
-    (function() {{
-        const data = localStorage.getItem("{CONFIG['STORAGE_KEY']}");
-        if (data) {{
-            const parsed = JSON.parse(data);
-            // Streamlitのテキストエリアを探して値をセット
-            const textAreas = window.parent.document.querySelectorAll('textarea[aria-label="storage_bridge"]');
-            if (textAreas.length > 0) {{
-                const ta = textAreas[0];
-                if (ta.value === "") {{
-                    ta.value = data;
-                    ta.dispatchEvent(new Event('input', {{ bubbles: true }}));
-                    ta.dispatchEvent(new Event('change', {{ bubbles: true }}));
-                    // Enterキーのシミュレーション
-                    const ke = new KeyboardEvent('keydown', {{ bubbles: true, cancelable: true, keyCode: 13, key: 'Enter' }});
-                    ta.dispatchEvent(ke);
-                }}
-            }}
-        }}
-    }})();
-    </script>
-    """
-    # ユーザーに見えない位置に橋渡し用のテキストエリアを配置
-    with st.container():
-        bridge_val = st.text_area("storage_bridge", label_visibility="collapsed", key="bridge_area", help="Do not manual edit")
-        components.html(load_js, height=0)
-
-    # 隠しテキストエリアに値が入ったら、SessionStateを更新してリロード
-    if bridge_val and st.session_state.get("initialized") is None:
-        try:
-            imported = json.loads(bridge_val)
-            st.session_state.lat = float(imported["lat"])
-            st.session_state.lon = float(imported["lon"])
-            st.session_state.last_basho = imported["basho"]
-            st.session_state.initialized = True
-            st.rerun()
-        except:
-            pass
 
 #==========================================================================================
 # Open-Meteo APIから気象データを取得するサブルーチン
@@ -293,9 +229,9 @@ def show_location_map():
             st.session_state.last_basho = "地図で指定"
             st.rerun()
 
-# ======================================================================================
-# ブラウザのLocalStorageとSessionStateを同期する（全設定対応版）
-# ======================================================================================
+#==========================================================================================
+# ブラウザのLocalStorageとSessionStateを同期するサブルーチン (全設定対応)
+#==========================================================================================
 def sync_all_settings():
     STORAGE_KEY = CONFIG['STORAGE_KEY']
 
@@ -309,8 +245,8 @@ def sync_all_settings():
                 st.session_state.lat = float(data.get("lat", CONFIG["DEFAULT_LAT"]))
                 st.session_state.lon = float(data.get("lon", CONFIG["DEFAULT_LON"]))
                 st.session_state.last_basho = data.get("basho", CONFIG["DEFAULT_BASHO"])
-                st.session_state.danger_v = float(data.get("danger_v", 12.0))
-                st.session_state.sel_dirs = data.get("sel_dirs", ["南","南南西","南西","西南西","西","西北西","北西","北北西"])
+                st.session_state.danger_v = float(data.get("danger_v", CONFIG["DEFAULT_DANGER_V"]))
+                st.session_state.sel_dirs = data.get("sel_dirs", CONFIG["DEFAULT_DIRS"])
                 st.session_state.initialized = True
                 st.rerun()
             except:
@@ -322,31 +258,29 @@ def sync_all_settings():
             st.stop()
 
     # 2. 保存 (現在の状態をパッケージング)
-    # sel_dirs はサイドバーで取得した最新値を反映させるため、ここでの直接保存はせず
-    # 状態が変わるポイントで localStorage.setItem を呼ぶ構成にします。
     save_data = {
         "lat": st.session_state.lat,
         "lon": st.session_state.lon,
         "basho": st.session_state.last_basho,
-        "danger_v": st.session_state.get("danger_v", 12.0),
-        "sel_dirs": st.session_state.get("sel_dirs", [])
+        "danger_v": st.session_state.get("danger_v", CONFIG["DEFAULT_DANGER_V"]),
+        "sel_dirs": st.session_state.get("sel_dirs", CONFIG["DEFAULT_DIRS"])
     }
     js_save = f"localStorage.setItem('{STORAGE_KEY}', '{json.dumps(save_data)}')"
     streamlit_js_eval(js_expressions=js_save, key="save_storage")
 
-# ======================================================================================
-# サイドバー設定 (保存対応版)
-# ======================================================================================
+#==========================================================================================
+# サイドバー設定サブルーチン (保存対応版)
+#==========================================================================================
 def show_sidebar_controls():
     st.sidebar.header("表示設定")
     
     # 復元された値、もしくはデフォルト値を使用
-    default_v = st.session_state.get("danger_v", 12.0)
+    default_v = st.session_state.get("danger_v", CONFIG["DEFAULT_DANGER_V"])
     danger_v = st.sidebar.number_input("危険風速ライン(m/s)", value=default_v, step=0.5)
-    st.session_state.danger_v = danger_v # 保存用に更新
+    st.session_state.danger_v = danger_v
     
     st.sidebar.write("色付風向")
-    saved_dirs = st.session_state.get("sel_dirs", ["南","南南西","南西","西南西","西","西北西","北西","北北西"])
+    saved_dirs = st.session_state.get("sel_dirs", CONFIG["DEFAULT_DIRS"])
     
     sel_dirs = []
     cols = st.sidebar.columns(2)
@@ -355,12 +289,25 @@ def show_sidebar_controls():
             if st.checkbox(d, value=(d in saved_dirs), key=f"chk_{d}"):
                 sel_dirs.append(d)
     
-    st.session_state.sel_dirs = sel_dirs # 保存用に更新
+    st.session_state.sel_dirs = sel_dirs
     return danger_v, sel_dirs
 
-# ======================================================================================
+#==========================================================================================
+# 現在時刻と更新ボタンを表示するサブルーチン
+#==========================================================================================
+def render_header_info():
+    c1, c2 = st.columns([7, 3])
+    with c1:
+        now = datetime.now(timezone(timedelta(hours=9)))
+        st.markdown(f"<p style='font-size:{CONFIG['LOC_INFO_FONT_SIZE']}; color:{CONFIG['LOC_INFO_COLOR']}; font-weight:bold;'>📍 現在：{st.session_state.last_basho} ({st.session_state.lat:.4f}, {st.session_state.lon:.4f})<br><span style='font-size:12px; color:gray;'>取得時刻: {now.strftime('%Y/%m/%d %H:%M:%S')}</span></p>", unsafe_allow_html=True)
+    with c2:
+        if st.button("🔄 グラフ更新", use_container_width=True):
+            st.cache_data.clear()
+            st.rerun()
+
+#==========================================================================================
 # メインフロー
-# ======================================================================================
+#==========================================================================================
 def main():
     setup_font()
     st.markdown(f'<h1 style="font-size:{CONFIG["TITLE_SIZE"]}px;">⛵ 高須風チェッカー</h1>', unsafe_allow_html=True)
@@ -397,19 +344,17 @@ def main():
     if show_map:
         show_location_map()
 
-    # 時刻と更新ボタンのレイアウト
-    c1, c2 = st.columns([7, 3])
-    with c1:
-        now = datetime.now(timezone(timedelta(hours=9)))
-        st.markdown(f"<p style='font-size:{CONFIG['LOC_INFO_FONT_SIZE']}; color:{CONFIG['LOC_INFO_COLOR']}; font-weight:bold;'>📍 現在：{st.session_state.last_basho} ({st.session_state.lat:.4f}, {st.session_state.lon:.4f})<br><span style='font-size:12px; color:gray;'>取得時刻: {now.strftime('%Y/%m/%d %H:%M:%S')}</span></p>", unsafe_allow_html=True)
-    with c2:
-        if st.button("🔄 グラフ更新", use_container_width=True):
-            st.cache_data.clear() # グラフのキャッシュを消して再取得
-            st.rerun()
+    # 時刻・更新ボタン表示
+    render_header_info()
     
+    # 設定取得
     danger_v, sel_dirs = show_sidebar_controls()
+    
+    # グラフ描画
     img = generate_high_res_graph(st.session_state.lat, st.session_state.lon, danger_v, tuple(sel_dirs))
     
     if img:
         st.markdown(f'<div style="overflow-x: auto; background: white;"><img src="data:image/png;base64,{img}" style="height: 850px; max-width: none;"></div>', unsafe_allow_html=True)
-        
+
+if __name__ == "__main__":
+    main()
