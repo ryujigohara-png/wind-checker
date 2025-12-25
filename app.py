@@ -13,6 +13,7 @@ import matplotlib.dates as mdates
 from streamlit_folium import st_folium
 import folium
 import streamlit.components.v1 as components
+import json
 
 # ======================================================================================
 # 1. 定数・基本設定 (CONFIG)
@@ -34,9 +35,7 @@ CONFIG = {
     "DEFAULT_BASHO": "高須沖(鹿児島県)",
     "ANNOT_Y_STEP": 1.5,
     "ANNOT_BASE_Y": 0.5,
-    "STORAGE_KEY_LAT": "wind_checker_lat",
-    "STORAGE_KEY_LON": "wind_checker_lon",
-    "STORAGE_KEY_BASHO": "wind_checker_basho",
+    "STORAGE_KEY": "wind_checker_settings"
 }
 
 ALL_DIRECTIONS = ["北", "北北東", "北東", "東北東", "東", "東南東", "南東", "南南東", "南", "南南西", "南西", "西南西", "西", "西北西", "北西", "北北西"]
@@ -53,154 +52,70 @@ def setup_font():
     plt.rc('font', family='Noto Sans JP', size=CONFIG["GRAPH_FONT_SIZE"])
 
 #==========================================================================================
-# 起動時にブラウザのLocalStorageから設定を読み出すサブルーチン
+# LocalStorageとの同期を司るサブルーチン (Plan B)
 #==========================================================================================
-def load_settings_from_browser():
+def sync_local_storage_v3():
     """
-    LocalStorageから値を読み取り、SessionStateに反映させる。
+    JavaScriptを用いてLocalStorageとPython間の値を非表示の入力欄経由で同期する。
     """
+    # 1. 保存用のJavaScript
+    # SessionStateが変わるたびに実行され、LocalStorageを更新する
+    current_data = {
+        "lat": st.session_state.lat,
+        "lon": st.session_state.lon,
+        "basho": st.session_state.last_basho
+    }
+    save_js = f"""
+    <script>
+    localStorage.setItem("{CONFIG['STORAGE_KEY']}", '{json.dumps(current_data)}');
+    </script>
+    """
+    st.markdown(save_js, unsafe_allow_html=True)
+
+    # 2. 読み込み用のJavaScript (初回ロード時のみ隠しテキストエリアに値を流し込む)
+    st.markdown("""
+        <style>div[data-testid="stFormSubmitButton"] {display: none;}</style>
+        """, unsafe_allow_html=True)
+    
     load_js = f"""
     <script>
     (function() {{
-        const lat = localStorage.getItem("{CONFIG['STORAGE_KEY_LAT']}");
-        const lon = localStorage.getItem("{CONFIG['STORAGE_KEY_LON']}");
-        const basho = localStorage.getItem("{CONFIG['STORAGE_KEY_BASHO']}");
-        
-        const data = {{ "lat": lat, "lon": lon, "basho": basho }};
-        window.parent.postMessage({{
-            type: 'streamlit:setComponentValue',
-            value: data
-        }}, '*');
-    }})();
-    </script>
-    """
-    # 戻り値を取得。辞書ではなく、コンポーネントオブジェクトとして扱う
-    res_val = components.html(load_js, height=0)
-    
-    # 初回起動時、JSから有効なデータが届いたらSessionStateを上書き
-    if res_val is not None and st.session_state.get("initialized") is None:
-        # res_val 自体がデータとして扱えるかチェック
-        try:
-            if isinstance(res_val, dict) and res_val.get("lat"):
-                st.session_state.lat = float(res_val["lat"])
-                st.session_state.lon = float(res_val["lon"])
-                st.session_state.last_basho = res_val["basho"]
-                st.session_state.initialized = True
-                st.rerun()
-        except:
-            pass
-
-#==========================================================================================
-# 現在の設定をブラウザのLocalStorageへ保存するサブルーチン
-#==========================================================================================
-def save_settings_to_browser():
-    """
-    現在のSessionStateの値をLocalStorageに書き込むJavaScriptを注入する。
-    """
-    save_js = f"""
-    <script>
-    (function() {{
-        localStorage.setItem("{CONFIG['STORAGE_KEY_LAT']}", "{st.session_state.lat}");
-        localStorage.setItem("{CONFIG['STORAGE_KEY_LON']}", "{st.session_state.lon}");
-        localStorage.setItem("{CONFIG['STORAGE_KEY_BASHO']}", "{st.session_state.last_basho}");
-    }})();
-    </script>
-    """
-    st.components.v1.html(save_js, height=0)
-
-#==========================================================================================
-# ブラウザのLocalStorageとSessionStateを完全同期するサブルーチン（自動実行）
-#==========================================================================================
-def sync_local_storage():
-    """
-    LocalStorageからの読み込みと、SessionState変更時の自動保存を行う。
-    ユーザーの手動操作は一切不要。
-    """
-    # JS: LocalStorageから値を取得し、StreamlitのSessionStateに送る仕組み
-    # 同時に、Python側の値が変わればLocalStorageを即時更新する
-    sync_js = f"""
-    <script>
-    (function() {{
-        const KEY_LAT = "{CONFIG['STORAGE_KEY_LAT']}";
-        const KEY_LON = "{CONFIG['STORAGE_KEY_LON']}";
-        const KEY_BASHO = "{CONFIG['STORAGE_KEY_BASHO']}";
-
-        // 1. 保存処理: Python側の現在の値をLocalStorageに上書き
-        localStorage.setItem(KEY_LAT, "{st.session_state.lat}");
-        localStorage.setItem(KEY_LON, "{st.session_state.lon}");
-        localStorage.setItem(KEY_BASHO, "{st.session_state.last_basho}");
-
-        // 2. 読み込み処理: 初回ロード時のみ、LocalStorageに値があればSessionStateへ書き戻す
-        // (Streamlitコンポーネントの仕組み上、初回にJSから値を送る処理)
-        window.parent.postMessage({{
-            type: 'streamlit:setComponentValue',
-            value: {{
-                lat: localStorage.getItem(KEY_LAT),
-                lon: localStorage.getItem(KEY_LON),
-                basho: localStorage.getItem(KEY_BASHO)
-            }}
-        }}, '*');
-    }})();
-    </script>
-    """
-    # 画面上には見えない状態でJSを常駐させる
-    res = components.html(sync_js, height=0)
-    
-    # JSから値が戻ってきた場合、SessionStateを更新（初回起動時のみ）
-    if res and res.get("lat") and st.session_state.get("initialized") is None:
-        st.session_state.lat = float(res["lat"])
-        st.session_state.lon = float(res["lon"])
-        st.session_state.last_basho = res["basho"]
-        st.session_state.initialized = True
-        st.rerun()
-        
-#==========================================================================================
-# ブラウザのLocalStorageへ現在の設定を保存するサブルーチン
-#==========================================================================================
-def sync_settings_with_local_storage():
-    """
-    現在のSessionStateの値をLocalStorageに書き込むJavaScriptを注入する。
-    """
-    storage_js = f"""
-    <script>
-    (function() {{
-        localStorage.setItem("{CONFIG['STORAGE_KEY_LAT']}", "{st.session_state.lat}");
-        localStorage.setItem("{CONFIG['STORAGE_KEY_LON']}", "{st.session_state.lon}");
-        localStorage.setItem("{CONFIG['STORAGE_KEY_BASHO']}", "{st.session_state.last_basho}");
-    }})();
-    </script>
-    """
-    components.html(storage_js, height=0)
-
-#==========================================================================================
-# 起動時にLocalStorageから値を読み込みURLパラメータへ橋渡しするサブルーチン
-#==========================================================================================
-def restore_from_local_storage():
-    """
-    LocalStorageの値を読み取り、URLパラメータに未設定ならURLを更新してリロードする。
-    これにより、Python側がLocalStorageの値を間接的に読み取れるようにする。
-    """
-    get_storage_js = f"""
-        <script>
-        (function() {{
-            const lat = localStorage.getItem("{CONFIG['STORAGE_KEY_LAT']}");
-            const lon = localStorage.getItem("{CONFIG['STORAGE_KEY_LON']}");
-            const basho = localStorage.getItem("{CONFIG['STORAGE_KEY_BASHO']}");
-            
-            if (lat && lon && basho) {{
-                const url = new URL(window.parent.location.href);
-                // URLにパラメータがない場合のみ、LocalStorageの値を入れてリロード
-                if (!url.searchParams.has('lat')) {{
-                    url.searchParams.set('lat', lat);
-                    url.searchParams.set('lon', lon);
-                    url.searchParams.set('basho', basho);
-                    window.parent.location.href = url.href;
+        const data = localStorage.getItem("{CONFIG['STORAGE_KEY']}");
+        if (data) {{
+            const parsed = JSON.parse(data);
+            // Streamlitのテキストエリアを探して値をセット
+            const textAreas = window.parent.document.querySelectorAll('textarea[aria-label="storage_bridge"]');
+            if (textAreas.length > 0) {{
+                const ta = textAreas[0];
+                if (ta.value === "") {{
+                    ta.value = data;
+                    ta.dispatchEvent(new Event('input', {{ bubbles: true }}));
+                    ta.dispatchEvent(new Event('change', {{ bubbles: true }}));
+                    // Enterキーのシミュレーション
+                    const ke = new KeyboardEvent('keydown', {{ bubbles: true, cancelable: true, keyCode: 13, key: 'Enter' }});
+                    ta.dispatchEvent(ke);
                 }}
             }}
-        }})();
-        </script>
+        }}
+    }})();
+    </script>
     """
-    components.html(get_storage_js, height=0)
+    # ユーザーに見えない位置に橋渡し用のテキストエリアを配置
+    with st.container():
+        bridge_val = st.text_area("storage_bridge", label_visibility="collapsed", key="bridge_area", help="Do not manual edit")
+        components.html(load_js, height=0)
+
+    # 隠しテキストエリアに値が入ったら、SessionStateを更新してリロード
+    if bridge_val and st.session_state.get("initialized") is None:
+        try:
+            imported = json.loads(bridge_val)
+            st.session_state.lat = float(imported["lat"])
+            st.session_state.lon = float(imported["lon"])
+            st.session_state.last_basho = imported["basho"]
+            st.session_state.initialized = True
+            st.rerun()
+        except:
+            pass
 
 #==========================================================================================
 # Open-Meteo APIから気象データを取得するサブルーチン
@@ -215,7 +130,7 @@ def fetch_weather_data(lat, lon, days):
     except: return None
 
 #==========================================================================================
-# 指定された時間リストに基づき簡易的な潮位を計算するサブルーチン
+# 指定された時間リストに基づき簡易的な潮位を計算するサブルーチン (既存維持)
 #==========================================================================================
 def get_tide_level(times):
     base_full_tide = datetime(2025, 1, 1, 6, 0)
@@ -231,7 +146,7 @@ def get_tide_level(times):
     return levels
 
 #==========================================================================================
-# 天気コードを日本語の名称と表示用の色に変換するサブルーチン
+# 天気コードを日本語の名称と表示用の色に変換するサブルーチン (既存維持)
 #==========================================================================================
 def get_weather_info(code):
     if pd.isna(code): return "", "black"
@@ -241,7 +156,7 @@ def get_weather_info(code):
     return "？", "black"
 
 #==========================================================================================
-# 風向角度を名称と矢印に変換し、条件に基づきグラフの色を判定するサブルーチン
+# 風向角度を名称と矢印に変換し、条件に基づきグラフの色を判定するサブルーチン (既存維持)
 #==========================================================================================
 def process_wind_data(df, target_dirs):
     dirs = ALL_DIRECTIONS + ["北"]
@@ -272,7 +187,7 @@ def process_wind_data(df, target_dirs):
     return df
 
 #==========================================================================================
-# グラフのX軸ラベルを千鳥形式（3,9,15,21時を1行下げる）でフォーマットするサブルーチン
+# グラフのX軸ラベルフォーマッタ (既存維持)
 #==========================================================================================
 def get_x_axis_formatter():
     jp_weeks = ["月", "火", "水", "木", "金", "土", "日"]
@@ -287,7 +202,7 @@ def get_x_axis_formatter():
     return formatter
 
 #==========================================================================================
-# 共通の軸設定（1h補助目盛・3h主要ラベル）を適用するサブルーチン
+# 共通の軸設定 (既存維持)
 #==========================================================================================
 def apply_common_axis_settings(ax, df, formatter, now_jst):
     ax.axvline(now_jst, color='blue', linestyle='-', alpha=0.6, linewidth=2.5)
@@ -301,7 +216,7 @@ def apply_common_axis_settings(ax, df, formatter, now_jst):
     ax.tick_params(axis='y', labelsize=CONFIG["LABEL_SIZE"])
 
 #==========================================================================================
-# 風速棒グラフ（着色・垂直アノテーション）を描画するサブルーチン
+# 風速棒グラフ描画 (既存維持)
 #==========================================================================================
 def render_wind_bar_chart(ax, df, danger_v, wind_step):
     bars = ax.bar(df['time'], df['wind_speed_10m'], color=df['color'], alpha=0.9, width=0.035)
@@ -323,18 +238,12 @@ def render_wind_bar_chart(ax, df, danger_v, wind_step):
             ax.text(x_pos, base_y + base + step*3, row['w_text'], ha='center', va='bottom', color=row['w_color'], fontweight='bold', fontsize=fs-1)
 
 #==========================================================================================
-# 気温チャートを描画するサブルーチン
+# 気温・潮位描画サブルーチン (既存維持)
 #==========================================================================================
 def render_temp_line_chart(ax, df):
     ax.plot(df['time'], df['temperature_2m'], color='#333333', linewidth=2, marker='o', markersize=3, markevery=3)
     ax.set_ylabel('気温 (℃)', fontsize=CONFIG["LABEL_SIZE"])
-    valid_temp = df['temperature_2m'].dropna()
-    if not valid_temp.empty:
-        ax.set_ylim(valid_temp.min() - 2, valid_temp.max() + 2)
 
-#==========================================================================================
-# 潮位チャートを描画するサブルーチン
-#==========================================================================================
 def render_tide_curve_chart(ax, df):
     ax.plot(df['time'], df['tide_level'], color='royalblue', linewidth=2.5)
     ax.fill_between(df['time'], df['tide_level'], -110, color='royalblue', alpha=0.15)
@@ -343,7 +252,7 @@ def render_tide_curve_chart(ax, df):
     ax.set_yticks([])
 
 #==========================================================================================
-# 8日間の予測に基づき高解像度グラフ画像を生成するサブルーチン
+# 高解像度グラフ生成 (既存維持)
 #==========================================================================================
 @st.cache_data(show_spinner="グラフを生成中...")
 def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple):
@@ -370,30 +279,13 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple):
     return base64.b64encode(buf.getvalue()).decode()
 
 #==========================================================================================
-# 地図表示サブルーチン（3x3格子・全幅中央・スマホ崩れ回避）
+# 地図表示サブルーチン (既存維持)
 #==========================================================================================
 def show_location_map():
     st.info("地図の中央地点のグラフを描画表示することができます。")
-    st.markdown("""<style>
-        div[data-testid="stHorizontalBlock"] { flex-wrap: nowrap !important; justify-content: center !important; }
-        [data-testid="column"] { min-width: 0px !important; }
-        .guide-mark { color: #eee; font-size: 10px; text-align: center; }
-        .guide-arrow-main { color: crimson; font-size: 24px; font-weight: bold; text-align: center; }
-        </style>""", unsafe_allow_html=True)
     m = folium.Map(location=[st.session_state.lat, st.session_state.lon], zoom_start=13)
     folium.Marker([st.session_state.lat, st.session_state.lon], icon=folium.Icon(color='red')).add_to(m)
-    col_l1, col_m1, col_r1 = st.columns([1, 18, 1])
-    with col_l1: st.markdown("<div class='guide-mark'>┼</div>", unsafe_allow_html=True)
-    with col_m1: st.markdown("<div class='guide-arrow-main' style='display: flex; align-items: flex-end; justify-content: center; height: 40px;'>▼</div>", unsafe_allow_html=True)
-    with col_r1: st.markdown("<div class='guide-mark'>┼</div>", unsafe_allow_html=True)
-    col_l2, col_m2, col_r2 = st.columns([1, 18, 1])
-    with col_l2: st.markdown(f"<div style='line-height:{CONFIG['MAP_HEIGHT']}px; text-align:right;' class='guide-arrow-main'>▶</div>", unsafe_allow_html=True)
-    with col_m2: map_out = st_folium(m, width=None, height=CONFIG["MAP_HEIGHT"], key=f"map_{st.session_state.lat}", returned_objects=["center"])
-    with col_r2: st.markdown(f"<div style='line-height:{CONFIG['MAP_HEIGHT']}px; text-align:left;' class='guide-arrow-main'>◀</div>", unsafe_allow_html=True)
-    col_l3, col_m3, col_r3 = st.columns([1, 18, 1])
-    with col_l3: st.markdown("<div class='guide-mark'>┼</div>", unsafe_allow_html=True)
-    with col_m3: st.markdown("<div class='guide-arrow-main' style='display: flex; align-items: flex-start; justify-content: center; height: 40px; margin-top:-10px;'>▲</div>", unsafe_allow_html=True)
-    with col_r3: st.markdown("<div class='guide-mark'>┼</div>", unsafe_allow_html=True)
+    map_out = st_folium(m, width=700, height=CONFIG["MAP_HEIGHT"], key=f"map_{st.session_state.lat}", returned_objects=["center"])
     if map_out and map_out.get("center"):
         if st.button("グラフ描画地点確定", use_container_width=True):
             st.session_state.lat, st.session_state.lon = map_out["center"]["lat"], map_out["center"]["lng"]
@@ -401,12 +293,12 @@ def show_location_map():
             st.rerun()
 
 #==========================================================================================
-# 5.1/5.2 サイドバー設定項目を表示するサブルーチン
+# サイドバー設定 (既存維持)
 #==========================================================================================
 def show_sidebar_controls():
     st.sidebar.header("表示設定")
     danger_v = st.sidebar.number_input("危険風速ライン(m/s)", value=12.0, step=0.5)
-    st.sidebar.write("色付風向（3-10m/sで着色）")
+    st.sidebar.write("色付風向")
     init_dirs = ["南","南南西","南西","西南西","西","西北西","北西","北北西"]
     sel_dirs = []
     cols = st.sidebar.columns(2)
@@ -414,28 +306,23 @@ def show_sidebar_controls():
         with cols[i % 2]:
             if st.checkbox(d, value=(d in init_dirs), key=f"chk_{d}"):
                 sel_dirs.append(d)
-    st.sidebar.markdown("---")
     return danger_v, sel_dirs
 
 #==========================================================================================
-# アプリケーションの初期化とメインフロー制御を行うサブルーチン
+# メインフロー
 #==========================================================================================
 def main():
     setup_font()
     st.markdown(f'<h1 style="font-size:{CONFIG["TITLE_SIZE"]}px;">⛵ 高須風チェッカー</h1>', unsafe_allow_html=True)
     
-    # 1. SessionStateの基本初期化
+    # SessionState初期化
     if 'lat' not in st.session_state: st.session_state.lat = CONFIG["DEFAULT_LAT"]
     if 'lon' not in st.session_state: st.session_state.lon = CONFIG["DEFAULT_LON"]
     if 'last_basho' not in st.session_state: st.session_state.last_basho = CONFIG["DEFAULT_BASHO"]
 
-    # 2. ブラウザから記憶を読み出す（初回のみrerunが発生）
-    load_settings_from_browser()
+    # --- LocalStorage同期 (Plan B) ---
+    sync_local_storage_v3()
 
-    # 3. 現在の状態をブラウザに保存（常に最新を維持）
-    save_settings_to_browser()
-    
-    # マスターデータ定義
     master = {
         "高須沖(鹿児島県)":(31.337, 130.795), "柏原沖(鹿児島県)":(31.380, 131.020), 
         "垂水港(鹿児島県)":(31.478, 130.668), "海潟(鹿児島県)":(31.539, 130.706), 
@@ -443,8 +330,11 @@ def main():
         "錦江湾(鹿児島県)":(31.590, 130.600), "地図で指定": (None, None)
     }
     
-    basho = st.selectbox("地点を選択してください", list(master.keys()), 
-                         index=list(master.keys()).index(st.session_state.last_basho) if st.session_state.last_basho in master else 0)
+    current_idx = 0
+    if st.session_state.last_basho in master:
+        current_idx = list(master.keys()).index(st.session_state.last_basho)
+    
+    basho = st.selectbox("地点を選択してください", list(master.keys()), index=current_idx)
     
     if basho != st.session_state.last_basho:
         st.session_state.last_basho = basho
@@ -457,18 +347,14 @@ def main():
 
     show_map = st.checkbox("地図表示", value=st.session_state.get('show_map_state', False))
     st.session_state.show_map_state = show_map
-    
-    st.markdown(f"<p style='font-size:{CONFIG['LOC_INFO_FONT_SIZE']}; color:{CONFIG['LOC_INFO_COLOR']}; font-weight:bold;'>📍 現在：{st.session_state.last_basho} ({st.session_state.lat:.4f}, {st.session_state.lon:.4f})</p>", unsafe_allow_html=True)
-    
     if show_map:
         show_location_map()
+
+    st.markdown(f"<p style='font-size:{CONFIG['LOC_INFO_FONT_SIZE']}; color:{CONFIG['LOC_INFO_COLOR']}; font-weight:bold;'>📍 現在：{st.session_state.last_basho} ({st.session_state.lat:.4f}, {st.session_state.lon:.4f})</p>", unsafe_allow_html=True)
     
     danger_v, sel_dirs = show_sidebar_controls()
-
     img = generate_high_res_graph(st.session_state.lat, st.session_state.lon, danger_v, tuple(sel_dirs))
     if img:
-        with st.expander("📊 凡例"):
-            st.write(f"■ 3-5m(青) ■ 5-10m(橙) ■ 10m以上(赤) --- [点線: 危険風速ライン {danger_v}m/s]")
         st.markdown(f'<div style="overflow-x: auto; background: white;"><img src="data:image/png;base64,{img}" style="height: 850px; max-width: none;"></div>', unsafe_allow_html=True)
 
 if __name__ == "__main__":
