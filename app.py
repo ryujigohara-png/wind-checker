@@ -19,6 +19,7 @@ import folium
 # 1. 定数・基本設定 (CONFIG)
 # ======================================================================================
 CONFIG = {
+    "STORAGE_KEY": "wind_checker_basho_v1", # LocalStorage用のキー
     "TITLE_SIZE": 24,
     "SUBTITLE_SIZE": 18,
     "GRAPH_FONT_SIZE": 13,
@@ -315,21 +316,63 @@ def show_location_map():
             st.rerun()
 
 #==========================================================================================
+# 物理保存・復元ロジック (streamlit-js-eval 版)
+#==========================================================================================
+def sync_local_storage():
+    """
+    外部ライブラリ streamlit-js-eval を使用した最終的な同期ロジック。
+    """
+    from streamlit_js_eval import streamlit_js_eval
+    STORAGE_KEY = CONFIG['STORAGE_KEY']
+
+    # 1. 読み込み (ブラウザ -> Python)
+    if "initialized" not in st.session_state:
+        # 読み込み中は画面を一旦止めるためのプレースホルダー
+        with st.empty():
+            st.write("設定を読み込んでいます...")
+            stored_data = streamlit_js_eval(js_expressions=f"localStorage.getItem('{STORAGE_KEY}')", key="load_storage")
+            
+            if stored_data:
+                try:
+                    data = json.loads(stored_data)
+                    st.session_state.lat = float(data["lat"])
+                    st.session_state.lon = float(data["lon"])
+                    st.session_state.last_basho = data["basho"]
+                    st.session_state.initialized = True
+                    st.rerun()
+                except:
+                    st.session_state.initialized = True
+            elif stored_data == "" or stored_data is None:
+                st.session_state.initialized = True
+        
+        # 読み込みが完了するまでここで一旦処理を止める
+        if "initialized" not in st.session_state:
+            st.stop()
+
+    # 2. 保存 (Python -> ブラウザ)
+    current_data = json.dumps({
+        "lat": st.session_state.lat,
+        "lon": st.session_state.lon,
+        "basho": st.session_state.last_basho
+    })
+    streamlit_js_eval(js_expressions=f"localStorage.setItem('{STORAGE_KEY}', '{current_data}')", key="save_storage")
+    
+
+#==========================================================================================
 # メイン
 #==========================================================================================
 def main():
     setup_font()
     st.markdown(f'<h1 style="font-size:{CONFIG["TITLE_SIZE"]}px;">⛵ 高須風チェッカー</h1>', unsafe_allow_html=True)
     
-    # 初期化
+    # 1. SessionState初期化
     if 'lat' not in st.session_state: st.session_state.lat = CONFIG["DEFAULT_LAT"]
     if 'lon' not in st.session_state: st.session_state.lon = CONFIG["DEFAULT_LON"]
-    if 'sel_map_lat' not in st.session_state: st.session_state.sel_map_lat = CONFIG["DEFAULT_LAT"]
-    if 'sel_map_lon' not in st.session_state: st.session_state.sel_map_lon = CONFIG["DEFAULT_LON"]
     if 'last_basho' not in st.session_state: st.session_state.last_basho = CONFIG["DEFAULT_BASHO"]
     
-    handle_storage_sync() # 物理保存同期
-
+    # 2. 物理保存同期の実行
+    sync_local_storage()
+    
     master = {
         "高須沖(鹿児島県)":(31.337, 130.795), "柏原沖(鹿児島県)":(31.380, 131.020), 
         "垂水港(鹿児島県)":(31.478, 130.668), "海潟(鹿児島県)":(31.539, 130.706), 
