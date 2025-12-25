@@ -53,80 +53,53 @@ def setup_font():
     plt.rc('font', family='Noto Sans JP', size=CONFIG["GRAPH_FONT_SIZE"])
 
 #==========================================================================================
-# ブラウザのLocalStorageとSessionStateを同期するサブルーチン
+# ブラウザのLocalStorageへ現在の設定を保存するサブルーチン
 #==========================================================================================
 def sync_settings_with_local_storage():
     """
-    ブラウザのLocalStorageから設定を読み込み、SessionStateに反映、
-    およびSessionStateの変化をLocalStorageに書き込むJavaScriptを注入する。
+    現在のSessionStateの値をLocalStorageに書き込むJavaScriptを注入する。
     """
-    # 1. ブラウザから読み込み、SessionStateに未定義の場合のみ適用するJS
-    # 2. 現在のSessionStateの値をLocalStorageに保存するJS
     storage_js = f"""
     <script>
     (function() {{
-        const KEY_LAT = "{CONFIG['STORAGE_KEY_LAT']}";
-        const KEY_LON = "{CONFIG['STORAGE_KEY_LON']}";
-        const KEY_BASHO = "{CONFIG['STORAGE_KEY_BASHO']}";
-
-        // 保存処理
-        const currentLat = "{st.session_state.lat}";
-        const currentLon = "{st.session_state.lon}";
-        const currentBasho = "{st.session_state.last_basho}";
-
-        if (currentBasho !== "{CONFIG['DEFAULT_BASHO']}" || currentLat !== "{CONFIG['DEFAULT_LAT']}") {{
-            localStorage.setItem(KEY_LAT, currentLat);
-            localStorage.setItem(KEY_LON, currentLon);
-            localStorage.setItem(KEY_BASHO, currentBasho);
-        }}
-
-        // 読み込み処理（StreamlitのURLパラメータを利用してSessionStateへ擬似的に戻す手法は複雑なため、
-        // 初回ロード時にJS側でコンボボックス等のDOMを直接操作するか、
-        // StreamlitのQueryParam機能と連携するのが一般的ですが、
-        // ここでは最も確実にLocalStorageへ「書き込まれる」ことを優先して修正します）
+        localStorage.setItem("{CONFIG['STORAGE_KEY_LAT']}", "{st.session_state.lat}");
+        localStorage.setItem("{CONFIG['STORAGE_KEY_LON']}", "{st.session_state.lon}");
+        localStorage.setItem("{CONFIG['STORAGE_KEY_BASHO']}", "{st.session_state.last_basho}");
     }})();
     </script>
     """
-    # components.html ではなく st.components.v1.html で直接実行
     components.html(storage_js, height=0)
 
 #==========================================================================================
-# 起動時に一度だけLocalStorageから値をSessionStateに復元するサブルーチン
+# 起動時にLocalStorageから値を読み込みURLパラメータへ橋渡しするサブルーチン
 #==========================================================================================
 def restore_from_local_storage():
     """
-    起動時にLocalStorageの値を読み取るための隠しコンポーネント。
-    Streamlitの初回実行時にJSから値を受け取る。
+    LocalStorageの値を読み取り、URLパラメータに未設定ならURLを更新してリロードする。
+    これにより、Python側がLocalStorageの値を間接的に読み取れるようにする。
     """
-    # この処理には streamlit_js_eval などの外部ライブラリが最適ですが、
-    # 標準機能で実現するために、読み取り専用のJSを埋め込みます。
     get_storage_js = f"""
         <script>
-        const lat = localStorage.getItem("{CONFIG['STORAGE_KEY_LAT']}");
-        const lon = localStorage.getItem("{CONFIG['STORAGE_KEY_LON']}");
-        const basho = localStorage.getItem("{CONFIG['STORAGE_KEY_BASHO']}");
-        
-        if (lat && lon && basho) {{
-            const url = new URL(window.location.href);
-            if (!url.searchParams.has('lat')) {{
-                url.searchParams.set('lat', lat);
-                url.searchParams.set('lon', lon);
-                url.searchParams.set('basho', basho);
-                window.parent.location.href = url.href;
+        (function() {{
+            const lat = localStorage.getItem("{CONFIG['STORAGE_KEY_LAT']}");
+            const lon = localStorage.getItem("{CONFIG['STORAGE_KEY_LON']}");
+            const basho = localStorage.getItem("{CONFIG['STORAGE_KEY_BASHO']}");
+            
+            if (lat && lon && basho) {{
+                const url = new URL(window.parent.location.href);
+                // URLにパラメータがない場合のみ、LocalStorageの値を入れてリロード
+                if (!url.searchParams.has('lat')) {{
+                    url.searchParams.set('lat', lat);
+                    url.searchParams.set('lon', lon);
+                    url.searchParams.set('basho', basho);
+                    window.parent.location.href = url.href;
+                }}
             }}
-        }}
+        }})();
         </script>
     """
-    # クエリパラメータによる復元を試みる（これが最も確実です）
-    params = st.query_params
-    if "lat" in params and st.session_state.get('initial_sync') is None:
-        st.session_state.lat = float(params["lat"])
-        st.session_state.lon = float(params["lon"])
-        st.session_state.last_basho = params["basho"]
-        st.session_state.initial_sync = True
-    
     components.html(get_storage_js, height=0)
-    
+
 #==========================================================================================
 # Open-Meteo APIから気象データを取得するサブルーチン
 #==========================================================================================
@@ -349,17 +322,19 @@ def main():
     setup_font()
     st.markdown(f'<h1 style="font-size:{CONFIG["TITLE_SIZE"]}px;">⛵ 高須風チェッカー</h1>', unsafe_allow_html=True)
     
-    # 1. LocalStorageからの復元（クエリパラメータ経由）
+    # --- 同期ロジック開始 ---
+    # 1. まずLocalStorageからURLへの復元を試みる
     restore_from_local_storage()
+    
+    # 2. URLパラメータ（クエリ）を取得
+    params = st.query_params
 
-    # 2. 初期値セット
-    # SessionStateの初期化（LocalStorage同期を考慮）
+    # 3. SessionStateの初期化（URLパラメータがあればそれを優先）
     if 'lat' not in st.session_state: st.session_state.lat = CONFIG["DEFAULT_LAT"]
     if 'lon' not in st.session_state: st.session_state.lon = CONFIG["DEFAULT_LON"]
     if 'last_basho' not in st.session_state: st.session_state.last_basho = CONFIG["DEFAULT_BASHO"]
     
-    # 3. 現在の状態をLocalStorageに保存
-    # ブラウザLocalStorageとの同期実行
+    # 4. 現在の状態をLocalStorageに保存（確定ボタン後などに実行される）
     sync_settings_with_local_storage()
 
     master = {
