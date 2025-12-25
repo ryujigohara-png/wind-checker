@@ -53,6 +53,52 @@ def setup_font():
     plt.rc('font', family='Noto Sans JP', size=CONFIG["GRAPH_FONT_SIZE"])
 
 #==========================================================================================
+# ブラウザのLocalStorageとSessionStateを完全同期するサブルーチン（自動実行）
+#==========================================================================================
+def sync_local_storage():
+    """
+    LocalStorageからの読み込みと、SessionState変更時の自動保存を行う。
+    ユーザーの手動操作は一切不要。
+    """
+    # JS: LocalStorageから値を取得し、StreamlitのSessionStateに送る仕組み
+    # 同時に、Python側の値が変わればLocalStorageを即時更新する
+    sync_js = f"""
+    <script>
+    (function() {{
+        const KEY_LAT = "{CONFIG['STORAGE_KEY_LAT']}";
+        const KEY_LON = "{CONFIG['STORAGE_KEY_LON']}";
+        const KEY_BASHO = "{CONFIG['STORAGE_KEY_BASHO']}";
+
+        // 1. 保存処理: Python側の現在の値をLocalStorageに上書き
+        localStorage.setItem(KEY_LAT, "{st.session_state.lat}");
+        localStorage.setItem(KEY_LON, "{st.session_state.lon}");
+        localStorage.setItem(KEY_BASHO, "{st.session_state.last_basho}");
+
+        // 2. 読み込み処理: 初回ロード時のみ、LocalStorageに値があればSessionStateへ書き戻す
+        // (Streamlitコンポーネントの仕組み上、初回にJSから値を送る処理)
+        window.parent.postMessage({{
+            type: 'streamlit:setComponentValue',
+            value: {{
+                lat: localStorage.getItem(KEY_LAT),
+                lon: localStorage.getItem(KEY_LON),
+                basho: localStorage.getItem(KEY_BASHO)
+            }}
+        }}, '*');
+    }})();
+    </script>
+    """
+    # 画面上には見えない状態でJSを常駐させる
+    res = components.html(sync_js, height=0)
+    
+    # JSから値が戻ってきた場合、SessionStateを更新（初回起動時のみ）
+    if res and res.get("lat") and st.session_state.get("initialized") is None:
+        st.session_state.lat = float(res["lat"])
+        st.session_state.lon = float(res["lon"])
+        st.session_state.last_basho = res["basho"]
+        st.session_state.initialized = True
+        st.rerun()
+        
+#==========================================================================================
 # ブラウザのLocalStorageへ現在の設定を保存するサブルーチン
 #==========================================================================================
 def sync_settings_with_local_storage():
@@ -322,21 +368,15 @@ def main():
     setup_font()
     st.markdown(f'<h1 style="font-size:{CONFIG["TITLE_SIZE"]}px;">⛵ 高須風チェッカー</h1>', unsafe_allow_html=True)
     
-    # --- 同期ロジック開始 ---
-    # 1. まずLocalStorageからURLへの復元を試みる
-    restore_from_local_storage()
-    
-    # 2. URLパラメータ（クエリ）を取得
-    params = st.query_params
-
-    # 3. SessionStateの初期化（URLパラメータがあればそれを優先）
+    # --- SessionStateの基本初期化 ---
     if 'lat' not in st.session_state: st.session_state.lat = CONFIG["DEFAULT_LAT"]
     if 'lon' not in st.session_state: st.session_state.lon = CONFIG["DEFAULT_LON"]
     if 'last_basho' not in st.session_state: st.session_state.last_basho = CONFIG["DEFAULT_BASHO"]
-    
-    # 4. 現在の状態をLocalStorageに保存（確定ボタン後などに実行される）
-    sync_settings_with_local_storage()
 
+    # --- ブラウザ記憶との自動同期実行 ---
+    sync_local_storage()
+
+    # マスターデータ定義
     master = {
         "高須沖(鹿児島県)":(31.337, 130.795), "柏原沖(鹿児島県)":(31.380, 131.020), 
         "垂水港(鹿児島県)":(31.478, 130.668), "海潟(鹿児島県)":(31.539, 130.706), 
