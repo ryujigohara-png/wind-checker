@@ -57,42 +57,76 @@ def setup_font():
 #==========================================================================================
 def sync_settings_with_local_storage():
     """
-    JavaScriptを使用してLocalStorageから座標と地点名を読み込み、
-    SessionStateに未定義の場合のみ初期値をセットし、変更があればLocalStorageを更新する。
+    ブラウザのLocalStorageから設定を読み込み、SessionStateに反映、
+    およびSessionStateの変化をLocalStorageに書き込むJavaScriptを注入する。
     """
-    # JSから値を取得するためのコンポーネント
-    sync_script = f"""
+    # 1. ブラウザから読み込み、SessionStateに未定義の場合のみ適用するJS
+    # 2. 現在のSessionStateの値をLocalStorageに保存するJS
+    storage_js = f"""
     <script>
-    const lat = localStorage.getItem("{CONFIG['STORAGE_KEY_LAT']}");
-    const lon = localStorage.getItem("{CONFIG['STORAGE_KEY_LON']}");
-    const basho = localStorage.getItem("{CONFIG['STORAGE_KEY_BASHO']}");
-    
-    const data = {{
-        "lat": lat,
-        "lon": lon,
-        "basho": basho
-    }};
-    
-    // Streamlitへデータを送信
-    window.parent.postMessage({{
-        type: 'streamlit:setComponentValue',
-        value: data
-    }}, '*');
+    (function() {{
+        const KEY_LAT = "{CONFIG['STORAGE_KEY_LAT']}";
+        const KEY_LON = "{CONFIG['STORAGE_KEY_LON']}";
+        const KEY_BASHO = "{CONFIG['STORAGE_KEY_BASHO']}";
+
+        // 保存処理
+        const currentLat = "{st.session_state.lat}";
+        const currentLon = "{st.session_state.lon}";
+        const currentBasho = "{st.session_state.last_basho}";
+
+        if (currentBasho !== "{CONFIG['DEFAULT_BASHO']}" || currentLat !== "{CONFIG['DEFAULT_LAT']}") {{
+            localStorage.setItem(KEY_LAT, currentLat);
+            localStorage.setItem(KEY_LON, currentLon);
+            localStorage.setItem(KEY_BASHO, currentBasho);
+        }}
+
+        // 読み込み処理（StreamlitのURLパラメータを利用してSessionStateへ擬似的に戻す手法は複雑なため、
+        // 初回ロード時にJS側でコンボボックス等のDOMを直接操作するか、
+        // StreamlitのQueryParam機能と連携するのが一般的ですが、
+        // ここでは最も確実にLocalStorageへ「書き込まれる」ことを優先して修正します）
+    }})();
     </script>
     """
-    # 隠しコンポーネントとして実行
-    res = components.html(sync_script, height=0)
+    # components.html ではなく st.components.v1.html で直接実行
+    components.html(storage_js, height=0)
 
-    # 書き込み用JS（SessionStateが更新されたときに呼び出す）
-    storage_update_js = f"""
-    <script>
-    localStorage.setItem("{CONFIG['STORAGE_KEY_LAT']}", "{st.session_state.lat}");
-    localStorage.setItem("{CONFIG['STORAGE_KEY_LON']}", "{st.session_state.lon}");
-    localStorage.setItem("{CONFIG['STORAGE_KEY_BASHO']}", "{st.session_state.last_basho}");
-    </script>
+#==========================================================================================
+# 起動時に一度だけLocalStorageから値をSessionStateに復元するサブルーチン
+#==========================================================================================
+def restore_from_local_storage():
     """
-    st.markdown(storage_update_js, unsafe_allow_html=True)
-
+    起動時にLocalStorageの値を読み取るための隠しコンポーネント。
+    Streamlitの初回実行時にJSから値を受け取る。
+    """
+    # この処理には streamlit_js_eval などの外部ライブラリが最適ですが、
+    # 標準機能で実現するために、読み取り専用のJSを埋め込みます。
+    get_storage_js = f"""
+        <script>
+        const lat = localStorage.getItem("{CONFIG['STORAGE_KEY_LAT']}");
+        const lon = localStorage.getItem("{CONFIG['STORAGE_KEY_LON']}");
+        const basho = localStorage.getItem("{CONFIG['STORAGE_KEY_BASHO']}");
+        
+        if (lat && lon && basho) {{
+            const url = new URL(window.location.href);
+            if (!url.searchParams.has('lat')) {{
+                url.searchParams.set('lat', lat);
+                url.searchParams.set('lon', lon);
+                url.searchParams.set('basho', basho);
+                window.parent.location.href = url.href;
+            }}
+        }}
+        </script>
+    """
+    # クエリパラメータによる復元を試みる（これが最も確実です）
+    params = st.query_params
+    if "lat" in params and st.session_state.get('initial_sync') is None:
+        st.session_state.lat = float(params["lat"])
+        st.session_state.lon = float(params["lon"])
+        st.session_state.last_basho = params["basho"]
+        st.session_state.initial_sync = True
+    
+    components.html(get_storage_js, height=0)
+    
 #==========================================================================================
 # Open-Meteo APIから気象データを取得するサブルーチン
 #==========================================================================================
@@ -315,11 +349,16 @@ def main():
     setup_font()
     st.markdown(f'<h1 style="font-size:{CONFIG["TITLE_SIZE"]}px;">⛵ 高須風チェッカー</h1>', unsafe_allow_html=True)
     
+    # 1. LocalStorageからの復元（クエリパラメータ経由）
+    restore_from_local_storage()
+
+    # 2. 初期値セット
     # SessionStateの初期化（LocalStorage同期を考慮）
     if 'lat' not in st.session_state: st.session_state.lat = CONFIG["DEFAULT_LAT"]
     if 'lon' not in st.session_state: st.session_state.lon = CONFIG["DEFAULT_LON"]
     if 'last_basho' not in st.session_state: st.session_state.last_basho = CONFIG["DEFAULT_BASHO"]
     
+    # 3. 現在の状態をLocalStorageに保存
     # ブラウザLocalStorageとの同期実行
     sync_settings_with_local_storage()
 
