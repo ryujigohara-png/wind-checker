@@ -1,4 +1,4 @@
-#2025.12.26 01:15 Updated Complete Code
+# 2025.12.26 01:35 Final Complete Version (Fully Structured & Commented)
 import streamlit as st
 import requests
 import pandas as pd
@@ -9,6 +9,7 @@ import os
 import io
 import base64
 import numpy as np
+import json
 from datetime import datetime, timedelta, timezone
 import matplotlib.dates as mdates
 from streamlit_folium import st_folium
@@ -59,10 +60,11 @@ def fetch_weather_data(lat, lon, days):
         df = pd.DataFrame(data["hourly"])
         df['time'] = pd.to_datetime(df['time'])
         return df
-    except: return None
+    except Exception:
+        return None
 
 #==========================================================================================
-# 指定された時間リストに基づき簡易的な潮位を計算するサブルーチン
+# 指定された時間リストに基づき簡易的な潮位を計算するサブルーチン (仕様3.2)
 #==========================================================================================
 def get_tide_level(times):
     base_full_tide = datetime(2025, 1, 1, 6, 0)
@@ -88,7 +90,7 @@ def get_weather_info(code):
     return "？", "black"
 
 #==========================================================================================
-# 風向角度を名称と矢印に変換し、条件に基づきグラフの色を判定するサブルーチン
+# 風向角度を名称と矢印に変換し、条件に基づきグラフの色を判定するサブルーチン (仕様3.2)
 #==========================================================================================
 def process_wind_data(df, target_dirs):
     dirs = ALL_DIRECTIONS + ["北"]
@@ -102,6 +104,7 @@ def process_wind_data(df, target_dirs):
     df['res'] = df['wind_direction_10m'].apply(get_info)
     df['dir_name'] = df['res'].apply(lambda x: x[0])
     df['arrow'] = df['res'].apply(lambda x: x[1])
+    
     weather_res = df['weather_code'].apply(get_weather_info)
     df['w_text'] = [r[0] for r in weather_res]
     df['w_color'] = [r[1] for r in weather_res]
@@ -109,11 +112,11 @@ def process_wind_data(df, target_dirs):
     def judge(row):
         speed = row['wind_speed_10m']
         if pd.isna(speed): return "#FFFFFF" 
-        if speed >= 10.0: return "crimson"
+        if speed >= 10.0: return "crimson" # 10m以上は一律赤
         if row['dir_name'] in target_dirs:
-            if 5 <= speed < 10.0: return "orange"
-            if 3 <= speed < 5: return "skyblue"
-        return "#D3D3D3"
+            if 5 <= speed < 10.0: return "orange" # 対象風向で5-10m
+            if 3 <= speed < 5: return "skyblue" # 対象風向で3-5m
+        return "#D3D3D3" # 3m未満または非対象風向はグレイ
     
     df['color'] = df.apply(judge, axis=1)
     df['tide_level'] = get_tide_level(df['time'])
@@ -135,7 +138,7 @@ def get_x_axis_formatter():
     return formatter
 
 #==========================================================================================
-# 共通の軸設定を適用するサブルーチン
+# 共通の軸設定（1h補助目盛・3h主要ラベル）を適用するサブルーチン
 #==========================================================================================
 def apply_common_axis_settings(ax, df, formatter, now_jst):
     ax.axvline(now_jst, color='blue', linestyle='-', alpha=0.6, linewidth=2.5)
@@ -149,15 +152,17 @@ def apply_common_axis_settings(ax, df, formatter, now_jst):
     ax.tick_params(axis='y', labelsize=CONFIG["LABEL_SIZE"])
 
 #==========================================================================================
-# 風速棒グラフを描画するサブルーチン
+# 各段の個別描画サブルーチン (風速/気温/潮位)
 #==========================================================================================
 def render_wind_bar_chart(ax, df, danger_v, wind_step):
+    """上段：風速棒グラフの描画"""
     bars = ax.bar(df['time'], df['wind_speed_10m'], color=df['color'], alpha=0.9, width=0.035)
     ax.axhline(y=danger_v, color='red', linestyle='--', linewidth=2, alpha=0.8)
     max_speed = df['wind_speed_10m'].max()
     y_limit = max(max_speed if not pd.isna(max_speed) else 0, danger_v, 12) + 7
     ax.set_ylim(0, y_limit)
     ax.set_ylabel('風速 (m/s)', fontsize=CONFIG["LABEL_SIZE"])
+    
     fs, step, base = CONFIG["ANNOT_SIZE"], CONFIG["ANNOT_Y_STEP"], CONFIG["ANNOT_BASE_Y"]
     for i, bar in enumerate(bars):
         if i % wind_step == 0:
@@ -170,20 +175,16 @@ def render_wind_bar_chart(ax, df, danger_v, wind_step):
             ax.text(x_pos, base_y + base + step*2, row['dir_name'], ha='center', va='bottom', fontsize=fs-2)
             ax.text(x_pos, base_y + base + step*3, row['w_text'], ha='center', va='bottom', color=row['w_color'], fontweight='bold', fontsize=fs-1)
 
-#==========================================================================================
-# 気温チャートを描画するサブルーチン
-#==========================================================================================
 def render_temp_line_chart(ax, df):
+    """中段：気温折れ線グラフの描画"""
     ax.plot(df['time'], df['temperature_2m'], color='#333333', linewidth=2, marker='o', markersize=3, markevery=3)
     ax.set_ylabel('気温 (℃)', fontsize=CONFIG["LABEL_SIZE"])
     valid_temp = df['temperature_2m'].dropna()
     if not valid_temp.empty:
         ax.set_ylim(valid_temp.min() - 2, valid_temp.max() + 2)
 
-#==========================================================================================
-# 潮位チャートを描画するサブルーチン
-#==========================================================================================
 def render_tide_curve_chart(ax, df):
+    """下段：潮位曲線グラフの描画"""
     ax.plot(df['time'], df['tide_level'], color='royalblue', linewidth=2.5)
     ax.fill_between(df['time'], df['tide_level'], -110, color='royalblue', alpha=0.15)
     ax.set_ylabel('潮位', fontsize=CONFIG["LABEL_SIZE"])
@@ -191,38 +192,35 @@ def render_tide_curve_chart(ax, df):
     ax.set_yticks([])
 
 #==========================================================================================
-# 8日間の予測に基づき高解像度グラフ画像を生成するサブルーチン
+# 8日間の予測に基づき高解像度グラフ画像を生成するサブルーチン (仕様4.1/4.2)
 #==========================================================================================
 @st.cache_data(show_spinner="グラフを生成中...")
 def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, show_temp, show_tide):
-    days = 8
-    df = fetch_weather_data(lat, lon, days)
+    df = fetch_weather_data(lat, lon, 8)
     if df is None: return None
+    
+    # 視認性向上のためのパディング（左端3時間）
     padding_times = [df['time'].iloc[0] - timedelta(hours=i) for i in range(1, 4)][::-1]
     padding_df = pd.DataFrame({'time': padding_times})
     df = pd.concat([padding_df, df], ignore_index=True)
     df = process_wind_data(df, list(selected_dirs_tuple))
-    fig_w = 40 
-    fig, axes = plt.subplots(3, 1, figsize=(fig_w, 11), dpi=CONFIG["DPI"], gridspec_kw={'height_ratios': CONFIG["HEIGHT_RATIOS"]})
+    
+    # 3段構成の設定
+    fig, axes = plt.subplots(3, 1, figsize=(40, 11), dpi=CONFIG["DPI"], gridspec_kw={'height_ratios': CONFIG["HEIGHT_RATIOS"]})
     plt.subplots_adjust(hspace=0.6)
     
-    ax1, ax2, ax3 = axes
     formatter = get_x_axis_formatter()
     now_jst = datetime.now(timezone(timedelta(hours=9))).replace(tzinfo=None)
     
-    render_wind_bar_chart(ax1, df, danger_v, 3)
+    render_wind_bar_chart(axes[0], df, danger_v, 3)
     
-    if show_temp:
-        render_temp_line_chart(ax2, df)
-    else:
-        ax2.set_visible(False)
-        
-    if show_tide:
-        render_tide_curve_chart(ax3, df)
-    else:
-        ax3.set_visible(False)
+    if show_temp: render_temp_line_chart(axes[1], df)
+    else: axes[1].set_visible(False)
+    
+    if show_tide: render_tide_curve_chart(axes[2], df)
+    else: axes[2].set_visible(False)
 
-    for ax in [ax1, ax2, ax3]:
+    for ax in axes:
         if ax.get_visible():
             apply_common_axis_settings(ax, df, formatter, now_jst)
             
@@ -232,89 +230,105 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, show_temp, 
     return base64.b64encode(buf.getvalue()).decode()
 
 #==========================================================================================
-# 地図表示サブルーチン（3x3格子レイアウト）
+# JavaScriptによるLocalStorage同期処理 (仕様2.1/3.1/5.1)
+#==========================================================================================
+def handle_storage_sync():
+    """ブラウザのLocalStorageとのデータ保存・復元を制御する"""
+    # JSから値を受け取る隠しinput
+    sync_val = st.text_input("storage_sync_box", key="sync_box", label_visibility="collapsed")
+    
+    if sync_val:
+        try:
+            data = json.loads(sync_val)
+            st.session_state.last_basho = data['basho']
+            st.session_state.lat = float(data['lat'])
+            st.session_state.lon = float(data['lon'])
+            st.session_state.sel_map_lat = float(data['sel_map_lat'])
+            st.session_state.sel_map_lon = float(data['sel_map_lon'])
+        except Exception: pass
+
+    # 復元JS: 起動時に一度だけLocalStorageから読み込み
+    restore_script = """
+    <script>
+    const input = window.parent.document.querySelector('input[aria-label="storage_sync_box"]');
+    if (input && !input.getAttribute('data-loaded')) {
+        const payload = {
+            basho: localStorage.getItem('wind_checker_basho'),
+            lat: localStorage.getItem('wind_checker_lat'),
+            lon: localStorage.getItem('wind_checker_lon'),
+            sel_map_lat: localStorage.getItem('wind_checker_sel_map_lat'),
+            sel_map_lon: localStorage.getItem('wind_checker_sel_map_lon')
+        };
+        if (payload.basho) {
+            input.value = JSON.stringify(payload);
+            input.dispatchEvent(new Event('input', {bubbles: true}));
+            input.setAttribute('data-loaded', 'true');
+        }
+    }
+    </script>
+    """
+    st.components.v1.html(restore_script, height=0)
+
+    # 保存JS: SessionStateが変更されるたびに書き込み
+    save_script = f"""
+    <script>
+    localStorage.setItem('wind_checker_basho', "{st.session_state.last_basho}");
+    localStorage.setItem('wind_checker_lat', "{st.session_state.lat}");
+    localStorage.setItem('wind_checker_lon', "{st.session_state.lon}");
+    localStorage.setItem('wind_checker_sel_map_lat', "{st.session_state.sel_map_lat}");
+    localStorage.setItem('wind_checker_sel_map_lon', "{st.session_state.sel_map_lon}");
+    </script>
+    """
+    st.components.v1.html(save_script, height=0)
+
+#==========================================================================================
+# 地図UI表示サブルーチン (仕様2.2)
 #==========================================================================================
 def show_location_map():
     st.info("地図の中央地点のグラフを描画表示することができます。")
     st.markdown("""<style>
         div[data-testid="stHorizontalBlock"] { flex-wrap: nowrap !important; justify-content: center !important; }
         [data-testid="column"] { min-width: 0px !important; }
-        .guide-mark { color: #eee; font-size: 10px; text-align: center; }
         .guide-arrow-main { color: crimson; font-size: 24px; font-weight: bold; text-align: center; }
         </style>""", unsafe_allow_html=True)
     
-    # 地図の中心座標を決定
-    map_lat = st.session_state.lat
-    map_lon = st.session_state.lon
-    
-    m = folium.Map(location=[map_lat, map_lon], zoom_start=13)
-    folium.Marker([map_lat, map_lon], icon=folium.Icon(color='red')).add_to(m)
+    m = folium.Map(location=[st.session_state.lat, st.session_state.lon], zoom_start=13)
+    folium.Marker([st.session_state.lat, st.session_state.lon], icon=folium.Icon(color='red')).add_to(m)
     
     col_l1, col_m1, col_r1 = st.columns([1, 18, 1])
-    with col_l1: st.markdown("<div class='guide-mark'>┼</div>", unsafe_allow_html=True)
-    with col_m1: st.markdown("<div class='guide-arrow-main' style='display: flex; align-items: flex-end; justify-content: center; height: 40px;'>▼</div>", unsafe_allow_html=True)
-    with col_r1: st.markdown("<div class='guide-mark'>┼</div>", unsafe_allow_html=True)
+    with col_m1: st.markdown("<div class='guide-arrow-main'>▼</div>", unsafe_allow_html=True)
     
     col_l2, col_m2, col_r2 = st.columns([1, 18, 1])
     with col_l2: st.markdown(f"<div style='line-height:{CONFIG['MAP_HEIGHT']}px; text-align:right;' class='guide-arrow-main'>▶</div>", unsafe_allow_html=True)
-    with col_m2: map_out = st_folium(m, width=None, height=CONFIG["MAP_HEIGHT"], key=f"map_{map_lat}_{map_lon}", returned_objects=["center"])
+    with col_m2: map_out = st_folium(m, width=None, height=CONFIG["MAP_HEIGHT"], key=f"map_{st.session_state.lat}", returned_objects=["center"])
     with col_r2: st.markdown(f"<div style='line-height:{CONFIG['MAP_HEIGHT']}px; text-align:left;' class='guide-arrow-main'>◀</div>", unsafe_allow_html=True)
     
     col_l3, col_m3, col_r3 = st.columns([1, 18, 1])
-    with col_l3: st.markdown("<div class='guide-mark'>┼</div>", unsafe_allow_html=True)
-    with col_m3: st.markdown("<div class='guide-arrow-main' style='display: flex; align-items: flex-start; justify-content: center; height: 40px; margin-top:-10px;'>▲</div>", unsafe_allow_html=True)
-    with col_r3: st.markdown("<div class='guide-mark'>┼</div>", unsafe_allow_html=True)
+    with col_m3: st.markdown("<div class='guide-arrow-main'>▲</div>", unsafe_allow_html=True)
     
     if map_out and map_out.get("center"):
         if st.button("グラフ描画地点確定", use_container_width=True):
-            new_lat = map_out["center"]["lat"]
-            new_lon = map_out["center"]["lng"]
-            # 確定地点を現在座標と地図専用座標の両方に保存
-            st.session_state.lat = new_lat
-            st.session_state.lon = new_lon
-            st.session_state.sel_map_lat = new_lat
-            st.session_state.sel_map_lon = new_lon
+            # 地図で確定した際は、現在座標と専用座標の両方を更新
+            st.session_state.lat = st.session_state.sel_map_lat = map_out["center"]["lat"]
+            st.session_state.lon = st.session_state.sel_map_lon = map_out["center"]["lng"]
             st.session_state.last_basho = "地図で指定"
             st.rerun()
 
 #==========================================================================================
-# サイドバー設定項目
-#==========================================================================================
-def show_sidebar_controls():
-    st.sidebar.header("表示設定")
-    danger_v = st.sidebar.number_input("危険風速ライン(m/s)", value=12.0, step=0.5)
-
-    st.sidebar.write("色付風向（3-10m/sで着色）")
-    init_dirs = ["南","南南西","南西","西南西","西","西北西","北西","北北西"]
-    sel_dirs = []
-    cols = st.sidebar.columns(2)
-    for i, d in enumerate(ALL_DIRECTIONS):
-        with cols[i % 2]:
-            if st.sidebar.checkbox(d, value=(d in init_dirs), key=f"chk_{d}"):
-                sel_dirs.append(d)
-                
-    st.sidebar.markdown("---")
-    show_temp = st.sidebar.checkbox("気温グラフ表示", value=True)
-    show_tide = st.sidebar.checkbox("潮位グラフ表示", value=True)
-    
-    st.sidebar.markdown("---")
-    st.sidebar.error("※設定はブラウザのローカルストレージに保存されますが、キャッシュクリア等で初期化される場合があります")
-    return danger_v, sel_dirs, show_temp, show_tide
-    
-#==========================================================================================
-# メインフロー制御
+# アプリケーションのメインエントリーポイント
 #==========================================================================================
 def main():
     setup_font()
     st.markdown(f'<h1 style="font-size:{CONFIG["TITLE_SIZE"]}px;">⛵ 高須風チェッカー</h1>', unsafe_allow_html=True)
     
-    # SessionStateの完全初期化（地図専用座標を含む）
+    # SessionState初期化（物理保存対象）
     if 'lat' not in st.session_state: st.session_state.lat = CONFIG["DEFAULT_LAT"]
     if 'lon' not in st.session_state: st.session_state.lon = CONFIG["DEFAULT_LON"]
     if 'sel_map_lat' not in st.session_state: st.session_state.sel_map_lat = CONFIG["DEFAULT_LAT"]
     if 'sel_map_lon' not in st.session_state: st.session_state.sel_map_lon = CONFIG["DEFAULT_LON"]
     if 'last_basho' not in st.session_state: st.session_state.last_basho = CONFIG["DEFAULT_BASHO"]
-    if 'show_map_state' not in st.session_state: st.session_state.show_map_state = False
+    
+    handle_storage_sync() # LocalStorageとの同期
 
     master = {
         "高須沖(鹿児島県)":(31.337, 130.795), "柏原沖(鹿児島県)":(31.380, 131.020), 
@@ -323,39 +337,49 @@ def main():
         "錦江湾(鹿児島県)":(31.590, 130.600), "地図で指定": (None, None)
     }
     
-    current_basho = st.session_state.last_basho
     basho = st.selectbox("地点を選択してください", list(master.keys()), 
-                         index=list(master.keys()).index(current_basho) if current_basho in master else 0)
+                         index=list(master.keys()).index(st.session_state.last_basho) if st.session_state.last_basho in master else 0)
     
-    # 地点変更時のロジック
     if basho != st.session_state.last_basho:
         st.session_state.last_basho = basho
         if basho == "地図で指定":
-            # 保存されていた地図専用座標を現在の座標に復元
-            st.session_state.lat = st.session_state.sel_map_lat
-            st.session_state.lon = st.session_state.sel_map_lon
-            st.session_state.show_map_state = True # 自動で地図を展開
+            st.session_state.lat, st.session_state.lon = st.session_state.sel_map_lat, st.session_state.sel_map_lon
+            st.session_state.show_map_state = True
         else:
-            # プリセット地点の座標を適用（地図表示状態は維持）
             st.session_state.lat, st.session_state.lon = master[basho]
         st.rerun()
 
-    # 地図表示チェックボックス（状態維持）
-    show_map = st.checkbox("地図表示", value=st.session_state.show_map_state)
+    # 地図の表示切替（状態維持）
+    show_map = st.checkbox("地図表示", value=st.session_state.get('show_map_state', False))
     st.session_state.show_map_state = show_map
     
+    # 現在地座標の表示
     st.markdown(f"<p style='font-size:{CONFIG['LOC_INFO_FONT_SIZE']}; color:{CONFIG['LOC_INFO_COLOR']}; font-weight:bold;'>📍 現在：{st.session_state.last_basho} ({st.session_state.lat:.4f}, {st.session_state.lon:.4f})</p>", unsafe_allow_html=True)
     
     if show_map:
         show_location_map()
     
-    danger_v, sel_dirs, show_temp, show_tide = show_sidebar_controls()
+    # サイドバー設定
+    st.sidebar.header("表示設定")
+    danger_v = st.sidebar.number_input("危険風速ライン(m/s)", value=12.0, step=0.5)
+    
+    sel_dirs = []
+    cols = st.sidebar.columns(2)
+    init_dirs = ["南","南南西","南西","西南西","西","西北西","北西","北北西"]
+    for i, d in enumerate(ALL_DIRECTIONS):
+        with cols[i % 2]:
+            if st.sidebar.checkbox(d, value=(d in init_dirs), key=f"chk_{d}"):
+                sel_dirs.append(d)
+    
+    show_temp = st.sidebar.checkbox("気温グラフ表示", value=True)
+    show_tide = st.sidebar.checkbox("潮位グラフ表示", value=True)
+    st.sidebar.markdown("---")
+    st.sidebar.warning("※設定はブラウザに保存されます。")
 
-    img = generate_high_res_graph(st.session_state.lat, st.session_state.lon, danger_v, tuple(sel_dirs), show_temp, show_tide)
-    if img:
-        with st.expander("📊 凡例"):
-            st.write(f"■ 3-5m(青) ■ 5-10m(橙) ■ 10m以上(赤) --- [点線: 危険風速ライン {danger_v}m/s]")
-        st.markdown(f'<div style="overflow-x: auto; background: white;"><img src="data:image/png;base64,{img}" style="height: 850px; max-width: none;"></div>', unsafe_allow_html=True)
+    # グラフ生成と表示
+    img_data = generate_high_res_graph(st.session_state.lat, st.session_state.lon, danger_v, tuple(sel_dirs), show_temp, show_tide)
+    if img_data:
+        st.markdown(f'<div style="overflow-x: auto; background: white;"><img src="data:image/png;base64,{img_data}" style="height: 850px; max-width: none;"></div>', unsafe_allow_html=True)
 
 if __name__ == "__main__":
     main()
