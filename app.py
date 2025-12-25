@@ -53,6 +53,62 @@ def setup_font():
     plt.rc('font', family='Noto Sans JP', size=CONFIG["GRAPH_FONT_SIZE"])
 
 #==========================================================================================
+# 起動時にブラウザのLocalStorageから設定を読み出すサブルーチン
+#==========================================================================================
+def load_settings_from_browser():
+    """
+    LocalStorageから値を読み取り、SessionStateに反映させる。
+    """
+    load_js = f"""
+    <script>
+    (function() {{
+        const lat = localStorage.getItem("{CONFIG['STORAGE_KEY_LAT']}");
+        const lon = localStorage.getItem("{CONFIG['STORAGE_KEY_LON']}");
+        const basho = localStorage.getItem("{CONFIG['STORAGE_KEY_BASHO']}");
+        
+        const data = {{ "lat": lat, "lon": lon, "basho": basho }};
+        window.parent.postMessage({{
+            type: 'streamlit:setComponentValue',
+            value: data
+        }}, '*');
+    }})();
+    </script>
+    """
+    # 戻り値を取得。辞書ではなく、コンポーネントオブジェクトとして扱う
+    res_val = components.html(load_js, height=0)
+    
+    # 初回起動時、JSから有効なデータが届いたらSessionStateを上書き
+    if res_val is not None and st.session_state.get("initialized") is None:
+        # res_val 自体がデータとして扱えるかチェック
+        try:
+            if isinstance(res_val, dict) and res_val.get("lat"):
+                st.session_state.lat = float(res_val["lat"])
+                st.session_state.lon = float(res_val["lon"])
+                st.session_state.last_basho = res_val["basho"]
+                st.session_state.initialized = True
+                st.rerun()
+        except:
+            pass
+
+#==========================================================================================
+# 現在の設定をブラウザのLocalStorageへ保存するサブルーチン
+#==========================================================================================
+def save_settings_to_browser():
+    """
+    現在のSessionStateの値をLocalStorageに書き込むJavaScriptを注入する。
+    """
+    save_js = f"""
+    <script>
+    (function() {{
+        localStorage.setItem("{CONFIG['STORAGE_KEY_LAT']}", "{st.session_state.lat}");
+        localStorage.setItem("{CONFIG['STORAGE_KEY_LON']}", "{st.session_state.lon}");
+        localStorage.setItem("{CONFIG['STORAGE_KEY_BASHO']}", "{st.session_state.last_basho}");
+    }})();
+    </script>
+    """
+    st.components.v1.html(save_js, height=0)
+
+#==========================================================================================
 # ブラウザのLocalStorageとSessionStateを完全同期するサブルーチン（自動実行）
 #==========================================================================================
 def sync_local_storage():
@@ -368,14 +424,17 @@ def main():
     setup_font()
     st.markdown(f'<h1 style="font-size:{CONFIG["TITLE_SIZE"]}px;">⛵ 高須風チェッカー</h1>', unsafe_allow_html=True)
     
-    # --- SessionStateの基本初期化 ---
+    # 1. SessionStateの基本初期化
     if 'lat' not in st.session_state: st.session_state.lat = CONFIG["DEFAULT_LAT"]
     if 'lon' not in st.session_state: st.session_state.lon = CONFIG["DEFAULT_LON"]
     if 'last_basho' not in st.session_state: st.session_state.last_basho = CONFIG["DEFAULT_BASHO"]
 
-    # --- ブラウザ記憶との自動同期実行 ---
-    sync_local_storage()
+    # 2. ブラウザから記憶を読み出す（初回のみrerunが発生）
+    load_settings_from_browser()
 
+    # 3. 現在の状態をブラウザに保存（常に最新を維持）
+    save_settings_to_browser()
+    
     # マスターデータ定義
     master = {
         "高須沖(鹿児島県)":(31.337, 130.795), "柏原沖(鹿児島県)":(31.380, 131.020), 
