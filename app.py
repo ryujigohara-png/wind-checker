@@ -225,7 +225,6 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, show_temp, 
     fig.savefig(buf, format="png", bbox_inches='tight', pad_inches=0.1)
     plt.close(fig) 
     return base64.b64encode(buf.getvalue()).decode()
-#==========================================================================================
 
 #==========================================================================================
 # 地図表示サブルーチン (既存維持)
