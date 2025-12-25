@@ -44,6 +44,7 @@ CONFIG = {
     "ANNOT_Y_STEP": 1.5,
     "ANNOT_BASE_Y": 0.5,
     "STORAGE_KEY": "wind_checker_settings",
+    "SYNC_TIMEOUT_COUNT": 2, # スマホ待機用
     "LOCATION_MASTER": {
         "高須沖(鹿児島県)": (31.337, 130.795), 
         "柏原沖(鹿児島県)": (31.380, 131.020), 
