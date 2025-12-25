@@ -1,4 +1,4 @@
-#2025.12.26 01:00 Finalized Complete Code
+#2025.12.26 01:15 Updated Complete Code
 import streamlit as st
 import requests
 import pandas as pd
@@ -95,7 +95,7 @@ def process_wind_data(df, target_dirs):
     arrows = ["↓", "↙", "↙", "↙", "←", "↖", "↖", "↖", "↑", "↗", "↗", "↗", "→", "↘", "↘", "↘", "↓"]
     
     def get_info(deg):
-        if pd.isna(deg): return "", "" # NaNガード: 欠損値の場合は空文字を返す
+        if pd.isna(deg): return "", "" 
         idx = int((deg + 11.25) / 22.5) % 16
         return dirs[idx], arrows[idx]
     
@@ -108,7 +108,7 @@ def process_wind_data(df, target_dirs):
     
     def judge(row):
         speed = row['wind_speed_10m']
-        if pd.isna(speed): return "#FFFFFF" # NaNガード
+        if pd.isna(speed): return "#FFFFFF" 
         if speed >= 10.0: return "crimson"
         if row['dir_name'] in target_dirs:
             if 5 <= speed < 10.0: return "orange"
@@ -120,7 +120,7 @@ def process_wind_data(df, target_dirs):
     return df
 
 #==========================================================================================
-# グラフのX軸ラベルを千鳥形式（3,9,15,21時を1行下げる）でフォーマットするサブルーチン
+# グラフのX軸ラベルを千鳥形式でフォーマットするサブルーチン
 #==========================================================================================
 def get_x_axis_formatter():
     jp_weeks = ["月", "火", "水", "木", "金", "土", "日"]
@@ -135,7 +135,7 @@ def get_x_axis_formatter():
     return formatter
 
 #==========================================================================================
-# 共通の軸設定（1h補助目盛・3h主要ラベル）を適用するサブルーチン
+# 共通の軸設定を適用するサブルーチン
 #==========================================================================================
 def apply_common_axis_settings(ax, df, formatter, now_jst):
     ax.axvline(now_jst, color='blue', linestyle='-', alpha=0.6, linewidth=2.5)
@@ -149,7 +149,7 @@ def apply_common_axis_settings(ax, df, formatter, now_jst):
     ax.tick_params(axis='y', labelsize=CONFIG["LABEL_SIZE"])
 
 #==========================================================================================
-# 風速棒グラフ（着色・垂直アノテーション）を描画するサブルーチン
+# 風速棒グラフを描画するサブルーチン
 #==========================================================================================
 def render_wind_bar_chart(ax, df, danger_v, wind_step):
     bars = ax.bar(df['time'], df['wind_speed_10m'], color=df['color'], alpha=0.9, width=0.035)
@@ -232,7 +232,7 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, show_temp, 
     return base64.b64encode(buf.getvalue()).decode()
 
 #==========================================================================================
-# 地図表示サブルーチン（3x3格子・全幅中央・スマホ崩れ回避）
+# 地図表示サブルーチン（3x3格子レイアウト）
 #==========================================================================================
 def show_location_map():
     st.info("地図の中央地点のグラフを描画表示することができます。")
@@ -242,28 +242,43 @@ def show_location_map():
         .guide-mark { color: #eee; font-size: 10px; text-align: center; }
         .guide-arrow-main { color: crimson; font-size: 24px; font-weight: bold; text-align: center; }
         </style>""", unsafe_allow_html=True)
-    m = folium.Map(location=[st.session_state.lat, st.session_state.lon], zoom_start=13)
-    folium.Marker([st.session_state.lat, st.session_state.lon], icon=folium.Icon(color='red')).add_to(m)
+    
+    # 地図の中心座標を決定
+    map_lat = st.session_state.lat
+    map_lon = st.session_state.lon
+    
+    m = folium.Map(location=[map_lat, map_lon], zoom_start=13)
+    folium.Marker([map_lat, map_lon], icon=folium.Icon(color='red')).add_to(m)
+    
     col_l1, col_m1, col_r1 = st.columns([1, 18, 1])
     with col_l1: st.markdown("<div class='guide-mark'>┼</div>", unsafe_allow_html=True)
     with col_m1: st.markdown("<div class='guide-arrow-main' style='display: flex; align-items: flex-end; justify-content: center; height: 40px;'>▼</div>", unsafe_allow_html=True)
     with col_r1: st.markdown("<div class='guide-mark'>┼</div>", unsafe_allow_html=True)
+    
     col_l2, col_m2, col_r2 = st.columns([1, 18, 1])
     with col_l2: st.markdown(f"<div style='line-height:{CONFIG['MAP_HEIGHT']}px; text-align:right;' class='guide-arrow-main'>▶</div>", unsafe_allow_html=True)
-    with col_m2: map_out = st_folium(m, width=None, height=CONFIG["MAP_HEIGHT"], key=f"map_{st.session_state.lat}", returned_objects=["center"])
+    with col_m2: map_out = st_folium(m, width=None, height=CONFIG["MAP_HEIGHT"], key=f"map_{map_lat}_{map_lon}", returned_objects=["center"])
     with col_r2: st.markdown(f"<div style='line-height:{CONFIG['MAP_HEIGHT']}px; text-align:left;' class='guide-arrow-main'>◀</div>", unsafe_allow_html=True)
+    
     col_l3, col_m3, col_r3 = st.columns([1, 18, 1])
     with col_l3: st.markdown("<div class='guide-mark'>┼</div>", unsafe_allow_html=True)
     with col_m3: st.markdown("<div class='guide-arrow-main' style='display: flex; align-items: flex-start; justify-content: center; height: 40px; margin-top:-10px;'>▲</div>", unsafe_allow_html=True)
     with col_r3: st.markdown("<div class='guide-mark'>┼</div>", unsafe_allow_html=True)
+    
     if map_out and map_out.get("center"):
         if st.button("グラフ描画地点確定", use_container_width=True):
-            st.session_state.lat, st.session_state.lon = map_out["center"]["lat"], map_out["center"]["lng"]
+            new_lat = map_out["center"]["lat"]
+            new_lon = map_out["center"]["lng"]
+            # 確定地点を現在座標と地図専用座標の両方に保存
+            st.session_state.lat = new_lat
+            st.session_state.lon = new_lon
+            st.session_state.sel_map_lat = new_lat
+            st.session_state.sel_map_lon = new_lon
             st.session_state.last_basho = "地図で指定"
             st.rerun()
 
 #==========================================================================================
-# 5.1/5.2 サイドバー設定項目
+# サイドバー設定項目
 #==========================================================================================
 def show_sidebar_controls():
     st.sidebar.header("表示設定")
@@ -287,33 +302,50 @@ def show_sidebar_controls():
     return danger_v, sel_dirs, show_temp, show_tide
     
 #==========================================================================================
-# アプリケーションの初期化とメインフロー制御を行うサブルーチン
+# メインフロー制御
 #==========================================================================================
 def main():
     setup_font()
     st.markdown(f'<h1 style="font-size:{CONFIG["TITLE_SIZE"]}px;">⛵ 高須風チェッカー</h1>', unsafe_allow_html=True)
+    
+    # SessionStateの完全初期化（地図専用座標を含む）
     if 'lat' not in st.session_state: st.session_state.lat = CONFIG["DEFAULT_LAT"]
     if 'lon' not in st.session_state: st.session_state.lon = CONFIG["DEFAULT_LON"]
+    if 'sel_map_lat' not in st.session_state: st.session_state.sel_map_lat = CONFIG["DEFAULT_LAT"]
+    if 'sel_map_lon' not in st.session_state: st.session_state.sel_map_lon = CONFIG["DEFAULT_LON"]
     if 'last_basho' not in st.session_state: st.session_state.last_basho = CONFIG["DEFAULT_BASHO"]
+    if 'show_map_state' not in st.session_state: st.session_state.show_map_state = False
+
     master = {
         "高須沖(鹿児島県)":(31.337, 130.795), "柏原沖(鹿児島県)":(31.380, 131.020), 
         "垂水港(鹿児島県)":(31.478, 130.668), "海潟(鹿児島県)":(31.539, 130.706), 
         "磯海岸沖(鹿児島県)":(31.614, 130.577), "江口浜沖(鹿児島県)":(31.643, 130.322),
-        "錦江湾(鹿児島県)":(31.590, 130.600), "地図で指定": (st.session_state.lat, st.session_state.lon)
+        "錦江湾(鹿児島県)":(31.590, 130.600), "地図で指定": (None, None)
     }
+    
+    current_basho = st.session_state.last_basho
     basho = st.selectbox("地点を選択してください", list(master.keys()), 
-                         index=list(master.keys()).index(st.session_state.last_basho) if st.session_state.last_basho in master else 0)
+                         index=list(master.keys()).index(current_basho) if current_basho in master else 0)
+    
+    # 地点変更時のロジック
     if basho != st.session_state.last_basho:
         st.session_state.last_basho = basho
-        if basho != "地図で指定":
-            st.session_state.lat, st.session_state.lon = master[basho]
-            st.session_state.show_map_state = False
+        if basho == "地図で指定":
+            # 保存されていた地図専用座標を現在の座標に復元
+            st.session_state.lat = st.session_state.sel_map_lat
+            st.session_state.lon = st.session_state.sel_map_lon
+            st.session_state.show_map_state = True # 自動で地図を展開
         else:
-            st.session_state.show_map_state = True
+            # プリセット地点の座標を適用（地図表示状態は維持）
+            st.session_state.lat, st.session_state.lon = master[basho]
         st.rerun()
-    show_map = st.checkbox("地図表示", value=st.session_state.get('show_map_state', False))
+
+    # 地図表示チェックボックス（状態維持）
+    show_map = st.checkbox("地図表示", value=st.session_state.show_map_state)
     st.session_state.show_map_state = show_map
+    
     st.markdown(f"<p style='font-size:{CONFIG['LOC_INFO_FONT_SIZE']}; color:{CONFIG['LOC_INFO_COLOR']}; font-weight:bold;'>📍 現在：{st.session_state.last_basho} ({st.session_state.lat:.4f}, {st.session_state.lon:.4f})</p>", unsafe_allow_html=True)
+    
     if show_map:
         show_location_map()
     
