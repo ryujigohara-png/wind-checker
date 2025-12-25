@@ -12,8 +12,6 @@ from datetime import datetime, timedelta, timezone
 import matplotlib.dates as mdates
 from streamlit_folium import st_folium
 import folium
-import streamlit.components.v1 as components # これを追加
-import json
 
 # ======================================================================================
 # 1. 定数・基本設定 (CONFIG)
@@ -23,7 +21,7 @@ CONFIG = {
     "SUBTITLE_SIZE": 16,
     "GRAPH_FONT_SIZE": 12,
     "LABEL_SIZE": 12,
-    "DPI": 300,
+    "DPI": 150,  # 描画速度と解像度のバランス調整
     "MAP_HEIGHT": 350,
     # グラフ表示比率 (風速, 気温, 潮位)
     "HEIGHT_RATIOS": [4.4, 1.2, 0.8], 
@@ -45,16 +43,11 @@ ALL_DIRECTIONS = ["北", "北北東", "北東", "東北東", "東", "東南東",
 def setup_font():
     font_url = "https://github.com/google/fonts/raw/main/ofl/notosansjp/NotoSansJP%5Bwght%5D.ttf"
     font_path = "NotoSansJP.ttf"
-    try:
-        if not os.path.exists(font_path):
-            # タイムアウトを短めに設定してダウンロードを試みる
-            urllib.request.urlretrieve(font_url, font_path)
-        fm.fontManager.addfont(font_path)
-        plt.rc('font', family='Noto Sans JP', size=CONFIG["GRAPH_FONT_SIZE"])
-    except Exception:
-        # ダウンロード失敗時はエラーにせず、システムの標準フォントで代用
-        plt.rc('font', family='sans-serif', size=CONFIG["GRAPH_FONT_SIZE"])
-        
+    if not os.path.exists(font_path):
+        urllib.request.urlretrieve(font_url, font_path)
+    fm.fontManager.addfont(font_path)
+    plt.rc('font', family='Noto Sans JP', size=CONFIG["GRAPH_FONT_SIZE"])
+
 #==========================================================================================
 # Open-Meteo APIから気象データを取得するサブルーチン
 #==========================================================================================
@@ -109,8 +102,8 @@ def process_wind_data(df, target_dirs, danger_v):
         speed = row['wind_speed_10m']
         if speed >= danger_v: return "crimson"
         if row['dir_name'] in target_dirs:
-            if 6 <= speed < danger_v: return "orange"
-            if 3 <= speed < 6: return "skyblue"
+            if 5 <= speed < danger_v: return "orange"
+            if 3 <= speed < 5: return "skyblue"
         return "#D3D3D3"
     df['color'] = df.apply(judge, axis=1)
     df['tide_level'] = get_tide_level(df['time'])
@@ -130,33 +123,6 @@ def get_x_axis_formatter():
     return formatter
 
 #==========================================================================================
-# グラフの特定のバーの位置に天気のテキストを描画するサブルーチン
-#==========================================================================================
-def draw_weather_text(ax1, bar, row, offset):
-    ax1.text(bar.get_x() + bar.get_width()/2., bar.get_height() + offset, 
-             row['w_text'], ha='center', va='bottom', 
-             color=row['w_color'], fontweight='bold', fontsize=CONFIG["GRAPH_FONT_SIZE"])
-
-#==========================================================================================
-# グラフの特定のバーの位置に風の情報テキストを描画するサブルーチン
-#==========================================================================================
-def draw_wind_info_text(ax1, bar, row, offset):
-    txt = f"{row['dir_name']}\n{row['arrow']}\n{round(row['wind_speed_10m'])}m"
-    ax1.text(bar.get_x() + bar.get_width()/2., bar.get_height() + offset, 
-             txt, ha='center', va='bottom', 
-             fontweight='bold', color='black', fontsize=CONFIG["GRAPH_FONT_SIZE"])
-
-#==========================================================================================
-# 各バーに対して、気象アノテーションを追加するサブルーチン
-#==========================================================================================
-def add_graph_annotations(ax1, df, bars, wind_step, text_offset_weather, text_offset_wind):
-    for i, bar in enumerate(bars):
-        if i % wind_step == 0:
-            row = df.iloc[i]
-            draw_weather_text(ax1, bar, row, text_offset_weather)
-            draw_wind_info_text(ax1, bar, row, text_offset_wind)
-
-#==========================================================================================
 # 共通の軸設定を適用するサブルーチン
 #==========================================================================================
 def apply_common_axis_settings(ax, df, time_step, formatter, now_jst):
@@ -167,61 +133,85 @@ def apply_common_axis_settings(ax, df, time_step, formatter, now_jst):
     ax.grid(True, linestyle=':', alpha=0.4, color='#000000')
 
 #==========================================================================================
-# 風速グラフを描画するサブルーチン
+# 4.2 グラフ描画：風速棒グラフ（着色・アノテーション）
 #==========================================================================================
-def plot_wind_speed_graph(ax1, df, danger_v, wind_step):
-    bars = ax1.bar(df['time'], df['wind_speed_10m'], color=df['color'], alpha=0.9, width=0.03)
-    ax1.axhline(y=danger_v, color='red', linestyle='--', alpha=0.6)
-    ax1.set_ylabel('風速 (m/s)')
-    y_limit = max(df['wind_speed_10m'].max(), danger_v) + 5
-    ax1.set_ylim(0, y_limit)
-    add_graph_annotations(ax1, df, bars, wind_step, y_limit * 0.20, y_limit * 0.02)
+def render_wind_bar_chart(ax, df, danger_v, wind_step):
+    """
+    風速棒グラフを描画し、上部に天気・風向・風速のアノテーションを垂直に配置する。
+    """
+    bars = ax.bar(df['time'], df['wind_speed_10m'], color=df['color'], alpha=0.9, width=0.035)
+    ax.axhline(y=danger_v, color='crimson', linestyle='--', linewidth=1.5, alpha=0.8)
+    max_speed = df['wind_speed_10m'].max()
+    y_limit = max(max_speed, danger_v) + 6
+    ax.set_ylim(0, y_limit)
+    ax.set_ylabel('風速 (m/s)', fontsize=CONFIG["LABEL_SIZE"])
+
+    for i, bar in enumerate(bars):
+        if i % wind_step == 0:
+            row = df.iloc[i]
+            if pd.isna(row['wind_speed_10m']): continue
+            base_y = bar.get_height()
+            x_pos = bar.get_x() + bar.get_width()/2.
+            ax.text(x_pos, base_y + 0.3, f"{row['wind_speed_10m']:.0f}", ha='center', va='bottom', fontsize=9)
+            ax.text(x_pos, base_y + 1.5, row['arrow'], ha='center', va='bottom', fontsize=12, fontweight='bold')
+            ax.text(x_pos, base_y + 2.8, row['dir_name'], ha='center', va='bottom', fontsize=8)
+            ax.text(x_pos, base_y + 4.2, row['w_text'], ha='center', va='bottom', color=row['w_color'], fontweight='bold', fontsize=9)
 
 #==========================================================================================
-# 気温グラフを描画するサブルーチン
+# 4.2 グラフ描画：気温チャート
 #==========================================================================================
-def plot_temperature_graph(ax2, df):
-    ax2.plot(df['time'], df['temperature_2m'], color='black', linewidth=1.5)
-    ax2.set_ylabel('気温(℃)')
+def render_temp_line_chart(ax, df):
+    """気温の推移を折れ線グラフで描画する"""
+    ax.plot(df['time'], df['temperature_2m'], color='#333333', linewidth=2, marker='o', markersize=2, markevery=3)
+    ax.set_ylabel('気温 (℃)', fontsize=CONFIG["LABEL_SIZE"])
+    if not df['temperature_2m'].dropna().empty:
+        ax.set_ylim(df['temperature_2m'].min() - 2, df['temperature_2m'].max() + 2)
 
 #==========================================================================================
-# 潮位グラフを描画するサブルーチン
+# 4.2 グラフ描画：潮位チャート
 #==========================================================================================
-def plot_tide_graph(ax3, df):
-    ax3.plot(df['time'], df['tide_level'], color='royalblue', linewidth=2)
-    ax3.fill_between(df['time'], df['tide_level'], -120, color='royalblue', alpha=0.2)
-    ax3.set_ylabel('潮位')
-    ax3.set_yticks([])
+def render_tide_curve_chart(ax, df):
+    """潮位曲線を算出し、塗りつぶし効果付きで描画する"""
+    ax.plot(df['time'], df['tide_level'], color='royalblue', linewidth=2.5)
+    ax.fill_between(df['time'], df['tide_level'], -110, color='royalblue', alpha=0.15)
+    ax.set_ylabel('潮位', fontsize=CONFIG["LABEL_SIZE"])
+    ax.set_ylim(-120, 120)
+    ax.set_yticks([])
 
 #==========================================================================================
-# キャッシュを利用して多段構成の気象グラフ画像を生成するサブルーチン
+# 4.1 高解像度グラフ生成（統合管理）
 #==========================================================================================
-@st.cache_data(show_spinner=False)
-def get_cached_graph(lat, lon, days, danger_v, selected_dirs_tuple):
+@st.cache_data(show_spinner="グラフを生成中...")
+def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple):
+    """8日間の予測データに基づいた3段構成のBase64画像を生成する"""
+    days = 8
     df = fetch_weather_data(lat, lon, days)
     if df is None: return None
+    
+    # パディング処理
+    padding_time = [df['time'].iloc[0] - timedelta(hours=i) for i in range(1, 4)][::-1]
+    padding_df = pd.DataFrame({'time': padding_time})
+    df = pd.concat([padding_df, df], ignore_index=True).fillna(method='bfill')
     df = process_wind_data(df, list(selected_dirs_tuple), danger_v)
     
-    wind_step = (1 if days <= 1 else (2 if days <= 3 else 3))
-    time_step = (3 if days <= 2 else 6)
-    fig_w = max(10, days * 4.5)
-    
-    fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(fig_w, 10), dpi=CONFIG["DPI"], 
-                                       gridspec_kw={'height_ratios': CONFIG["HEIGHT_RATIOS"]})
-    plt.subplots_adjust(hspace=0.6)
+    wind_step, time_step = 3, 6
+    fig_w = 36 
+    fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(fig_w, 10), dpi=CONFIG["DPI"], gridspec_kw={'height_ratios': CONFIG["HEIGHT_RATIOS"]})
+    plt.subplots_adjust(hspace=0.5)
     
     formatter = get_x_axis_formatter()
     now_jst = datetime.now(timezone(timedelta(hours=9))).replace(tzinfo=None)
     
-    plot_wind_speed_graph(ax1, df, danger_v, wind_step)
-    plot_temperature_graph(ax2, df)
-    plot_tide_graph(ax3, df)
+    render_wind_bar_chart(ax1, df, danger_v, wind_step)
+    render_temp_line_chart(ax2, df)
+    render_tide_curve_chart(ax3, df)
     
     for ax in [ax1, ax2, ax3]:
         apply_common_axis_settings(ax, df, time_step, formatter, now_jst)
     
     buf = io.BytesIO()
     fig.savefig(buf, format="png", bbox_inches='tight', pad_inches=0.1)
+    plt.close(fig) 
     return base64.b64encode(buf.getvalue()).decode()
 
 #==========================================================================================
@@ -246,27 +236,25 @@ def draw_map_matrix(m):
 #==========================================================================================
 def show_location_map():
     st.info("地図の中央地点のグラフを描画表示することができます。")
-    # デザイン用スタイル（省略せず記述）
     st.markdown("""<style>
+        div[data-testid="stHorizontalBlock"] { flex-wrap: nowrap !important; justify-content: center !important; }
+        [data-testid="column"] { min-width: 0px !important; }
         .guide-arrow-main { color: crimson; font-size: 24px; font-weight: bold; text-align: center; }
         div[data-testid="stButton"] button { background-color: #007bff; color: white; border-radius: 5px; height: 3em; }
+        div[data-testid="stButton"] button:hover { background-color: #0056b3; }
         </style>""", unsafe_allow_html=True)
 
-    # 地図の初期位置は現在の lat, lon
     m = folium.Map(location=[st.session_state.lat, st.session_state.lon], zoom_start=13)
     folium.Marker([st.session_state.lat, st.session_state.lon], icon=folium.Icon(color='red')).add_to(m)
 
     map_out = draw_map_matrix(m)
 
     if map_out and map_out.get("center"):
-        # ① 確定ボタン押下時
         if st.button("グラフ描画地点（地図中央）確定", use_container_width=True):
-            new_lat = map_out["center"]["lat"]
-            new_lon = map_out["center"]["lng"]
-            # 「地図で指定」というラベルで保存（これで内部的に selectmap_lat も更新される）
-            save_location_to_browser(new_lat, new_lon, "地図で指定")
+            st.session_state.lat, st.session_state.lon = map_out["center"]["lat"], map_out["center"]["lng"]
+            st.session_state.last_basho = "地図で指定"
             st.rerun()
-            
+
 #==========================================================================================
 # アプリケーションで利用可能な地点マスタを定義するサブルーチン
 #==========================================================================================
@@ -283,18 +271,19 @@ def get_location_master():
 #==========================================================================================
 def show_location_selector(coords_master):
     try:
-        current_idx = list(coords_master.keys()).index(st.session_state.last_basho)
+        current_idx = list(coords_master.keys()).index(st.session_state.get('last_basho', CONFIG["DEFAULT_BASHO"]))
     except ValueError:
         current_idx = 0
     
     basho = st.selectbox("地点を選択してください", list(coords_master.keys()), index=current_idx)
     
-    # セッション内の状態をデフォルト値として使用
-    show_map = st.checkbox("地図表示", value=st.session_state.get('show_map_state', False))
+    # 「地図で指定」選択時に自動的にチェックをONにするロジック
+    default_show_map = True if basho == "地図で指定" else st.session_state.get('show_map_state', False)
+    show_map = st.checkbox("地図表示", value=default_show_map)
     st.session_state.show_map_state = show_map
     
     return basho, show_map
-    
+
 #==========================================================================================
 # 現在選択されている地点情報を表示するサブルーチン
 #==========================================================================================
@@ -304,210 +293,76 @@ def display_current_location_info():
     st.markdown(f"<p style='{style}'>{text}</p>", unsafe_allow_html=True)
 
 #==========================================================================================
-# 場所、緯度、経度をブラウザのローカルストレージに記録するサブルーチン
+# アプリ起動時に初期設定を行うサブルーチン
 #==========================================================================================
-def save_location_to_browser(lat, lon, basho):
-    # 1. Python側の状態を更新
-    st.session_state.lat = lat
-    st.session_state.lon = lon
-    st.session_state.last_basho = basho
-
-    # 地図で確定された場所の場合、専用の保存枠も更新する
-    if basho == "地図で指定":
-        st.session_state.selectmap_lat = lat
-        st.session_state.selectmap_lon = lon
-
-    # 2. JavaScriptでブラウザに物理保存
-    import time
-    js_code = f"""
-        <script>
-            localStorage.setItem('wind_checker_lat', '{lat}');
-            localStorage.setItem('wind_checker_lon', '{lon}');
-            localStorage.setItem('wind_checker_basho', '{basho}');
-            // 専用保存枠の更新
-            if ('{basho}' === '地図で指定') {{
-                localStorage.setItem('selectmap_lat', '{lat}');
-                localStorage.setItem('selectmap_lon', '{lon}');
-            }}
-            console.log('Storage Updated: {basho}');
-        </script>
-    """
-    components.html(js_code, height=0)
-
-
-#==========================================================================================
-# 起動時にブラウザの記録を参照し、地点に応じて座標を復元する初期化処理
-#==========================================================================================
-def initialize_session_from_browser():
-    # --- 1. まずデフォルト値をセット（ここで None を防ぐ） ---
-    if 'last_basho' not in st.session_state:
-        st.session_state.last_basho = CONFIG["DEFAULT_BASHO"]
+def initialize_session():
     if 'lat' not in st.session_state:
         st.session_state.lat = CONFIG["DEFAULT_LAT"]
     if 'lon' not in st.session_state:
         st.session_state.lon = CONFIG["DEFAULT_LON"]
-    if 'selectmap_lat' not in st.session_state:
-        st.session_state.selectmap_lat = CONFIG["DEFAULT_LAT"]
-    if 'selectmap_lon' not in st.session_state:
-        st.session_state.selectmap_lon = CONFIG["DEFAULT_LON"]
+    if 'last_basho' not in st.session_state:
+        st.session_state.last_basho = CONFIG["DEFAULT_BASHO"]
 
-    # --- 2. 隠し要素の設置（ブラウザからの受取口） ---
-    # 同期用のテキスト入力。key名を合わせます
-    st.text_input("storage_sync_data", key="sync_box", label_visibility="collapsed")
-
-    # --- 3. 隠し枠にデータが入ってきたら、変数を「書き写す」 ---
-    sync_data_str = st.session_state.get("sync_box")
-    if sync_data_str:
-        try:
-            import json
-            saved = json.loads(sync_data_str)
-            if saved.get('basho'):
-                st.session_state.last_basho = saved['basho']
-                # float()変換。万が一空文字 '' などが来てもデフォルト値に逃がす
-                st.session_state.lat = float(saved.get('lat') or CONFIG["DEFAULT_LAT"])
-                st.session_state.lon = float(saved.get('lon') or CONFIG["DEFAULT_LON"])
-                st.session_state.selectmap_lat = float(saved.get('slat') or CONFIG["DEFAULT_LAT"])
-                st.session_state.selectmap_lon = float(saved.get('slon') or CONFIG["DEFAULT_LON"])
-        except:
-            pass
-
-    # --- 4. 「地図で指定」の場合の座標復元 ---
-    if st.session_state.last_basho == "地図で指定":
-        st.session_state.lat = st.session_state.selectmap_lat
-        st.session_state.lon = st.session_state.selectmap_lon
-        
-        
 #==========================================================================================
 # 地点が変更された場合に更新・リロードするサブルーチン
 #==========================================================================================
 def handle_location_change(basho, coords_master):
-    if st.session_state.get('last_basho') != basho:
-        
-        if basho == "地図で指定":
-            st.session_state.show_map_state = True
-            # ② 専用の変数（selectmap_lat/lon）から復元する
-            # まだ一度も確定していない場合はデフォルト値を使う
-            new_lat = st.session_state.get('selectmap_lat', CONFIG["DEFAULT_LAT"])
-            new_lon = st.session_state.get('selectmap_lon', CONFIG["DEFAULT_LON"])
-        
-        elif basho in coords_master and basho != "地図で指定":
-            new_lat, new_lon = coords_master[basho]
-        else:
-            new_lat, new_lon = st.session_state.lat, st.session_state.lon
-
-        # 保存と再描画
-        save_location_to_browser(new_lat, new_lon, basho)
-        
-        import time
-        time.sleep(0.1)
+    if st.session_state.last_basho != basho:
+        if basho in coords_master and basho != "地図で指定":
+            st.session_state.lat, st.session_state.lon = coords_master[basho]
+        st.session_state.last_basho = basho
         st.rerun()
-        
-#============================================================
-# サイドメニュー表示
-#============================================================
+
+#==========================================================================================
+# サイドバーの入力コントロールを生成するサブルーチン
+#==========================================================================================
 def show_sidebar_controls():
-    # --- 地図指定座標の確認・編集 ---
-    st.sidebar.markdown("### 📍 地図指定の座標設定")
+    st.sidebar.header("表示設定")
+    danger_v = st.sidebar.number_input("危険風速(m/s)", value=10.0, step=0.5)
     
-    # サイドメニューで数値を直接入力・変更できるようにする
-    new_sm_lat = st.sidebar.number_input(
-        "指定緯度", 
-        value=float(st.session_state.selectmap_lat),
-        format="%.6f",
-        step=0.0001
-    )
-    new_sm_lon = st.sidebar.number_input(
-        "指定経度", 
-        value=float(st.session_state.selectmap_lon),
-        format="%.6f",
-        step=0.0001
-    )
+    st.sidebar.write("色付風向（乗れる風向）")
+    init_dirs = ["南","南南西","南西","西南西","西","西北西","北西","北北西"]
+    sel_dirs = []
+    cols = st.sidebar.columns(2)
+    for i, d in enumerate(ALL_DIRECTIONS):
+        with cols[i % 2]:
+            if st.checkbox(d, value=(d in init_dirs), key=f"chk_{d}"):
+                sel_dirs.append(d)
     
-    # 入力値が変わったら専用変数を更新
-    if (new_sm_lat != st.session_state.selectmap_lat) or (new_sm_lon != st.session_state.selectmap_lon):
-        st.session_state.selectmap_lat = new_sm_lat
-        st.session_state.selectmap_lon = new_sm_lon
-        # 「地図で指定」選択中なら、即座に現在の座標(lat/lon)にも反映
-        if st.session_state.last_basho == "地図で指定":
-            st.session_state.lat = new_sm_lat
-            st.session_state.lon = new_sm_lon
-
-    st.sidebar.divider()
-
-    # --- 既存のコントロール（日数、風速など） ---
-    # ※ここにお使いの既存コード（days = ... 等）を続けてください
-    days = st.sidebar.slider("表示日数", 1, 7, 3)
-    danger_v = st.sidebar.number_input("注意風速(m/s)", 0.0, 20.0, 5.0)
-    sel_dirs = st.sidebar.multiselect("注意風向", ["N","NE","E","SE","S","SW","W","NW"], ["NW","N","NE"])
-
-    return days, danger_v, sel_dirs
+    st.sidebar.markdown("---")
+    st.sidebar.write("※設定はブラウザに保存されます（実装予定）")
     
+    return danger_v, sel_dirs
 
 #==========================================================================================
 # グラフ画像と凡例をメイン画面に描画するサブルーチン
 #==========================================================================================
-def display_graph_section(lat, lon, days, danger_v, sel_dirs):
-    img = get_cached_graph(lat, lon, days, danger_v, tuple(sel_dirs))
+def display_graph_section(lat, lon, danger_v, sel_dirs):
+    img = generate_high_res_graph(lat, lon, danger_v, tuple(sel_dirs))
     if img:
         with st.expander("📊 凡例"):
-            st.write(f"■ 3-6m/s ■ 6-10m/s ■ {danger_v}m/s以上")
-        st.markdown(f'<div style="overflow-x: auto; background: white;"><img src="data:image/png;base64,{img}" style="height: 900px; max-width: none;"></div>', unsafe_allow_html=True)
+            st.write(f"■ 3-5m/s(青) ■ 5-10m/s(橙) ■ {danger_v}m/s以上(赤)")
+        st.markdown(f'<div style="overflow-x: auto; background: white; border: 1px solid #ddd;"><img src="data:image/png;base64,{img}" style="height: 800px; max-width: none;"></div>', unsafe_allow_html=True)
 
 #==========================================================================================
 # メインのアプリケーション実行フロー
 #==========================================================================================
 def main():
-    #============================================================
-    # ページ設定（一番最初に記述）
-    #============================================================
-    st.set_page_config(page_title="高須風チェッカー", layout="wide")
-
-    #============================================================
-    # ブラウザの記録を参照し、地点に応じて座標を復元する初期化処理
-    #============================================================
-    initialize_session_from_browser()
-    
-    #============================================================
-    # グラフ用フォントのセットアップ
     setup_font()
     st.markdown(f'<h1 style="font-size:{CONFIG["TITLE_SIZE"]}px; margin-bottom: 5px;">⛵ 高須風チェッカー</h1>', unsafe_allow_html=True)
-    #============================================================
-
-    #============================================================
-    # 地点マスタ（名前と緯度経度の対応表）
-    #============================================================
+    
+    initialize_session()
     coords_master = get_location_master()
-    
-    #============================================================
-    # 地点選択UI（セレクトボックスと地図チェック）
-    #============================================================
-    basho, show_map = show_location_selector(coords_master)
-    
-    #============================================================
-    # 地点が変更された場合の処理（座標の更新と保存）
-    #============================================================
-    handle_location_change(basho, coords_master)
 
-    #============================================================
-    # 気象データの取得とグラフ描画（現在の座標 st.session_state.lat/lon を使用）
-    #============================================================
+    basho, show_map = show_location_selector(coords_master)
+    handle_location_change(basho, coords_master)
     display_current_location_info()
 
-    #============================================================
-    # 地図表示UI（チェックボックスがONの場合のみ表示）
-    #============================================================
     if show_map:
         show_location_map()
-
-    #============================================================
-    # サイドメニュー表示（ここで座標も調整可能）
-    #============================================================
-    days, danger_v, sel_dirs = show_sidebar_controls()
-
-    #============================================================
-    # グラフ描画セクション
-    #============================================================
-    display_graph_section(st.session_state.lat, st.session_state.lon, days, danger_v, sel_dirs)
+    
+    danger_v, sel_dirs = show_sidebar_controls()
+    display_graph_section(st.session_state.lat, st.session_state.lon, danger_v, sel_dirs)
 
 if __name__ == "__main__":
     main()
