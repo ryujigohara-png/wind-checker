@@ -14,6 +14,7 @@ from streamlit_folium import st_folium
 import folium
 import streamlit.components.v1 as components
 import json
+from streamlit_js_eval import streamlit_js_eval
 
 # ======================================================================================
 # 1. 定数・基本設定 (CONFIG)
@@ -308,6 +309,46 @@ def show_sidebar_controls():
                 sel_dirs.append(d)
     return danger_v, sel_dirs
 
+# ======================================================================================
+# ブラウザのLocalStorageとSessionStateを同期するサブルーチン (Plan A)
+# ======================================================================================
+def sync_local_storage_plan_a():
+    """
+    streamlit-js-evalを使用して、ブラウザのLocalStorageを読み書きする。
+    """
+    # 1. 保存用のキー
+    STORAGE_KEY = CONFIG['STORAGE_KEY']
+
+    # 2. 読み込み (ブラウザから値を取得)
+    # 起動時に一度だけLocalStorageから値を取り出し、SessionStateに反映する
+    if st.session_state.get("initialized") is None:
+        stored_data = streamlit_js_eval(js_expressions=f"localStorage.getItem('{STORAGE_KEY}')", key="load_storage")
+        
+        if stored_data:
+            try:
+                data = json.loads(stored_data)
+                st.session_state.lat = float(data["lat"])
+                st.session_state.lon = float(data["lon"])
+                st.session_state.last_basho = data["basho"]
+                st.session_state.initialized = True
+                st.rerun()
+            except Exception as e:
+                # 読み込み失敗時はデフォルトを使用
+                st.session_state.initialized = True
+        elif stored_data == "": # データが存在しない場合
+            st.session_state.initialized = True
+
+    # 3. 保存 (現在のSessionStateをブラウザに書き込む)
+    # 地点が変わるたびに実行されるよう、現在の状態をシリアライズしてJSに渡す
+    current_data = json.dumps({
+        "lat": st.session_state.lat,
+        "lon": st.session_state.lon,
+        "basho": st.session_state.last_basho
+    })
+    
+    # JavaScriptを直接実行してLocalStorageに保存
+    streamlit_js_eval(js_expressions=f"localStorage.setItem('{STORAGE_KEY}', '{current_data}')", key="save_storage")
+    
 #==========================================================================================
 # メインフロー
 #==========================================================================================
@@ -320,9 +361,9 @@ def main():
     if 'lon' not in st.session_state: st.session_state.lon = CONFIG["DEFAULT_LON"]
     if 'last_basho' not in st.session_state: st.session_state.last_basho = CONFIG["DEFAULT_BASHO"]
 
-    # --- LocalStorage同期 (Plan B) ---
-    sync_local_storage_v3()
-
+# --- 外部ライブラリによる同期 ---
+    sync_local_storage_plan_a()
+    
     master = {
         "高須沖(鹿児島県)":(31.337, 130.795), "柏原沖(鹿児島県)":(31.380, 131.020), 
         "垂水港(鹿児島県)":(31.478, 130.668), "海潟(鹿児島県)":(31.539, 130.706), 
