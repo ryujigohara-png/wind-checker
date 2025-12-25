@@ -1,4 +1,4 @@
-# 2025.12.26 01:50 Final Integrated Complete Code
+#/////いいかも////  2025.12.26 05:55  //////////////////////////////////////////////////////////////
 import streamlit as st
 import requests
 import pandas as pd
@@ -9,17 +9,18 @@ import os
 import io
 import base64
 import numpy as np
-import json
 from datetime import datetime, timedelta, timezone
 import matplotlib.dates as mdates
 from streamlit_folium import st_folium
 import folium
+import streamlit.components.v1 as components
+import json
+from streamlit_js_eval import streamlit_js_eval
 
 # ======================================================================================
 # 1. 定数・基本設定 (CONFIG)
 # ======================================================================================
 CONFIG = {
-    "STORAGE_KEY": "wind_checker_basho_v1", # LocalStorage用のキー
     "TITLE_SIZE": 24,
     "SUBTITLE_SIZE": 18,
     "GRAPH_FONT_SIZE": 13,
@@ -34,8 +35,11 @@ CONFIG = {
     "DEFAULT_LAT": 31.337,
     "DEFAULT_LON": 130.795,
     "DEFAULT_BASHO": "高須沖(鹿児島県)",
+    "DEFAULT_DANGER_V": 12.0,
+    "DEFAULT_DIRS": ["南","南南西","南西","西南西","西","西北西","北西","北北西"],
     "ANNOT_Y_STEP": 1.5,
     "ANNOT_BASE_Y": 0.5,
+    "STORAGE_KEY": "wind_checker_settings"
 }
 
 ALL_DIRECTIONS = ["北", "北北東", "北東", "東北東", "東", "東南東", "南東", "南南東", "南", "南南西", "南西", "西南西", "西", "西北西", "北西", "北北西"]
@@ -61,11 +65,10 @@ def fetch_weather_data(lat, lon, days):
         df = pd.DataFrame(data["hourly"])
         df['time'] = pd.to_datetime(df['time'])
         return df
-    except Exception:
-        return None
+    except: return None
 
 #==========================================================================================
-# 指定された時間リストに基づき簡易的な潮位を計算するサブルーチン (仕様3.2)
+# 指定された時間リストに基づき簡易的な潮位を計算するサブルーチン (既存維持)
 #==========================================================================================
 def get_tide_level(times):
     base_full_tide = datetime(2025, 1, 1, 6, 0)
@@ -81,7 +84,7 @@ def get_tide_level(times):
     return levels
 
 #==========================================================================================
-# 天気コードを日本語の名称と表示用の色に変換するサブルーチン
+# 天気コードを日本語の名称と表示用の色に変換するサブルーチン (既存維持)
 #==========================================================================================
 def get_weather_info(code):
     if pd.isna(code): return "", "black"
@@ -91,28 +94,26 @@ def get_weather_info(code):
     return "？", "black"
 
 #==========================================================================================
-# 風向角度を名称と矢印に変換し、条件に基づきグラフの色を判定するサブルーチン (仕様3.2)
+# 風向角度を名称と矢印に変換し、条件に基づきグラフの色を判定するサブルーチン (既存維持)
 #==========================================================================================
 def process_wind_data(df, target_dirs):
     dirs = ALL_DIRECTIONS + ["北"]
     arrows = ["↓", "↙", "↙", "↙", "←", "↖", "↖", "↖", "↑", "↗", "↗", "↗", "→", "↘", "↘", "↘", "↓"]
-    
     def get_info(deg):
-        if pd.isna(deg): return "", "" 
+        if pd.isna(deg): return "", ""
         idx = int((deg + 11.25) / 22.5) % 16
         return dirs[idx], arrows[idx]
     
     df['res'] = df['wind_direction_10m'].apply(get_info)
     df['dir_name'] = df['res'].apply(lambda x: x[0])
     df['arrow'] = df['res'].apply(lambda x: x[1])
-    
     weather_res = df['weather_code'].apply(get_weather_info)
     df['w_text'] = [r[0] for r in weather_res]
     df['w_color'] = [r[1] for r in weather_res]
     
     def judge(row):
         speed = row['wind_speed_10m']
-        if pd.isna(speed): return "#FFFFFF" 
+        if pd.isna(speed): return "#FFFFFF"
         if speed >= 10.0: return "crimson"
         if row['dir_name'] in target_dirs:
             if 5 <= speed < 10.0: return "orange"
@@ -124,7 +125,7 @@ def process_wind_data(df, target_dirs):
     return df
 
 #==========================================================================================
-# グラフのX軸ラベルを千鳥形式でフォーマットするサブルーチン
+# グラフのX軸ラベルフォーマッタ (既存維持)
 #==========================================================================================
 def get_x_axis_formatter():
     jp_weeks = ["月", "火", "水", "木", "金", "土", "日"]
@@ -139,7 +140,7 @@ def get_x_axis_formatter():
     return formatter
 
 #==========================================================================================
-# 共通の軸設定（1h補助目盛・3h主要ラベル）を適用するサブルーチン
+# 共通の軸設定 (既存維持)
 #==========================================================================================
 def apply_common_axis_settings(ax, df, formatter, now_jst):
     ax.axvline(now_jst, color='blue', linestyle='-', alpha=0.6, linewidth=2.5)
@@ -153,16 +154,15 @@ def apply_common_axis_settings(ax, df, formatter, now_jst):
     ax.tick_params(axis='y', labelsize=CONFIG["LABEL_SIZE"])
 
 #==========================================================================================
-# 各段の個別描画サブルーチン (風速/気温/潮位)
+# 風速棒グラフ描画 (既存維持)
 #==========================================================================================
 def render_wind_bar_chart(ax, df, danger_v, wind_step):
     bars = ax.bar(df['time'], df['wind_speed_10m'], color=df['color'], alpha=0.9, width=0.035)
     ax.axhline(y=danger_v, color='red', linestyle='--', linewidth=2, alpha=0.8)
     max_speed = df['wind_speed_10m'].max()
-    y_limit = max(max_speed if not pd.isna(max_speed) else 0, danger_v, 12) + 7
+    y_limit = max(max_speed, danger_v, 12) + 7
     ax.set_ylim(0, y_limit)
     ax.set_ylabel('風速 (m/s)', fontsize=CONFIG["LABEL_SIZE"])
-    
     fs, step, base = CONFIG["ANNOT_SIZE"], CONFIG["ANNOT_Y_STEP"], CONFIG["ANNOT_BASE_Y"]
     for i, bar in enumerate(bars):
         if i % wind_step == 0:
@@ -175,12 +175,12 @@ def render_wind_bar_chart(ax, df, danger_v, wind_step):
             ax.text(x_pos, base_y + base + step*2, row['dir_name'], ha='center', va='bottom', fontsize=fs-2)
             ax.text(x_pos, base_y + base + step*3, row['w_text'], ha='center', va='bottom', color=row['w_color'], fontweight='bold', fontsize=fs-1)
 
+#==========================================================================================
+# 気温・潮位描画サブルーチン (既存維持)
+#==========================================================================================
 def render_temp_line_chart(ax, df):
     ax.plot(df['time'], df['temperature_2m'], color='#333333', linewidth=2, marker='o', markersize=3, markevery=3)
     ax.set_ylabel('気温 (℃)', fontsize=CONFIG["LABEL_SIZE"])
-    valid_temp = df['temperature_2m'].dropna()
-    if not valid_temp.empty:
-        ax.set_ylim(valid_temp.min() - 2, valid_temp.max() + 2)
 
 def render_tide_curve_chart(ax, df):
     ax.plot(df['time'], df['tide_level'], color='royalblue', linewidth=2.5)
@@ -190,7 +190,8 @@ def render_tide_curve_chart(ax, df):
     ax.set_yticks([])
 
 #==========================================================================================
-# 8日間の予測に基づき高解像度グラフ画像を生成するサブルーチン (仕様4.1/4.2)
+# 高解像度グラフ生成 (既存維持)
+#==========================================================================================
 #==========================================================================================
 @st.cache_data(show_spinner="グラフを生成中...")
 def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, show_temp, show_tide):
@@ -224,65 +225,11 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, show_temp, 
     fig.savefig(buf, format="png", bbox_inches='tight', pad_inches=0.1)
     plt.close(fig) 
     return base64.b64encode(buf.getvalue()).decode()
+#==========================================================================================
 
 #==========================================================================================
-# JavaScriptによるLocalStorage同期処理 (物理保存・自動反映)
+# 地図表示サブルーチン (既存維持)
 #==========================================================================================
-def handle_storage_sync():
-    """LocalStorageとのデータ同期およびCSSによる入力欄の隠蔽"""
-    # 同期用ボックスを見えないようにするCSS
-    st.markdown("<style>div[data-testid='stTextInput']:has(input[aria-label='storage_sync_box']) { display: none; }</style>", unsafe_allow_html=True)
-    
-    # 隠し入力
-    sync_val = st.text_input("storage_sync_box", key="sync_box", label_visibility="collapsed")
-    
-    if sync_val:
-        try:
-            sd = json.loads(sync_val)
-            # 現在のセッションと異なる場合のみ更新
-            if st.session_state.last_basho != sd['basho'] or abs(st.session_state.lat - float(sd['lat'])) > 0.0001:
-                st.session_state.last_basho = sd['basho']
-                st.session_state.lat = float(sd['lat'])
-                st.session_state.lon = float(sd['lon'])
-                st.session_state.sel_map_lat = float(sd['sel_map_lat'])
-                st.session_state.sel_map_lon = float(sd['sel_map_lon'])
-                st.rerun()
-        except: pass
-
-    # 復元スクリプト
-    restore_script = """
-    <script>
-    const box = window.parent.document.querySelector('input[aria-label="storage_sync_box"]');
-    if (box && !box.getAttribute('data-synced')) {
-        const d = {
-            basho: localStorage.getItem('wind_checker_basho'),
-            lat: localStorage.getItem('wind_checker_lat'),
-            lon: localStorage.getItem('wind_checker_lon'),
-            sel_map_lat: localStorage.getItem('wind_checker_sel_map_lat'),
-            sel_map_lon: localStorage.getItem('wind_checker_sel_map_lon')
-        };
-        if (d.basho) {
-            box.value = JSON.stringify(d);
-            box.dispatchEvent(new Event('input', {bubbles: true}));
-            box.setAttribute('data-synced', 'true');
-        }
-    }
-    </script>
-    """
-    st.components.v1.html(restore_script, height=0)
-
-    # 保存スクリプト
-    save_script = f"""
-    <script>
-    localStorage.setItem('wind_checker_basho', "{st.session_state.last_basho}");
-    localStorage.setItem('wind_checker_lat', "{st.session_state.lat}");
-    localStorage.setItem('wind_checker_lon', "{st.session_state.lon}");
-    localStorage.setItem('wind_checker_sel_map_lat', "{st.session_state.sel_map_lat}");
-    localStorage.setItem('wind_checker_sel_map_lon', "{st.session_state.sel_map_lon}");
-    </script>
-    """
-    st.components.v1.html(save_script, height=0)
-
 #==========================================================================================
 # 地図UI表示サブルーチン (仕様5.2: 3x3格子レイアウト)
 #==========================================================================================
@@ -315,111 +262,133 @@ def show_location_map():
             st.session_state.last_basho = "地図で指定"
             st.rerun()
 
+
 #==========================================================================================
-# 物理保存・復元ロジック (streamlit-js-eval 版)
+# ブラウザのLocalStorageとSessionStateを同期するサブルーチン (全設定対応)
 #==========================================================================================
-def sync_local_storage():
-    """
-    外部ライブラリ streamlit-js-eval を使用した最終的な同期ロジック。
-    """
-    from streamlit_js_eval import streamlit_js_eval
+def sync_all_settings():
     STORAGE_KEY = CONFIG['STORAGE_KEY']
 
-    # 1. 読み込み (ブラウザ -> Python)
+    # 1. 読み込み (初回起動時のみ)
     if "initialized" not in st.session_state:
-        # 読み込み中は画面を一旦止めるためのプレースホルダー
-        with st.empty():
-            st.write("設定を読み込んでいます...")
-            stored_data = streamlit_js_eval(js_expressions=f"localStorage.getItem('{STORAGE_KEY}')", key="load_storage")
-            
-            if stored_data:
-                try:
-                    data = json.loads(stored_data)
-                    st.session_state.lat = float(data["lat"])
-                    st.session_state.lon = float(data["lon"])
-                    st.session_state.last_basho = data["basho"]
-                    st.session_state.initialized = True
-                    st.rerun()
-                except:
-                    st.session_state.initialized = True
-            elif stored_data == "" or stored_data is None:
-                st.session_state.initialized = True
+        stored_data = streamlit_js_eval(js_expressions=f"localStorage.getItem('{STORAGE_KEY}')", key="load_storage")
         
-        # 読み込みが完了するまでここで一旦処理を止める
+        if stored_data:
+            try:
+                data = json.loads(stored_data)
+                st.session_state.lat = float(data.get("lat", CONFIG["DEFAULT_LAT"]))
+                st.session_state.lon = float(data.get("lon", CONFIG["DEFAULT_LON"]))
+                st.session_state.last_basho = data.get("basho", CONFIG["DEFAULT_BASHO"])
+                st.session_state.danger_v = float(data.get("danger_v", CONFIG["DEFAULT_DANGER_V"]))
+                st.session_state.sel_dirs = data.get("sel_dirs", CONFIG["DEFAULT_DIRS"])
+                st.session_state.initialized = True
+                st.rerun()
+            except:
+                st.session_state.initialized = True
+        elif stored_data == "":
+            st.session_state.initialized = True
+        
         if "initialized" not in st.session_state:
             st.stop()
 
-    # 2. 保存 (Python -> ブラウザ)
-    current_data = json.dumps({
+    # 2. 保存 (現在の状態をパッケージング)
+    save_data = {
         "lat": st.session_state.lat,
         "lon": st.session_state.lon,
-        "basho": st.session_state.last_basho
-    })
-    streamlit_js_eval(js_expressions=f"localStorage.setItem('{STORAGE_KEY}', '{current_data}')", key="save_storage")
-    
+        "basho": st.session_state.last_basho,
+        "danger_v": st.session_state.get("danger_v", CONFIG["DEFAULT_DANGER_V"]),
+        "sel_dirs": st.session_state.get("sel_dirs", CONFIG["DEFAULT_DIRS"])
+    }
+    js_save = f"localStorage.setItem('{STORAGE_KEY}', '{json.dumps(save_data)}')"
+    streamlit_js_eval(js_expressions=js_save, key="save_storage")
 
 #==========================================================================================
-# メイン
+# サイドバー設定サブルーチン (保存対応版)
+#==========================================================================================
+def show_sidebar_controls():
+    st.sidebar.header("表示設定")
+    
+    # 復元された値、もしくはデフォルト値を使用
+    default_v = st.session_state.get("danger_v", CONFIG["DEFAULT_DANGER_V"])
+    danger_v = st.sidebar.number_input("危険風速ライン(m/s)", value=default_v, step=0.5)
+    st.session_state.danger_v = danger_v
+    
+    st.sidebar.write("色付風向")
+    saved_dirs = st.session_state.get("sel_dirs", CONFIG["DEFAULT_DIRS"])
+    
+    sel_dirs = []
+    cols = st.sidebar.columns(2)
+    for i, d in enumerate(ALL_DIRECTIONS):
+        with cols[i % 2]:
+            if st.checkbox(d, value=(d in saved_dirs), key=f"chk_{d}"):
+                sel_dirs.append(d)
+    
+    st.session_state.sel_dirs = sel_dirs
+    return danger_v, sel_dirs
+
+#==========================================================================================
+# 現在時刻と更新ボタンを表示するサブルーチン
+#==========================================================================================
+def render_header_info():
+    c1, c2 = st.columns([7, 3])
+    with c1:
+        now = datetime.now(timezone(timedelta(hours=9)))
+        st.markdown(f"<p style='font-size:{CONFIG['LOC_INFO_FONT_SIZE']}; color:{CONFIG['LOC_INFO_COLOR']}; font-weight:bold;'>📍 現在：{st.session_state.last_basho} ({st.session_state.lat:.4f}, {st.session_state.lon:.4f})<br><span style='font-size:12px; color:gray;'>取得時刻: {now.strftime('%Y/%m/%d %H:%M:%S')}</span></p>", unsafe_allow_html=True)
+    with c2:
+        if st.button("🔄 グラフ更新", use_container_width=True):
+            st.cache_data.clear()
+            st.rerun()
+
+#==========================================================================================
+# メインフロー
 #==========================================================================================
 def main():
     setup_font()
     st.markdown(f'<h1 style="font-size:{CONFIG["TITLE_SIZE"]}px;">⛵ 高須風チェッカー</h1>', unsafe_allow_html=True)
     
-    # 1. SessionState初期化
+    # SessionState初期化
     if 'lat' not in st.session_state: st.session_state.lat = CONFIG["DEFAULT_LAT"]
     if 'lon' not in st.session_state: st.session_state.lon = CONFIG["DEFAULT_LON"]
     if 'last_basho' not in st.session_state: st.session_state.last_basho = CONFIG["DEFAULT_BASHO"]
-    
-    # 2. 物理保存同期の実行
-    sync_local_storage()
-    
+
+    # --- LocalStorage同期 ---
+    sync_all_settings()
+
     master = {
         "高須沖(鹿児島県)":(31.337, 130.795), "柏原沖(鹿児島県)":(31.380, 131.020), 
         "垂水港(鹿児島県)":(31.478, 130.668), "海潟(鹿児島県)":(31.539, 130.706), 
         "磯海岸沖(鹿児島県)":(31.614, 130.577), "江口浜沖(鹿児島県)":(31.643, 130.322),
-        "錦江湾(鹿児島県)":(31.590, 130.600), "地図で指定": (None, None)
+        "錦江湾(鹿児島県)":(31.590, 130.600), "地図で指定": (st.session_state.lat, st.session_state.lon)
     }
     
-    basho = st.selectbox("地点を選択してください", list(master.keys()), 
-                         index=list(master.keys()).index(st.session_state.last_basho) if st.session_state.last_basho in master else 0)
+    current_idx = 0
+    if st.session_state.last_basho in master:
+        current_idx = list(master.keys()).index(st.session_state.last_basho)
+    
+    basho = st.selectbox("地点を選択してください", list(master.keys()), index=current_idx)
     
     if basho != st.session_state.last_basho:
         st.session_state.last_basho = basho
-        if basho == "地図で指定":
-            st.session_state.lat, st.session_state.lon = st.session_state.sel_map_lat, st.session_state.sel_map_lon
-        else:
+        if basho != "地図で指定":
             st.session_state.lat, st.session_state.lon = master[basho]
         st.rerun()
 
     show_map = st.checkbox("地図表示", value=st.session_state.get('show_map_state', False))
     st.session_state.show_map_state = show_map
-    
-    st.markdown(f"<p style='font-size:{CONFIG['LOC_INFO_FONT_SIZE']}; color:{CONFIG['LOC_INFO_COLOR']}; font-weight:bold;'>📍 現在：{st.session_state.last_basho} ({st.session_state.lat:.4f}, {st.session_state.lon:.4f})</p>", unsafe_allow_html=True)
-    
-    if show_map: show_location_map()
-    
-    # サイドバー設定項目
-    st.sidebar.header("表示設定")
-    dv = st.sidebar.number_input("危険風速ライン(m/s)", value=12.0, step=0.5)
-    
-    sel_dirs = []
-    cols = st.sidebar.columns(2)
-    init_dirs = ["南","南南西","南西","西南西","西","西北西","北西","北北西"]
-    for i, d in enumerate(ALL_DIRECTIONS):
-        with cols[i % 2]:
-            if st.sidebar.checkbox(d, value=(d in init_dirs), key=f"chk_{d}"): sel_dirs.append(d)
-    
-    show_temp = st.sidebar.checkbox("気温グラフ表示", value=True)
-    show_tide = st.sidebar.checkbox("潮位グラフ表示", value=True)
-    st.sidebar.markdown("---")
-    st.sidebar.warning("※設定はブラウザに保存されます。")
+    if show_map:
+        show_location_map()
 
-    # グラフ生成と描画
-    img_data = generate_high_res_graph(st.session_state.lat, st.session_state.lon, dv, tuple(sel_dirs), show_temp, show_tide)
-    if img_data:
-        with st.expander("📊 凡例"):
-            st.write(f"■ 3-5m(青) ■ 5-10m(橙) ■ 10m以上(赤) --- [点線: 危険風速ライン {dv}m/s]")
-        st.markdown(f'<div style="overflow-x: auto; background: white;"><img src="data:image/png;base64,{img_data}" style="height: 850px; max-width: none;"></div>', unsafe_allow_html=True)
+    # 時刻・更新ボタン表示
+    render_header_info()
+    
+    # 設定取得
+    danger_v, sel_dirs = show_sidebar_controls()
+    
+    # グラフ描画
+    img = generate_high_res_graph(st.session_state.lat, st.session_state.lon, danger_v, tuple(sel_dirs))
+    
+    if img:
+        st.markdown(f'<div style="overflow-x: auto; background: white;"><img src="data:image/png;base64,{img}" style="height: 850px; max-width: none;"></div>', unsafe_allow_html=True)
 
 if __name__ == "__main__":
     main()
