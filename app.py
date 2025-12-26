@@ -36,6 +36,8 @@ CONFIG = {
     "DEFAULT_BASHO": "高須沖(鹿児島県)",
     "DEFAULT_DANGER_V": 12.0,
     "DEFAULT_DIRS": ["南","南南西","南西","西南西","西","西北西","北西","北北西"],
+    "ANNOT_Y_STEP": 1.5,
+    "ANNOT_BASE_Y": 0.5,
     "STORAGE_KEY": "wind_checker_settings",
     "LOCATION_MASTER": {
         "高須沖(鹿児島県)": (31.337, 130.795), 
