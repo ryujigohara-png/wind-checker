@@ -321,40 +321,24 @@ def handle_location_selection():
     return basho
 
 #==========================================================================================
-# 追加機能：現在地取得ロジック
-#==========================================================================================
-def handle_current_location():
-    st.markdown("---")
-    if st.button("📍 現在地からグラフを作成", use_container_width=True):
-        # JavaScriptを使用してブラウザの現在地を取得
-        loc = streamlit_js_eval(js_expressions="navigator.geolocation.getCurrentPosition(pos => { window.parent.postMessage({type: 'streamlit:set_component_value', value: {lat: pos.coords.latitude, lon: pos.coords.longitude}}, '*') })", key="get_location")
-        
-        # 取得できた場合、SessionStateを更新してリラン
-        if loc and isinstance(loc, dict):
-            st.session_state.lat = round(loc['lat'], 4)
-            st.session_state.lon = round(loc['lon'], 4)
-            st.session_state.last_basho = "現在地"
-            st.rerun()
-        else:
-            st.warning("現在地を取得中、またはブラウザで位置情報が許可されていません。もう一度ボタンを押すか、設定を確認してください。")
-
-#==========================================================================================
-# 8. 現在地取得サブルーチン (ブラウザ直叩きリロード方式)
+# 8. 現在地取得サブルーチン (高信頼リロード方式・修正版)
 #==========================================================================================
 def handle_current_location_update():
     """
     JSで位置情報を取得し、LocalStorage保存後にページを強制リロードする。
-    Python側での「待ち状態」を作らないため、メッセージが残ることはない。
+    Python側でフラグを持たず、HTML実行時のみメッセージを表示させる。
     """
     st.markdown("---")
     STORAGE_KEY = CONFIG['STORAGE_KEY']
     
-    # 1. 取得開始ボタン（このボタン自体にJSを仕込む）
+    # ボタン押下時のみ動作するスコープ
     if st.button("📍 現在地からグラフを作成", use_container_width=True):
-        # 画面上に「取得中」であることを示すHTMLを一時的に出す（ボタン直後）
-        st.info("ブラウザの許可を確認してください...")
+        # メッセージ表示用の空コンテナ
+        placeholder = st.empty()
+        placeholder.info("ブラウザの位置情報許可を確認してください...")
         
         # 直接JavaScriptを実行するHTMLコンポーネント
+        # 書き込み完了を待つために setTimeout でリロードを0.1秒遅延させる
         js_code = f"""
             <script>
             navigator.geolocation.getCurrentPosition(
@@ -362,11 +346,10 @@ def handle_current_location_update():
                     const lat = pos.coords.latitude;
                     const lon = pos.coords.longitude;
                     
-                    // 現在のLocalStorageを読み込んで更新
                     let data = localStorage.getItem('{STORAGE_KEY}');
-                    if (data) {{
-                        data = JSON.parse(data);
-                    }} else {{
+                    try {{
+                        data = data ? JSON.parse(data) : {{}};
+                    }} catch(e) {{
                         data = {{}};
                     }}
                     
@@ -374,18 +357,22 @@ def handle_current_location_update():
                     data.lon = lon;
                     data.basho = "現在地";
                     
-                    // 保存してリロード（親ウィンドウであるStreamlitをリロード）
                     localStorage.setItem('{STORAGE_KEY}', JSON.stringify(data));
-                    window.parent.location.reload();
+                    
+                    // 確実に保存されるよう僅かなディレイを入れてリロード
+                    setTimeout(() => {{
+                        window.parent.location.reload();
+                    }}, 100);
                 }},
                 (err) => {{
-                    alert("位置情報の取得に失敗しました。設定を確認してください。\\n" + err.message);
+                    alert("位置情報の取得に失敗しました。\\n設定 > サイトの設定 > 位置情報 が許可されているか確認してください。\\nエラー内容: " + err.message);
                 }},
                 {{ enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }}
             );
             </script>
         """
         components.html(js_code, height=0)
+        # Python側はこのまま後続の描画へ進むため、リロードが走るまでUIは維持される
         
 
 #==========================================================================================
