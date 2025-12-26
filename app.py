@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-#///// 最終更新 2025.12.26 18:20 //////////////////////////////////////////////////////////////
+#///// 最終更新 2025.12.26 20:55 //////////////////////////////////////////////////////////////
 import streamlit as st
 import requests
 import pandas as pd
@@ -321,77 +321,58 @@ def handle_location_selection():
     return basho
 
 #==========================================================================================
-# 8. 現在地取得サブルーチン (デバッグログ表示機能付き)
+# 8. 現在地取得サブルーチン (製品版・高精度版)
 #==========================================================================================
 def handle_current_location_update():
     """
-    JSによる進捗ログを表示し、タイムアウトやエラーの詳細を可視化する。
+    スマホ環境で動作確認済みの位置情報取得ロジック。
+    不要なデバッグ表示を廃止し、スムーズな更新を実現。
     """
     st.markdown("---")
     STORAGE_KEY = CONFIG['STORAGE_KEY']
     
     if st.button("📍 現在地からグラフを作成", use_container_width=True):
-        # Python側ではボタンが押されたことだけを記録
-        st.write("🔄 ブラウザへ位置情報リクエストを送信しました...")
-        
-        js_code = f"""
-            <div id="debug-log" style="padding:10px; border:1px solid #ccc; border-radius:5px; background-color:#f9f9f9; font-family:monospace; font-size:12px; line-height:1.5;">
-                <div style="font-weight:bold; border-bottom:1px solid #ccc; margin-bottom:5px;">🛰️ デバッグログ</div>
-                <div id="log-content"></div>
-            </div>
-            <script>
-            const logArea = document.getElementById('log-content');
-            function addLog(msg, color='black') {{
-                const div = document.createElement('div');
-                div.style.color = color;
-                div.innerText = `[${{new Date().toLocaleTimeString()}}] ${{msg}}`;
-                logArea.appendChild(div);
-            }}
+        st.session_state.waiting_loc = True
+        st.rerun()
 
-            addLog("Step 1: 位置情報リクエスト開始...");
+    if st.session_state.get("waiting_loc"):
+        with st.status("🛰️ 現在地を計算中...", expanded=True) as status:
+            loc = streamlit_js_eval(
+                js_expressions="get_geolocation", 
+                key="get_geo_stable_prod"
+            )
             
-            if (!navigator.geolocation) {{
-                addLog("Error: このブラウザは位置情報をサポートしていません。", "red");
-            }} else {{
-                navigator.geolocation.getCurrentPosition(
-                    (pos) => {{
-                        addLog("Step 2: 座標取得成功！", "green");
-                        const lat = pos.coords.latitude;
-                        const lon = pos.coords.longitude;
-                        addLog(`Step 3: 座標確定 (${{lat.toFixed(4)}}, ${{lon.toFixed(4)}})`, "green");
-                        
-                        let data = JSON.parse(localStorage.getItem('{STORAGE_KEY}') || '{{}}');
-                        data.lat = lat;
-                        data.lon = lon;
-                        data.basho = "現在地";
-                        localStorage.setItem('{STORAGE_KEY}', JSON.stringify(data));
-                        addLog("Step 4: LocalStorage書き込み完了。");
-                        
-                        addLog("Step 5: 0.5秒後にリロードを実行します...", "blue");
-                        setTimeout(() => {{ window.parent.location.reload(); }}, 500);
-                    }},
-                    (err) => {{
-                        let errorMsg = "";
-                        switch(err.code) {{
-                            case 1: errorMsg = "【拒否】ユーザーにより位置情報が拒否されました。"; break;
-                            case 2: errorMsg = "【不能】位置情報が判定できません（GPS信号弱）。"; break;
-                            case 3: errorMsg = "【タイムアウト】時間切れです。もう一度お試しください。"; break;
-                            default: errorMsg = "不明なエラーが発生しました。"; break;
-                        }}
-                        addLog(`❌ Error: ${{errorMsg}} (Code: ${{err.code}})`, "red");
-                        addLog("Tips: スマホの場合は、外が見える場所で試すか、Wi-Fiをオンにすると改善します。", "gray");
-                    }},
-                    {{ 
-                        enableHighAccuracy: false, // タイムアウト回避のため精度を少し落とす
-                        timeout: 20000,           // タイムアウトを20秒に延長
-                        maximumAge: 0 
-                    }}
-                );
-            }
-            </script>
-        """
-        components.html(js_code, height=200)
-        
+            if loc:
+                new_lat = round(loc['coords']['latitude'], 4)
+                new_lon = round(loc['coords']['longitude'], 4)
+                
+                # データの同期
+                st.session_state.lat = new_lat
+                st.session_state.lon = new_lon
+                st.session_state.last_basho = "現在地"
+                
+                save_data = {
+                    "lat": new_lat, 
+                    "lon": new_lon, 
+                    "basho": "現在地",
+                    "danger_v": st.session_state.get("danger_v", CONFIG["DEFAULT_DANGER_V"]),
+                    "sel_dirs": st.session_state.get("sel_dirs", CONFIG["DEFAULT_DIRS"])
+                }
+                streamlit_js_eval(
+                    js_expressions=f"localStorage.setItem('{STORAGE_KEY}', '{json.dumps(save_data)}')",
+                    key="save_geo_prod"
+                )
+                
+                status.update(label="✅ 現在地を反映しました！", state="complete", expanded=False)
+                st.session_state.waiting_loc = False
+                st.rerun()
+            
+            elif loc is False:
+                status.update(label="❌ 取得に失敗しました", state="error")
+                st.error("設定で位置情報を許可するか、電波の良い場所で再度お試しください。")
+                if st.button("閉じる"):
+                    st.session_state.waiting_loc = False
+                    st.rerun()        
         
         
 
