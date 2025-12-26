@@ -339,11 +339,11 @@ def handle_current_location():
             st.warning("現在地を取得中、またはブラウザで位置情報が許可されていません。もう一度ボタンを押すか、設定を確認してください。")
 
 #==========================================================================================
-# 8. 現在地取得サブルーチン (完全分離・非同期安定版)
+# 8. 現在地取得サブルーチン (高信頼性・非同期通信修正版)
 #==========================================================================================
 def handle_current_location_update():
     """
-    UIの表示を阻害せず、バックグラウンドで位置情報を取得する。
+    ブラウザから現在地を確実に取得し、メッセージを消去する。
     """
     st.markdown("---")
     
@@ -352,23 +352,26 @@ def handle_current_location_update():
         st.session_state.waiting_loc = True
         st.rerun()
 
-    # 2. 取得中メッセージの表示（コンボボックスを消さないよう、単独のメッセージとして表示）
+    # 2. 取得処理とメッセージ制御
     if st.session_state.get("waiting_loc"):
-        st.info("位置情報を取得中... ブラウザの許可ダイアログを確認してください。")
+        # JSで位置情報を取得し、値をPythonの変数 'loc' に格納
+        # streamlit_js_evalの標準機能を使い、取得完了まで待機
+        loc = streamlit_js_eval(js_expressions="navigator.geolocation.getCurrentPosition", key="get_loc_final_sync")
         
-        # JS実行（ボタンとは切り離して実行し、値を監視する）
-        loc = streamlit_js_eval(
-            js_expressions="navigator.geolocation.getCurrentPosition(pos => { window.parent.postMessage({type: 'streamlit:set_component_value', value: {lat: pos.coords.latitude, lon: pos.coords.longitude}}, '*') })", 
-            key="get_location_final"
-        )
+        # 取得中メッセージ
+        st.info("位置情報を取得中... ブラウザの許可ダイアログを確認してください。")
 
-        # 値が戻ってきたら処理
-        if loc and isinstance(loc, dict) and 'lat' in loc:
-            st.session_state.lat = round(loc['lat'], 4)
-            st.session_state.lon = round(loc['lon'], 4)
+        # 値が戻ってきた（JSからの応答があった）場合の処理
+        if loc and isinstance(loc, dict) and 'coords' in loc:
+            # 成功時：SessionStateを更新
+            st.session_state.lat = round(loc['coords']['latitude'], 4)
+            st.session_state.lon = round(loc['coords']['longitude'], 4)
             st.session_state.last_basho = "現在地"
+            
+            # 重要：フラグをここで折り、メッセージを消す
             st.session_state.waiting_loc = False
-            # LocalStorageにも保存されるようにする
+            
+            # ブラウザのLocalStorageにも保存（同期維持）
             save_data = {
                 "lat": st.session_state.lat, 
                 "lon": st.session_state.lon, 
@@ -377,8 +380,10 @@ def handle_current_location_update():
                 "sel_dirs": st.session_state.get("sel_dirs", CONFIG["DEFAULT_DIRS"])
             }
             streamlit_js_eval(js_expressions=f"localStorage.setItem('{CONFIG['STORAGE_KEY']}', '{json.dumps(save_data)}')")
-            st.rerun()
             
+            st.success("地点を更新しました！")
+            st.rerun() # これによりメッセージが消え、上部の「現在：」が書き換わる
+
 
 #==========================================================================================
 # サイドバー設定サブルーチン (保存対応版)
