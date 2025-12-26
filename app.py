@@ -339,46 +339,54 @@ def handle_current_location():
             st.warning("現在地を取得中、またはブラウザで位置情報が許可されていません。もう一度ボタンを押すか、設定を確認してください。")
 
 #==========================================================================================
-# 8. 現在地取得サブルーチン (独自JS埋め込み方式)
+# 8. 現在地取得サブルーチン (ブラウザ直叩きリロード方式)
 #==========================================================================================
 def handle_current_location_update():
     """
-    標準JSを直接注入し、LocalStorage経由で確実にPythonへ座標を渡す。
+    JSで位置情報を取得し、LocalStorage保存後にページを強制リロードする。
+    Python側での「待ち状態」を作らないため、メッセージが残ることはない。
     """
     st.markdown("---")
     STORAGE_KEY = CONFIG['STORAGE_KEY']
     
-    # 1. 取得開始ボタン
+    # 1. 取得開始ボタン（このボタン自体にJSを仕込む）
     if st.button("📍 現在地からグラフを作成", use_container_width=True):
-        # JavaScriptをHTMLとして埋め込む（画面には見えない）
-        # 取得成功時にLocalStorageを直接書き換え、ページをリロードさせる
+        # 画面上に「取得中」であることを示すHTMLを一時的に出す（ボタン直後）
+        st.info("ブラウザの許可を確認してください...")
+        
+        # 直接JavaScriptを実行するHTMLコンポーネント
         js_code = f"""
             <script>
             navigator.geolocation.getCurrentPosition(
                 (pos) => {{
-                    const data = {{
-                        lat: pos.coords.latitude,
-                        lon: pos.coords.longitude,
-                        basho: "現在地",
-                        danger_v: {st.session_state.get('danger_v', CONFIG['DEFAULT_DANGER_V'])},
-                        sel_dirs: {json.dumps(st.session_state.get('sel_dirs', CONFIG['DEFAULT_DIRS']))}
-                    }};
+                    const lat = pos.coords.latitude;
+                    const lon = pos.coords.longitude;
+                    
+                    // 現在のLocalStorageを読み込んで更新
+                    let data = localStorage.getItem('{STORAGE_KEY}');
+                    if (data) {{
+                        data = JSON.parse(data);
+                    }} else {{
+                        data = {{}};
+                    }}
+                    
+                    data.lat = lat;
+                    data.lon = lon;
+                    data.basho = "現在地";
+                    
+                    // 保存してリロード（親ウィンドウであるStreamlitをリロード）
                     localStorage.setItem('{STORAGE_KEY}', JSON.stringify(data));
-                    window.parent.location.reload(); // 親ウィンドウ（Streamlit）をリロードして反映
+                    window.parent.location.reload();
                 }},
                 (err) => {{
-                    alert("位置情報の取得に失敗しました: " + err.message);
-                }}
+                    alert("位置情報の取得に失敗しました。設定を確認してください。\\n" + err.message);
+                }},
+                {{ enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }}
             );
             </script>
         """
         components.html(js_code, height=0)
-        st.info("位置情報を取得中... 許可ダイアログが出たら「許可」を押してください。")
-
-    # 注意: この方式ではJS側が成功した瞬間に「ブラウザごとリロード」するため、
-    # Python側の SessionState ではなく、リロード後の sync_all_settings() が 
-    # LocalStorage から値を拾うことで、確実に「現在：緯度経度」が更新されます。
-
+        
 
 #==========================================================================================
 # サイドバー設定サブルーチン (保存対応版)
@@ -428,14 +436,14 @@ def main():
     if 'lon' not in st.session_state: st.session_state.lon = CONFIG["DEFAULT_LON"]
     if 'last_basho' not in st.session_state: st.session_state.last_basho = CONFIG["DEFAULT_BASHO"]
 
-    # --- LocalStorage同期 (復元と保存を自動実行) ---
+    # LocalStorage同期（リロード後はここが現在地の値を拾う）
     sync_all_settings()
-    
+
     if "initialized" not in st.session_state:
         st.info("設定を読み込み中...")
         st.stop()
 
-    # --- UIの順序を変更：まずコンボボックスを出す ---
+    # 地点選択コンボボックス（既存通り）
     master = CONFIG["LOCATION_MASTER"].copy()
     if st.session_state.last_basho == "現在地":
         master["現在地"] = (st.session_state.lat, st.session_state.lon)
@@ -450,9 +458,9 @@ def main():
             st.session_state.lat, st.session_state.lon = master[basho]
         st.rerun()
 
-    # ここで現在地ボタンを配置（コンボボックスの下）
+    # 新しい現在地ボタンサブルーチンを呼び出す
     handle_current_location_update()
-
+    
     # --- 以下、地図表示・グラフ表示（既存通り） ---
     
     # 地図表示トグル
