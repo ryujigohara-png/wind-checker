@@ -23,7 +23,8 @@ from streamlit_js_eval import streamlit_js_eval
 # ======================================================================================
 CONFIG = {
     "TITLE_SIZE": 24,
-    "TITLE_MARGIN_TOP": "-40px",
+    "TITLE_MARGIN_TOP": "-70px",      # ヘッダー余白を消去するためにさらに引き上げ
+    "TITLE_MARGIN_BOTTOM": "-20px",   # タイトル直後の余白を圧縮
     "SUBTITLE_SIZE": 18,
     "GRAPH_FONT_SIZE": 13,
     "LABEL_SIZE": 13,
@@ -56,7 +57,8 @@ CONFIG = {
     "STATUS_BG_COLOR": "#f0f2f6",
     "STATUS_FONT_SIZE_LABEL": "13px",
     "STATUS_FONT_SIZE_MAIN": "16px",
-    "STATUS_FONT_SIZE_TIME": "11px"
+    "STATUS_FONT_SIZE_TIME": "11px",
+    "ELEMENT_SPACING": "-15px"        # 要素間の隙間を埋めるためのマージン
 }
 
 ALL_DIRECTIONS = ["北", "北北東", "北東", "東北東", "東", "東南東", "南東", "南南東", "南", "南南西", "南西", "西南西", "西", "西北西", "北西", "北北西"]
@@ -426,6 +428,9 @@ def render_top_controls():
     """
     地点選択と地図表示トグルを横並びに配置する。
     """
+    # セレクトボックス上の隙間を詰める
+    st.markdown(f'<div style="margin-top:{CONFIG["ELEMENT_SPACING"]};"></div>', unsafe_allow_html=True)
+    
     c1, c2 = st.columns(CONFIG["COL_RATIO_HEADER"])
     with c1:
         master = CONFIG["LOCATION_MASTER"].copy()
@@ -455,9 +460,10 @@ def render_action_buttons():
     """
     現在地取得ボタンと更新ボタンを横並びに配置する。
     """
+    st.markdown(f'<div style="margin-top:{CONFIG["ELEMENT_SPACING"]};"></div>', unsafe_allow_html=True)
+    
     ac1, ac2 = st.columns(CONFIG["COL_RATIO_ACTION"])
     with ac1:
-        # 既存の現在地取得サブルーチンを呼び出し
         handle_current_location_update()
     with ac2:
         if st.button("🔄 グラフ更新", use_container_width=True):
@@ -475,10 +481,11 @@ def render_status_display():
     status_html = f"""
     <div style="
         background-color: {CONFIG['STATUS_BG_COLOR']}; 
-        padding: 8px 12px; 
+        padding: 5px 12px; 
         border-radius: 8px; 
         border-left: 5px solid {CONFIG['LOC_INFO_COLOR']};
-        margin: 5px 0px;">
+        margin-top: {CONFIG['ELEMENT_SPACING']};
+        margin-bottom: 5px;">
         <span style="font-size: {CONFIG['STATUS_FONT_SIZE_LABEL']}; color: #666;">📍 現在：</span>
         <span style="font-size: {CONFIG['STATUS_FONT_SIZE_MAIN']}; color: {CONFIG['LOC_INFO_COLOR']}; font-weight: bold;">
             {st.session_state.last_basho} ({st.session_state.lat:.4f}, {st.session_state.lon:.4f})
@@ -489,14 +496,24 @@ def render_status_display():
     </div>
     """
     st.markdown(status_html, unsafe_allow_html=True)
-    
 
 #==========================================================================================
 # 17. メインフロー
 #==========================================================================================
 def main():
     setup_font()
-    st.markdown(f'<h1 style="font-size:{CONFIG["TITLE_SIZE"]}px; margin-top:{CONFIG["TITLE_MARGIN_TOP"]}; margin-bottom:0px;">⛵ 高須風チェッカー</h1>', unsafe_allow_html=True)
+    
+    # 既存のStreamlitヘッダーの巨大な余白を強制的に消去するCSSインジェクション
+    st.markdown("""
+        <style>
+            .block-container {padding-top: 1rem; padding-bottom: 0rem;}
+            #MainMenu {visibility: hidden;}
+            header {visibility: hidden;}
+        </style>
+    """, unsafe_allow_html=True)
+
+    # タイトルの表示 (上下マージンを最小化)
+    st.markdown(f'<h1 style="font-size:{CONFIG["TITLE_SIZE"]}px; margin-top:{CONFIG["TITLE_MARGIN_TOP"]}; margin-bottom:{CONFIG["TITLE_MARGIN_BOTTOM"]};">⛵ 高須風チェッカー</h1>', unsafe_allow_html=True)
     
     # SessionState初期化
     if 'lat' not in st.session_state: st.session_state.lat = CONFIG["DEFAULT_LAT"]
@@ -509,27 +526,28 @@ def main():
         st.info("設定を読み込み中...")
         st.stop()
 
-    # 1段目: コントロール表示
+    # 1段目: コントロール表示 (地点選択・地図トグル)
     show_map = render_top_controls()
 
-    # 地図表示 (既存の3x3レイアウトを呼び出し)
+    # 地図表示 (既存の3x3レイアウトを維持)
     if show_map:
         show_location_map()
 
-    # 2段目: アクションボタン
+    # 2段目: アクションボタン (現在地取得・更新)
     render_action_buttons()
 
-    # 3段目: ステータス表示
+    # 3段目: ステータス表示 (青いカード)
     render_status_display()
     
-    # 既存のサイドバー設定
+    # 既存のサイドバー設定 (中身は変更なし)
     danger_v, sel_dirs = show_sidebar_controls()
     
-    # 既存のグラフ描画
+    # 既存の高解像度グラフ描画 (解像度・サイズ設定は維持)
     img = generate_high_res_graph(st.session_state.lat, st.session_state.lon, danger_v, tuple(sel_dirs))
     
     if img:
-        st.markdown(f'<div style="overflow-x: auto; background: white;"><img src="data:image/png;base64,{img}" style="height: 850px; max-width: none;"></div>', unsafe_allow_html=True)
+        # グラフの上の隙間も極小化
+        st.markdown(f'<div style="margin-top:{CONFIG["ELEMENT_SPACING"]}; overflow-x: auto; background: white;"><img src="data:image/png;base64,{img}" style="height: 850px; max-width: none;"></div>', unsafe_allow_html=True)
 
 if __name__ == "__main__":
     main()
