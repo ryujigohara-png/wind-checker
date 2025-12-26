@@ -23,8 +23,8 @@ from streamlit_js_eval import streamlit_js_eval
 # ======================================================================================
 CONFIG = {
     "TITLE_SIZE": 24,
-    "TITLE_MARGIN_TOP": "-70px",      # ヘッダー余白を消去するためにさらに引き上げ
-    "TITLE_MARGIN_BOTTOM": "-20px",   # タイトル直後の余白を圧縮
+    "TITLE_MARGIN_TOP": "-10px",      # 隠れないよう控えめに調整
+    "TITLE_MARGIN_BOTTOM": "0px", 
     "SUBTITLE_SIZE": 18,
     "GRAPH_FONT_SIZE": 13,
     "LABEL_SIZE": 13,
@@ -53,12 +53,12 @@ CONFIG = {
         "錦江湾(鹿児島県)": (31.590, 130.600)
     },
     "COL_RATIO_HEADER": [7, 3],
-    "COL_RATIO_ACTION": [6, 4],
+    "COL_RATIO_ACTION": [1, 1],       # スマホで5:5にするため均等に
     "STATUS_BG_COLOR": "#f0f2f6",
     "STATUS_FONT_SIZE_LABEL": "13px",
-    "STATUS_FONT_SIZE_MAIN": "16px",
+    "STATUS_FONT_SIZE_MAIN": "15px",  # スマホ1行に収めるため微縮小
     "STATUS_FONT_SIZE_TIME": "11px",
-    "ELEMENT_SPACING": "-15px"        # 要素間の隙間を埋めるためのマージン
+    "ELEMENT_SPACING": "2px"          # マイナスをやめ、最小のプラスに設定
 }
 
 ALL_DIRECTIONS = ["北", "北北東", "北東", "東北東", "東", "東南東", "南東", "南南東", "南", "南南西", "南西", "西南西", "西", "西北西", "北西", "北北西"]
@@ -428,9 +428,13 @@ def render_top_controls():
     """
     地点選択と地図表示トグルを横並びに配置する。
     """
-    # セレクトボックス上の隙間を詰める
-    st.markdown(f'<div style="margin-top:{CONFIG["ELEMENT_SPACING"]};"></div>', unsafe_allow_html=True)
-    
+    # スマホでも横並びを強制するCSS
+    st.markdown('''
+        <style>
+            [data-testid="column"] { min-width: 0px !important; }
+        </style>
+    ''', unsafe_allow_html=True)
+
     c1, c2 = st.columns(CONFIG["COL_RATIO_HEADER"])
     with c1:
         master = CONFIG["LOCATION_MASTER"].copy()
@@ -439,7 +443,7 @@ def render_top_controls():
         master["地図で指定"] = (st.session_state.lat, st.session_state.lon)
         
         current_idx = list(master.keys()).index(st.session_state.last_basho) if st.session_state.last_basho in master else 0
-        basho = st.selectbox("地点を選択してください", list(master.keys()), index=current_idx, label_visibility="collapsed")
+        basho = st.selectbox("地点を選択", list(master.keys()), index=current_idx, label_visibility="collapsed")
     
     with c2:
         show_map = st.checkbox("🗺️ 地図", value=st.session_state.get('show_map_state', False))
@@ -460,13 +464,12 @@ def render_action_buttons():
     """
     現在地取得ボタンと更新ボタンを横並びに配置する。
     """
-    st.markdown(f'<div style="margin-top:{CONFIG["ELEMENT_SPACING"]};"></div>', unsafe_allow_html=True)
-    
     ac1, ac2 = st.columns(CONFIG["COL_RATIO_ACTION"])
     with ac1:
+        # 現在地ボタンの幅を調整
         handle_current_location_update()
     with ac2:
-        if st.button("🔄 グラフ更新", use_container_width=True):
+        if st.button("🔄 更新", use_container_width=True):
             st.cache_data.clear()
             st.rerun()
 
@@ -481,16 +484,16 @@ def render_status_display():
     status_html = f"""
     <div style="
         background-color: {CONFIG['STATUS_BG_COLOR']}; 
-        padding: 5px 12px; 
+        padding: 5px 10px; 
         border-radius: 8px; 
         border-left: 5px solid {CONFIG['LOC_INFO_COLOR']};
         margin-top: {CONFIG['ELEMENT_SPACING']};
         margin-bottom: 5px;">
         <span style="font-size: {CONFIG['STATUS_FONT_SIZE_LABEL']}; color: #666;">📍 現在：</span>
         <span style="font-size: {CONFIG['STATUS_FONT_SIZE_MAIN']}; color: {CONFIG['LOC_INFO_COLOR']}; font-weight: bold;">
-            {st.session_state.last_basho} ({st.session_state.lat:.4f}, {st.session_state.lon:.4f})
+            {st.session_state.last_basho}
         </span>
-        <span style="font-size: {CONFIG['STATUS_FONT_SIZE_TIME']}; color: gray; float: right; line-height: 25px;">
+        <span style="font-size: 10px; color: gray; float: right; line-height: 20px;">
             {now.strftime('%H:%M:%S')}
         </span>
     </div>
@@ -503,51 +506,44 @@ def render_status_display():
 def main():
     setup_font()
     
-    # 既存のStreamlitヘッダーの巨大な余白を強制的に消去するCSSインジェクション
+    # 画面上部の空白を削りつつ、タイトルを隠さないためのCSS
     st.markdown("""
         <style>
-            .block-container {padding-top: 1rem; padding-bottom: 0rem;}
-            #MainMenu {visibility: hidden;}
-            header {visibility: hidden;}
+            .block-container {padding-top: 2rem !important; padding-bottom: 0rem;}
+            header {display: none;}
+            footer {display: none;}
         </style>
     """, unsafe_allow_html=True)
 
-    # タイトルの表示 (上下マージンを最小化)
+    # タイトルの表示
     st.markdown(f'<h1 style="font-size:{CONFIG["TITLE_SIZE"]}px; margin-top:{CONFIG["TITLE_MARGIN_TOP"]}; margin-bottom:{CONFIG["TITLE_MARGIN_BOTTOM"]};">⛵ 高須風チェッカー</h1>', unsafe_allow_html=True)
     
-    # SessionState初期化
+    # 既存の初期化・同期処理
     if 'lat' not in st.session_state: st.session_state.lat = CONFIG["DEFAULT_LAT"]
     if 'lon' not in st.session_state: st.session_state.lon = CONFIG["DEFAULT_LON"]
     if 'last_basho' not in st.session_state: st.session_state.last_basho = CONFIG["DEFAULT_BASHO"]
-
     sync_all_settings()
 
     if "initialized" not in st.session_state:
         st.info("設定を読み込み中...")
         st.stop()
 
-    # 1段目: コントロール表示 (地点選択・地図トグル)
+    # UIの描画
     show_map = render_top_controls()
-
-    # 地図表示 (既存の3x3レイアウトを維持)
     if show_map:
         show_location_map()
-
-    # 2段目: アクションボタン (現在地取得・更新)
+    
     render_action_buttons()
-
-    # 3段目: ステータス表示 (青いカード)
     render_status_display()
     
-    # 既存のサイドバー設定 (中身は変更なし)
+    # サイドバーとグラフ（既存維持）
     danger_v, sel_dirs = show_sidebar_controls()
-    
-    # 既存の高解像度グラフ描画 (解像度・サイズ設定は維持)
     img = generate_high_res_graph(st.session_state.lat, st.session_state.lon, danger_v, tuple(sel_dirs))
     
     if img:
-        # グラフの上の隙間も極小化
-        st.markdown(f'<div style="margin-top:{CONFIG["ELEMENT_SPACING"]}; overflow-x: auto; background: white;"><img src="data:image/png;base64,{img}" style="height: 850px; max-width: none;"></div>', unsafe_allow_html=True)
+        st.markdown(f'<div style="overflow-x: auto; background: white;"><img src="data:image/png;base64,{img}" style="height: 850px; max-width: none;"></div>', unsafe_allow_html=True)
 
 if __name__ == "__main__":
     main()
+
+
