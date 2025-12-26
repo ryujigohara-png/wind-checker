@@ -16,7 +16,7 @@ from streamlit_folium import st_folium
 import folium
 import streamlit.components.v1 as components
 import json
-from streamlit_js_eval import streamlit_js_eval
+from streamlit_js_eval import streamlit_js_eval, get_geolocation
 
 # ======================================================================================
 # 1. 定数・基本設定 (CONFIG)
@@ -321,53 +321,51 @@ def handle_location_selection():
     return basho
 
 #==========================================================================================
-# 8. 現在地取得サブルーチン (修正版：動的キー対応・保存競合回避)
+# 8. 現在地取得サブルーチン (修正版：専用関数利用・シンプル化)
 #==========================================================================================
 def handle_current_location_update():
     """
     スマホ環境で動作確認済みの位置情報取得ロジック。
-    ボタン押下ごとにユニークなKeyを生成し、キャッシュ詰まりを回避する。
-    保存はメインループの sync_all_settings に任せ、ここではState更新に専念する。
+    st.statusなどのコンテナを使わず、シンプルに実装してJSの発火を確実にする。
     """
     st.markdown("---")
     
-    # ボタンが押されたら、待機フラグを立て、強制リフレッシュ用のキーを生成してリラン
+    # ボタン押下時：待機フラグを立て、キーを更新してリラン
     if st.button("📍 現在地からグラフを作成", use_container_width=True):
         st.session_state.waiting_loc = True
-        # 現在時刻を使ってユニークなキーを生成（キャッシュ回避）
+        # キャッシュ回避用の新しいキーを発行
         st.session_state.geo_key = f"geo_{datetime.now().timestamp()}"
         st.rerun()
 
+    # 待機モード時の処理
     if st.session_state.get("waiting_loc"):
-        with st.status("🛰️ 現在地を計算中...", expanded=True) as status:
-            # ユニークなキーを使用してJavascriptを実行
-            key_name = st.session_state.get("geo_key", "geo_default")
-            loc = streamlit_js_eval(
-                js_expressions="get_geolocation", 
-                key=key_name
-            )
+        st.info("🛰️ 現在地を取得しています... (許可ポップアップが出たら「許可」を押してください)")
+        
+        # 専用関数 get_geolocation を使用（コンポーネントの非表示設定）
+        # ここで動的なキーを使うことで、毎回必ず新しい取得リクエストが走る
+        loc = get_geolocation(component_key=st.session_state.get("geo_key"))
+
+        if loc:
+            new_lat = round(loc['coords']['latitude'], 4)
+            new_lon = round(loc['coords']['longitude'], 4)
             
-            if loc:
-                new_lat = round(loc['coords']['latitude'], 4)
-                new_lon = round(loc['coords']['longitude'], 4)
-                
-                # データの同期（Stateのみ更新する）
-                # ※ここでの物理保存は廃止。st.rerun()後のmain冒頭のsync_all_settingsで保存されるため。
-                st.session_state.lat = new_lat
-                st.session_state.lon = new_lon
-                st.session_state.last_basho = "現在地"
-                
-                status.update(label="✅ 現在地を反映しました！", state="complete", expanded=False)
+            # データの同期（State更新）
+            st.session_state.lat = new_lat
+            st.session_state.lon = new_lon
+            st.session_state.last_basho = "現在地"
+            
+            st.success("✅ 取得成功！描画を更新します。")
+            st.session_state.waiting_loc = False
+            st.rerun()
+        
+        # 明示的なエラーまたはタイムアウト（ユーザーがブロックした場合など）
+        # loc が None の間はここを通過して画面は「取得しています...」のまま待機となる
+        elif loc is False:
+            st.error("❌ 位置情報の取得に失敗しました。ブラウザの設定を確認してください。")
+            if st.button("キャンセル"):
                 st.session_state.waiting_loc = False
                 st.rerun()
-            
-            elif loc is False:
-                status.update(label="❌ 取得に失敗しました", state="error")
-                st.error("設定で位置情報を許可するか、電波の良い場所で再度お試しください。")
-                if st.button("閉じる"):
-                    st.session_state.waiting_loc = False
-                    st.rerun()
-        
+                
 
 #==========================================================================================
 # サイドバー設定サブルーチン (保存対応版)
