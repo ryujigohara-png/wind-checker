@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 #///// 最終更新 2025.12.26 18:20 //////////////////////////////////////////////////////////////
 import streamlit as st
 import requests
@@ -338,6 +339,42 @@ def handle_current_location():
             st.warning("現在地を取得中、またはブラウザで位置情報が許可されていません。もう一度ボタンを押すか、設定を確認してください。")
 
 #==========================================================================================
+# 8. 現在地取得サブルーチン (不具合修正版)
+#==========================================================================================
+def handle_current_location_update():
+    """
+    ブラウザのGeolocation APIを使用して現在地を取得し、SessionStateを更新する。
+    ①緯度経度が変わらない問題、②警告が消えない問題を解消。
+    """
+    st.markdown("---")
+    
+    # 取得用JSコード（確実にStreamlitへ値を戻すためのMessage送出を含む）
+    # ※streamlit_js_evalの内部的な位置情報取得機能を利用
+    loc = streamlit_js_eval(
+        js_expressions="navigator.geolocation.getCurrentPosition(pos => { window.parent.postMessage({type: 'streamlit:set_component_value', value: {lat: pos.coords.latitude, lon: pos.coords.longitude}}, '*') })", 
+        key="get_location_op"
+    )
+
+    if st.button("📍 現在地からグラフを作成", use_container_width=True):
+        # ボタン押下フラグをセット
+        st.session_state.waiting_loc = True
+
+    # 取得待ち状態のハンドリング
+    if st.session_state.get("waiting_loc"):
+        if loc and isinstance(loc, dict) and 'lat' in loc:
+            # 取得成功
+            st.session_state.lat = round(loc['lat'], 4)
+            st.session_state.lon = round(loc['lon'], 4)
+            st.session_state.last_basho = "現在地"
+            st.session_state.waiting_loc = False # フラグを折る
+            st.success(f"現在地を取得しました: ({st.session_state.lat}, {st.session_state.lon})")
+            st.rerun() # 確実に再描画して警告を消す
+        else:
+            # 取得中または許可待ち
+            st.info("ブラウザで位置情報を許可してください。取得には数秒かかる場合があります...")
+            # 注意: ここで st.stop() はせず、JSの応答を待つ
+
+#==========================================================================================
 # サイドバー設定サブルーチン (保存対応版)
 #==========================================================================================
 def show_sidebar_controls():
@@ -387,13 +424,21 @@ def main():
 
     # --- LocalStorage同期 (復元と保存を自動実行) ---
     sync_all_settings()
-
-    # 現在地取得ボタンを配置
-    handle_current_location()
-
-    # 地点選択
-    handle_location_selection()
     
+    if "initialized" not in st.session_state:
+        st.info("設定を読み込み中...")
+        st.stop()
+
+    # --- 新規追加箇所 ---
+    handle_current_location_update()
+    # ------------------
+
+    # 地点選択（既存）
+    master = CONFIG["LOCATION_MASTER"].copy()
+    # 「現在地」をリストに動的に追加
+    if st.session_state.last_basho == "現在地":
+        master["現在地"] = (st.session_state.lat, st.session_state.lon)
+    master["地図で指定"] = (st.session_state.lat, st.session_state.lon)    
 
     # 地図表示トグル
     show_map = st.checkbox("地図表示", value=st.session_state.get('show_map_state', False))
