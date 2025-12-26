@@ -321,54 +321,63 @@ def handle_location_selection():
     return basho
 
 #==========================================================================================
-# 8. 現在地取得サブルーチン (修正版：動的キー対応・保存競合回避)
+# 8. 現在地取得サブルーチン (ライブラリ標準機能・高耐久版)
 #==========================================================================================
 def handle_current_location_update():
     """
-    スマホ環境で動作確認済みの位置情報取得ロジック。
-    ボタン押下ごとにユニークなKeyを生成し、キャッシュ詰まりを回避する。
-    保存はメインループの sync_all_settings に任せ、ここではState更新に専念する。
+    streamlit_js_evalの標準位置情報取得機能を利用。
+    タイムアウトを大幅に延長し、セキュリティ制限を回避する。
     """
     st.markdown("---")
+    STORAGE_KEY = CONFIG['STORAGE_KEY']
     
-    # ボタンが押されたら、待機フラグを立て、強制リフレッシュ用のキーを生成してリラン
+    # ボタン押下でフラグ管理
     if st.button("📍 現在地からグラフを作成", use_container_width=True):
         st.session_state.waiting_loc = True
-        # 現在時刻を使ってユニークなキーを生成（キャッシュ回避）
-        st.session_state.geo_key = f"geo_{datetime.now().timestamp()}"
         st.rerun()
 
     if st.session_state.get("waiting_loc"):
-        with st.status("🛰️ 現在地を計算中...", expanded=True) as status:
-            # ユニークなキーを使用してJavascriptを実行
-            key_name = st.session_state.get("geo_key", "geo_default")
-            loc = streamlit_js_eval(
-                js_expressions="get_geolocation", 
-                key=key_name
+        st.info("🛰️ 位置情報を照会中...（最大30秒待機します）")
+        
+        # ライブラリ標準の get_geolocation を使用。
+        # これにより、Streamlitコンポーネントとしての権限（allow-geolocation）が正しく適用されます。
+        loc = streamlit_js_eval(
+            js_expressions="get_geolocation", 
+            key="get_geo_stable"
+        )
+        
+        if loc:
+            # 取得成功
+            new_lat = round(loc['coords']['latitude'], 4)
+            new_lon = round(loc['coords']['longitude'], 4)
+            
+            st.session_state.lat = new_lat
+            st.session_state.lon = new_lon
+            st.session_state.last_basho = "現在地"
+            
+            # LocalStorageへの保存
+            save_data = {
+                "lat": new_lat, 
+                "lon": new_lon, 
+                "basho": "現在地",
+                "danger_v": st.session_state.get("danger_v", CONFIG["DEFAULT_DANGER_V"]),
+                "sel_dirs": st.session_state.get("sel_dirs", CONFIG["DEFAULT_DIRS"])
+            }
+            streamlit_js_eval(
+                js_expressions=f"localStorage.setItem('{STORAGE_KEY}', '{json.dumps(save_data)}')",
+                key="save_geo_final"
             )
             
-            if loc:
-                new_lat = round(loc['coords']['latitude'], 4)
-                new_lon = round(loc['coords']['longitude'], 4)
-                
-                # データの同期（Stateのみ更新する）
-                # ※ここでの物理保存は廃止。st.rerun()後のmain冒頭のsync_all_settingsで保存されるため。
-                st.session_state.lat = new_lat
-                st.session_state.lon = new_lon
-                st.session_state.last_basho = "現在地"
-                
-                status.update(label="✅ 現在地を反映しました！", state="complete", expanded=False)
+            st.session_state.waiting_loc = False
+            st.success(f"取得成功: {new_lat}, {new_lon}")
+            st.rerun()
+            
+        elif loc is False:
+            st.error("❌ 位置情報の取得が拒否されたか、タイムアウトしました。設定を確認してください。")
+            if st.button("キャンセル"):
                 st.session_state.waiting_loc = False
                 st.rerun()
-            
-            elif loc is False:
-                status.update(label="❌ 取得に失敗しました", state="error")
-                st.error("設定で位置情報を許可するか、電波の良い場所で再度お試しください。")
-                if st.button("閉じる"):
-                    st.session_state.waiting_loc = False
-                    st.rerun()
-                    
-        
+                
         
 
 #==========================================================================================
