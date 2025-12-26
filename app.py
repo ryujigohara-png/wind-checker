@@ -321,60 +321,59 @@ def handle_location_selection():
     return basho
 
 #==========================================================================================
-# 8. 現在地取得サブルーチン (不具合解消・安定版)
+# 8. 現在地取得サブルーチン (最終解：独立JSインジェクション方式)
 #==========================================================================================
 def handle_current_location_update():
     """
-    streamlit_js_evalを利用して位置情報を取得し、確実にSessionStateとLocalStorageを更新する。
-    メッセージが残り続けるフリーズ現象を解消したロジック。
+    ライブラリの不具合を回避するため、ピュアなJavaScriptをHTMLとして注入。
+    Python側で「待ち状態」を一切作らないため、フリーズは物理的に発生しない。
     """
     st.markdown("---")
     STORAGE_KEY = CONFIG['STORAGE_KEY']
     
-    # ボタンが押されたらフラグを立てる
+    # 1. 取得開始ボタン
     if st.button("📍 現在地からグラフを作成", use_container_width=True):
-        st.session_state.waiting_loc = True
-        st.rerun()
+        # Python側でメッセージを出さず、JS側にすべてを任せる
+        js_code = f"""
+            <div id="loc-status" style="padding:10px; border-radius:5px; background-color:#e1f5fe; color:#01579b; font-family:sans-serif; margin-bottom:10px;">
+                🛰️ 位置情報を取得中... ブラウザの許可ダイアログを確認してください。
+            </div>
+            <script>
+            const statusDiv = document.getElementById('loc-status');
+            navigator.geolocation.getCurrentPosition(
+                (pos) => {{
+                    const lat = pos.coords.latitude;
+                    const lon = pos.coords.longitude;
+                    
+                    // LocalStorageの更新
+                    let data = JSON.parse(localStorage.getItem('{STORAGE_KEY}') || '{{}}');
+                    data.lat = lat;
+                    data.lon = lon;
+                    data.basho = "現在地";
+                    localStorage.setItem('{STORAGE_KEY}', JSON.stringify(data));
+                    
+                    statusDiv.innerHTML = "✅ 取得成功！反映中...";
+                    statusDiv.style.backgroundColor = "#c8e6c9";
+                    statusDiv.style.color = "#1b5e20";
 
-    # 取得待ち状態の処理
-    if st.session_state.get("waiting_loc"):
-        st.info("位置情報を取得中... ブラウザの許可ダイアログを確認してください。")
+                    // 親ウィンドウ(Streamlit)をリロードしてLocalStorageの値を反映させる
+                    setTimeout(() => {{
+                        window.parent.location.reload();
+                    }}, 500);
+                }},
+                (err) => {{
+                    statusDiv.innerHTML = "❌ 失敗: " + err.message + "<br>設定から位置情報を許可してください。";
+                    statusDiv.style.backgroundColor = "#ffcdd2";
+                    statusDiv.style.color = "#b71c1c";
+                    console.error(err);
+                }},
+                {{ enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }}
+            );
+            </script>
+        """
+        # HTMLをボタンの直後に挿入。height=100程度持たせてメッセージを見せる。
+        components.html(js_code, height=100)
         
-        # 安定性の高い get_geolocation 関数を直接呼び出す
-        loc = streamlit_js_eval(js_expressions="navigator.geolocation.getCurrentPosition", key="get_geo_loc")
-        
-        if loc and isinstance(loc, dict) and 'coords' in loc:
-            # 取得成功
-            new_lat = round(loc['coords']['latitude'], 4)
-            new_lon = round(loc['coords']['longitude'], 4)
-            
-            # 1. SessionStateの更新
-            st.session_state.lat = new_lat
-            st.session_state.lon = new_lon
-            st.session_state.last_basho = "現在地"
-            
-            # 2. LocalStorageへの即時書き込み（同期用）
-            save_data = {
-                "lat": new_lat, 
-                "lon": new_lon, 
-                "basho": "現在地",
-                "danger_v": st.session_state.get("danger_v", CONFIG["DEFAULT_DANGER_V"]),
-                "sel_dirs": st.session_state.get("sel_dirs", CONFIG["DEFAULT_DIRS"])
-            }
-            streamlit_js_eval(
-                js_expressions=f"localStorage.setItem('{STORAGE_KEY}', '{json.dumps(save_data)}')",
-                key="save_geo_loc"
-            )
-            
-            # 3. フラグを折り、再描画（これでメッセージが消える）
-            st.session_state.waiting_loc = False
-            st.success("現在地を反映しました。")
-            st.rerun()
-            
-        elif loc is False: # 取得失敗（拒否など）の場合
-            st.error("位置情報の取得に失敗しました。ブラウザの設定で許可されているか確認してください。")
-            st.session_state.waiting_loc = False
-            if st.button("閉じる"): st.rerun()
         
 
 #==========================================================================================
