@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-#///// 最終更新 2025.12.26 20:55 //////////////////////////////////////////////////////////////
+#///// 最終更新 2025.12.26 20:55 コンプリート版//////////////////////////////////////////////////////////////
 import streamlit as st
 import requests
 import pandas as pd
@@ -22,15 +22,17 @@ from streamlit_js_eval import streamlit_js_eval
 # 1. 定数・基本設定 (CONFIG)
 # ======================================================================================
 CONFIG = {
-    "TITLE_SIZE": 22,
-    "TITLE_MARGIN_TOP": "0px",
+    "TITLE_SIZE": 24,
+    "SUBTITLE_SIZE": 18,
     "GRAPH_FONT_SIZE": 13,
     "LABEL_SIZE": 13,
     "ANNOT_SIZE": 14,
     "DPI": 200,
     "MAP_HEIGHT": 350,
     "HEIGHT_RATIOS": [4.4, 1.2, 0.8],
+    "LOC_INFO_FONT_SIZE": "16px",
     "LOC_INFO_COLOR": "#1e88e5",
+    "LOC_INFO_MARGIN_TOP": "-10px",
     "DEFAULT_LAT": 31.337,
     "DEFAULT_LON": 130.795,
     "DEFAULT_BASHO": "高須沖(鹿児島県)",
@@ -47,14 +49,7 @@ CONFIG = {
         "磯海岸沖(鹿児島県)": (31.614, 130.577), 
         "江口浜沖(鹿児島県)": (31.643, 130.322),
         "錦江湾(鹿児島県)": (31.590, 130.600)
-    },
-    "APP_MAX_WIDTH": "92%",           # 画面幅をスマホサイズより一回り小さく制限
-    "RATIO_R1": [1, 8, 1],            # 1行目: 空白, タイトル, 空白
-    "RATIO_R2": [2, 1, 1],            # 2行目: 地点, 地図, 現在地
-    "RATIO_R4": [1, 1],               # 4行目: 時刻, 更新
-    "STATUS_BG_COLOR": "#f0f2f6",
-    "STATUS_FONT_SIZE_MAIN": "14px",
-    "STATUS_FONT_SIZE_TIME": "12px"
+    }
 }
 
 ALL_DIRECTIONS = ["北", "北北東", "北東", "東北東", "東", "東南東", "南東", "南南東", "南", "南南西", "南西", "西南西", "西", "西北西", "北西", "北北西"]
@@ -418,244 +413,61 @@ def render_header_info():
             st.rerun()
 
 #==========================================================================================
-# 14. UIレイアウト：行列配置サブルーチン
-#==========================================================================================
-def render_structured_grid():
-    """
-    ユーザー指定の3行構成を厳密に描画する。
-    """
-    # 全幅制限とスマホ横並び強制のCSS
-    st.markdown(f'''
-        <style>
-            .block-container {{ max-width: {CONFIG["GRID_WIDTH"]}; padding-top: 2rem; }}
-            [data-testid="column"] {{ min-width: 0px !important; }}
-            div.stButton > button {{ width: 100%; padding: 0px; }}
-        </style>
-    ''', unsafe_allow_html=True)
-
-    # --- 1行目: [空白, タイトル, 空白] (1:1:1) ---
-    r1c1, r1c2, r1c3 = st.columns(CONFIG["RATIO_R1"])
-    with r1c2:
-        st.markdown(f'<div style="text-align:center; font-size:{CONFIG["TITLE_SIZE"]}px; font-weight:bold; white-space:nowrap;">⛵高須風</div>', unsafe_allow_html=True)
-
-    # --- 2行目: [地点選択, 地図, 現在地取得] (2:1:1) ---
-    r2c1, r2c2, r2c3 = st.columns(CONFIG["RATIO_R2"])
-    with r2c1:
-        master = CONFIG["LOCATION_MASTER"].copy()
-        if st.session_state.last_basho == "現在地":
-            master["現在地"] = (st.session_state.lat, st.session_state.lon)
-        master["地図で指定"] = (st.session_state.lat, st.session_state.lon)
-        current_idx = list(master.keys()).index(st.session_state.last_basho) if st.session_state.last_basho in master else 0
-        basho = st.selectbox("地点", list(master.keys()), index=current_idx, label_visibility="collapsed")
-    with r2c2:
-        show_map = st.checkbox("🗺️地図", value=st.session_state.get('show_map_state', False))
-        st.session_state.show_map_state = show_map
-    with r2c3:
-        handle_current_location_update() # この中身はボタン1つ
-
-    if basho != st.session_state.last_basho:
-        st.session_state.last_basho = basho
-        if basho not in ["地図で指定", "現在地"]:
-            st.session_state.lat, st.session_state.lon = master[basho]
-        st.rerun()
-
-    if show_map:
-        show_location_map() # 既存の3x3地図
-
-    # --- 3行目: [現在：地点, 時刻, 更新] (2:1:1) ---
-    r3c1, r3c2, r3c3 = st.columns(CONFIG["RATIO_R3"])
-    now = datetime.now(timezone(timedelta(hours=9)))
-    with r3c1:
-        st.markdown(f'''<div style="background:{CONFIG['STATUS_BG_COLOR']}; padding:5px; border-radius:5px; font-size:{CONFIG['STATUS_FONT_SIZE_MAIN']}; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; border-left:3px solid {CONFIG['LOC_INFO_COLOR']};">📍{st.session_state.last_basho}</div>''', unsafe_allow_html=True)
-    with r3c2:
-        st.markdown(f'''<div style="text-align:center; line-height:35px; font-size:{CONFIG['STATUS_FONT_SIZE_TIME']}; color:gray;">{now.strftime('%H:%M')}</div>''', unsafe_allow_html=True)
-    with r3c3:
-        if st.button("🔄更新"):
-            st.cache_data.clear()
-            st.rerun()
-
-    return show_map
-    
-
-#==========================================================================================
-# 14. UIレイアウト：上部コントロール配置サブルーチン
-#==========================================================================================
-def render_top_controls():
-    """
-    地点選択と地図表示トグルを横並びに配置する。
-    """
-    # スマホでも横並びを強制するCSS
-    st.markdown('''
-        <style>
-            [data-testid="column"] { min-width: 0px !important; }
-        </style>
-    ''', unsafe_allow_html=True)
-
-    c1, c2 = st.columns(CONFIG["COL_RATIO_HEADER"])
-    with c1:
-        master = CONFIG["LOCATION_MASTER"].copy()
-        if st.session_state.last_basho == "現在地":
-            master["現在地"] = (st.session_state.lat, st.session_state.lon)
-        master["地図で指定"] = (st.session_state.lat, st.session_state.lon)
-        
-        current_idx = list(master.keys()).index(st.session_state.last_basho) if st.session_state.last_basho in master else 0
-        basho = st.selectbox("地点を選択", list(master.keys()), index=current_idx, label_visibility="collapsed")
-    
-    with c2:
-        show_map = st.checkbox("🗺️ 地図", value=st.session_state.get('show_map_state', False))
-        st.session_state.show_map_state = show_map
-
-    if basho != st.session_state.last_basho:
-        st.session_state.last_basho = basho
-        if basho not in ["地図で指定", "現在地"]:
-            st.session_state.lat, st.session_state.lon = master[basho]
-        st.rerun()
-    
-    return show_map
-
-#==========================================================================================
-# 15. UIレイアウト：アクションボタン配置サブルーチン
-#==========================================================================================
-def render_action_buttons():
-    """
-    現在地取得ボタンと更新ボタンを横並びに配置する。
-    """
-    ac1, ac2 = st.columns(CONFIG["COL_RATIO_ACTION"])
-    with ac1:
-        # 現在地ボタンの幅を調整
-        handle_current_location_update()
-    with ac2:
-        if st.button("🔄 更新", use_container_width=True):
-            st.cache_data.clear()
-            st.rerun()
-
-#==========================================================================================
-# 16. UIレイアウト：現在地点ステータス表示サブルーチン
-#==========================================================================================
-def render_status_display():
-    """
-    現在の地点情報と取得時刻をカード形式で表示する。
-    """
-    now = datetime.now(timezone(timedelta(hours=9)))
-    status_html = f"""
-    <div style="
-        background-color: {CONFIG['STATUS_BG_COLOR']}; 
-        padding: 5px 10px; 
-        border-radius: 8px; 
-        border-left: 5px solid {CONFIG['LOC_INFO_COLOR']};
-        margin-top: {CONFIG['ELEMENT_SPACING']};
-        margin-bottom: 5px;">
-        <span style="font-size: {CONFIG['STATUS_FONT_SIZE_LABEL']}; color: #666;">📍 現在：</span>
-        <span style="font-size: {CONFIG['STATUS_FONT_SIZE_MAIN']}; color: {CONFIG['LOC_INFO_COLOR']}; font-weight: bold;">
-            {st.session_state.last_basho}
-        </span>
-        <span style="font-size: 10px; color: gray; float: right; line-height: 20px;">
-            {now.strftime('%H:%M:%S')}
-        </span>
-    </div>
-    """
-    st.markdown(status_html, unsafe_allow_html=True)
-
-#==========================================================================================
-# 14. UIレイアウト：4行構造化グリッド
-#==========================================================================================
-def render_app_console():
-    """
-    ユーザー指定の4行構成を厳密に描画。
-    余分な区切り線を排除し、スマホでの横並びを死守する。
-    """
-    # CSS: 全体幅制限、ヘッダー除去、カラム横並び強制
-    st.markdown(f'''
-        <style>
-            .block-container {{ max-width: {CONFIG["APP_MAX_WIDTH"]}; padding-top: 1.5rem; }}
-            [data-testid="column"] {{ min-width: 0px !important; }}
-            header {{ visibility: hidden; }}
-            hr {{ margin: 5px 0px; }} /* 区切り線の余白を最小化 */
-        </style>
-    ''', unsafe_allow_html=True)
-
-    # --- 1行目: [空白, タイトル, 空白] (1:8:1) ---
-    r1c1, r1c2, r1c3 = st.columns(CONFIG["RATIO_R1"])
-    with r1c2:
-        st.markdown(f'<div style="text-align:center; font-size:{CONFIG["TITLE_SIZE"]}px; font-weight:bold; white-space:nowrap;">⛵ 高須風チェッカー</div>', unsafe_allow_html=True)
-
-    # --- 2行目: [地点選択, 地図, 現在地] (2:1:1) ---
-    r2c1, r2c2, r2c3 = st.columns(CONFIG["RATIO_R2"])
-    with r2c1:
-        master = CONFIG["LOCATION_MASTER"].copy()
-        if st.session_state.last_basho == "現在地":
-            master["現在地"] = (st.session_state.lat, st.session_state.lon)
-        master["地図で指定"] = (st.session_state.lat, st.session_state.lon)
-        current_idx = list(master.keys()).index(st.session_state.last_basho) if st.session_state.last_basho in master else 0
-        basho = st.selectbox("地点", list(master.keys()), index=current_idx, label_visibility="collapsed")
-    with r2c2:
-        # 地図トグル。ラベルを短くして横並びを維持
-        show_map = st.checkbox("🗺️地図", value=st.session_state.get('show_map_state', False))
-        st.session_state.show_map_state = show_map
-    with r2c3:
-        # 現在地取得ボタンを呼び出し（内部の markdown("---") は事前に消去済みとする）
-        handle_current_location_update()
-
-    if basho != st.session_state.last_basho:
-        st.session_state.last_basho = basho
-        if basho not in ["地図で指定", "現在地"]:
-            st.session_state.lat, st.session_state.lon = master[basho]
-        st.rerun()
-
-    if show_map:
-        show_location_map()
-
-    # --- 3行目: [現在：地点（緯度経度）] (1列全幅) ---
-    st.markdown(f'''
-        <div style="background:{CONFIG['STATUS_BG_COLOR']}; padding:6px 10px; border-radius:5px; border-left:5px solid {CONFIG['LOC_INFO_COLOR']}; margin: 5px 0px;">
-            <span style="font-size:12px; color:#666;">📍 現在：</span>
-            <span style="font-size:{CONFIG['STATUS_FONT_SIZE_MAIN']}; font-weight:bold; color:{CONFIG['LOC_INFO_COLOR']};">
-                {st.session_state.last_basho} ({st.session_state.lat:.4f}, {st.session_state.lon:.4f})
-            </span>
-        </div>
-    ''', unsafe_allow_html=True)
-
-    # --- 4行目: [日付時刻, 更新] (1:1) ---
-    r4c1, r4c2 = st.columns(CONFIG["RATIO_R4"])
-    now = datetime.now(timezone(timedelta(hours=9)))
-    with r4c1:
-        st.markdown(f'<div style="line-height:35px; font-size:{CONFIG["STATUS_FONT_SIZE_TIME"]}; color:gray; padding-left:5px;">🕒 {now.strftime("%m/%d %H:%M:%S")}</div>', unsafe_allow_html=True)
-    with r4c2:
-        if st.button("🔄 グラフ更新", use_container_width=True):
-            st.cache_data.clear()
-            st.rerun()
-
-    return show_map
-
-#==========================================================================================
-# 17. メインフロー (最終構造化版)
+# メインフロー
 #==========================================================================================
 def main():
     setup_font()
+    st.markdown(f'<h1 style="font-size:{CONFIG["TITLE_SIZE"]}px;">⛵ 高須風チェッカー</h1>', unsafe_allow_html=True)
     
     # SessionState初期化
     if 'lat' not in st.session_state: st.session_state.lat = CONFIG["DEFAULT_LAT"]
     if 'lon' not in st.session_state: st.session_state.lon = CONFIG["DEFAULT_LON"]
     if 'last_basho' not in st.session_state: st.session_state.last_basho = CONFIG["DEFAULT_BASHO"]
+
+    # LocalStorage同期（リロード後はここが現在地の値を拾う）
     sync_all_settings()
 
     if "initialized" not in st.session_state:
         st.info("設定を読み込み中...")
         st.stop()
 
-    # 4行の行列コンソールを描画
-    render_app_console()
+    # 地点選択コンボボックス（既存通り）
+    master = CONFIG["LOCATION_MASTER"].copy()
+    if st.session_state.last_basho == "現在地":
+        master["現在地"] = (st.session_state.lat, st.session_state.lon)
+    master["地図で指定"] = (st.session_state.lat, st.session_state.lon)
     
-    # サイドバー設定 (既存維持)
+    current_idx = list(master.keys()).index(st.session_state.last_basho) if st.session_state.last_basho in master else 0
+    basho = st.selectbox("地点を選択してください", list(master.keys()), index=current_idx)
+    
+    if basho != st.session_state.last_basho:
+        st.session_state.last_basho = basho
+        if basho not in ["地図で指定", "現在地"]:
+            st.session_state.lat, st.session_state.lon = master[basho]
+        st.rerun()
+
+    # 新しい現在地ボタンサブルーチンを呼び出す
+    handle_current_location_update()
+    
+    # --- 以下、地図表示・グラフ表示（既存通り） ---
+    
+    # 地図表示トグル
+    show_map = st.checkbox("地図表示", value=st.session_state.get('show_map_state', False))
+    st.session_state.show_map_state = show_map
+    if show_map:
+        show_location_map()
+
+    # 時刻・座標・更新ボタン表示
+    render_header_info()
+    
+    # サイドバー設定取得
     danger_v, sel_dirs = show_sidebar_controls()
     
-    # 高解像度グラフ描画 (既存維持)
+    # グラフ描画
     img = generate_high_res_graph(st.session_state.lat, st.session_state.lon, danger_v, tuple(sel_dirs))
     
     if img:
-        # グラフを全幅で表示。余白を微調整。
-        st.markdown(f'<div style="overflow-x: auto; background: white; margin-top:5px;"><img src="data:image/png;base64,{img}" style="height: 850px; max-width: none;"></div>', unsafe_allow_html=True)
+        st.markdown(f'<div style="overflow-x: auto; background: white;"><img src="data:image/png;base64,{img}" style="height: 850px; max-width: none;"></div>', unsafe_allow_html=True)
 
 if __name__ == "__main__":
     main()
-    
