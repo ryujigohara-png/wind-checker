@@ -372,7 +372,7 @@ def handle_current_location_update():
                 st.error("設定で位置情報を許可するか、電波の良い場所で再度お試しください。")
                 if st.button("閉じる"):
                     st.session_state.waiting_loc = False
-                    st.rerun()        
+                    st.rerun()
         
         
 
