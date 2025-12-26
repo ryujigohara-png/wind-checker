@@ -339,40 +339,46 @@ def handle_current_location():
             st.warning("現在地を取得中、またはブラウザで位置情報が許可されていません。もう一度ボタンを押すか、設定を確認してください。")
 
 #==========================================================================================
-# 8. 現在地取得サブルーチン (不具合修正版)
+# 8. 現在地取得サブルーチン (完全分離・非同期安定版)
 #==========================================================================================
 def handle_current_location_update():
     """
-    ブラウザのGeolocation APIを使用して現在地を取得し、SessionStateを更新する。
-    ①緯度経度が変わらない問題、②警告が消えない問題を解消。
+    UIの表示を阻害せず、バックグラウンドで位置情報を取得する。
     """
     st.markdown("---")
     
-    # 取得用JSコード（確実にStreamlitへ値を戻すためのMessage送出を含む）
-    # ※streamlit_js_evalの内部的な位置情報取得機能を利用
-    loc = streamlit_js_eval(
-        js_expressions="navigator.geolocation.getCurrentPosition(pos => { window.parent.postMessage({type: 'streamlit:set_component_value', value: {lat: pos.coords.latitude, lon: pos.coords.longitude}}, '*') })", 
-        key="get_location_op"
-    )
-
+    # 1. 取得開始ボタン
     if st.button("📍 現在地からグラフを作成", use_container_width=True):
-        # ボタン押下フラグをセット
         st.session_state.waiting_loc = True
+        st.rerun()
 
-    # 取得待ち状態のハンドリング
+    # 2. 取得中メッセージの表示（コンボボックスを消さないよう、単独のメッセージとして表示）
     if st.session_state.get("waiting_loc"):
+        st.info("位置情報を取得中... ブラウザの許可ダイアログを確認してください。")
+        
+        # JS実行（ボタンとは切り離して実行し、値を監視する）
+        loc = streamlit_js_eval(
+            js_expressions="navigator.geolocation.getCurrentPosition(pos => { window.parent.postMessage({type: 'streamlit:set_component_value', value: {lat: pos.coords.latitude, lon: pos.coords.longitude}}, '*') })", 
+            key="get_location_final"
+        )
+
+        # 値が戻ってきたら処理
         if loc and isinstance(loc, dict) and 'lat' in loc:
-            # 取得成功
             st.session_state.lat = round(loc['lat'], 4)
             st.session_state.lon = round(loc['lon'], 4)
             st.session_state.last_basho = "現在地"
-            st.session_state.waiting_loc = False # フラグを折る
-            st.success(f"現在地を取得しました: ({st.session_state.lat}, {st.session_state.lon})")
-            st.rerun() # 確実に再描画して警告を消す
-        else:
-            # 取得中または許可待ち
-            st.info("ブラウザで位置情報を許可してください。取得には数秒かかる場合があります...")
-            # 注意: ここで st.stop() はせず、JSの応答を待つ
+            st.session_state.waiting_loc = False
+            # LocalStorageにも保存されるようにする
+            save_data = {
+                "lat": st.session_state.lat, 
+                "lon": st.session_state.lon, 
+                "basho": st.session_state.last_basho,
+                "danger_v": st.session_state.get("danger_v", CONFIG["DEFAULT_DANGER_V"]),
+                "sel_dirs": st.session_state.get("sel_dirs", CONFIG["DEFAULT_DIRS"])
+            }
+            streamlit_js_eval(js_expressions=f"localStorage.setItem('{CONFIG['STORAGE_KEY']}', '{json.dumps(save_data)}')")
+            st.rerun()
+            
 
 #==========================================================================================
 # サイドバー設定サブルーチン (保存対応版)
@@ -429,17 +435,26 @@ def main():
         st.info("設定を読み込み中...")
         st.stop()
 
-    # --- 新規追加箇所 ---
-    handle_current_location_update()
-    # ------------------
-
-    # 地点選択（既存）
+    # --- UIの順序を変更：まずコンボボックスを出す ---
     master = CONFIG["LOCATION_MASTER"].copy()
-    # 「現在地」をリストに動的に追加
     if st.session_state.last_basho == "現在地":
         master["現在地"] = (st.session_state.lat, st.session_state.lon)
-    master["地図で指定"] = (st.session_state.lat, st.session_state.lon)    
+    master["地図で指定"] = (st.session_state.lat, st.session_state.lon)
+    
+    current_idx = list(master.keys()).index(st.session_state.last_basho) if st.session_state.last_basho in master else 0
+    basho = st.selectbox("地点を選択してください", list(master.keys()), index=current_idx)
+    
+    if basho != st.session_state.last_basho:
+        st.session_state.last_basho = basho
+        if basho not in ["地図で指定", "現在地"]:
+            st.session_state.lat, st.session_state.lon = master[basho]
+        st.rerun()
 
+    # ここで現在地ボタンを配置（コンボボックスの下）
+    handle_current_location_update()
+
+    # --- 以下、地図表示・グラフ表示（既存通り） ---
+    
     # 地図表示トグル
     show_map = st.checkbox("地図表示", value=st.session_state.get('show_map_state', False))
     st.session_state.show_map_state = show_map
