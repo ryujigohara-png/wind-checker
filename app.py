@@ -339,50 +339,45 @@ def handle_current_location():
             st.warning("現在地を取得中、またはブラウザで位置情報が許可されていません。もう一度ボタンを押すか、設定を確認してください。")
 
 #==========================================================================================
-# 8. 現在地取得サブルーチン (高信頼性・非同期通信修正版)
+# 8. 現在地取得サブルーチン (独自JS埋め込み方式)
 #==========================================================================================
 def handle_current_location_update():
     """
-    ブラウザから現在地を確実に取得し、メッセージを消去する。
+    標準JSを直接注入し、LocalStorage経由で確実にPythonへ座標を渡す。
     """
     st.markdown("---")
+    STORAGE_KEY = CONFIG['STORAGE_KEY']
     
     # 1. 取得開始ボタン
     if st.button("📍 現在地からグラフを作成", use_container_width=True):
-        st.session_state.waiting_loc = True
-        st.rerun()
+        # JavaScriptをHTMLとして埋め込む（画面には見えない）
+        # 取得成功時にLocalStorageを直接書き換え、ページをリロードさせる
+        js_code = f"""
+            <script>
+            navigator.geolocation.getCurrentPosition(
+                (pos) => {{
+                    const data = {{
+                        lat: pos.coords.latitude,
+                        lon: pos.coords.longitude,
+                        basho: "現在地",
+                        danger_v: {st.session_state.get('danger_v', CONFIG['DEFAULT_DANGER_V'])},
+                        sel_dirs: {json.dumps(st.session_state.get('sel_dirs', CONFIG['DEFAULT_DIRS']))}
+                    }};
+                    localStorage.setItem('{STORAGE_KEY}', JSON.stringify(data));
+                    window.parent.location.reload(); // 親ウィンドウ（Streamlit）をリロードして反映
+                }},
+                (err) => {{
+                    alert("位置情報の取得に失敗しました: " + err.message);
+                }}
+            );
+            </script>
+        """
+        components.html(js_code, height=0)
+        st.info("位置情報を取得中... 許可ダイアログが出たら「許可」を押してください。")
 
-    # 2. 取得処理とメッセージ制御
-    if st.session_state.get("waiting_loc"):
-        # JSで位置情報を取得し、値をPythonの変数 'loc' に格納
-        # streamlit_js_evalの標準機能を使い、取得完了まで待機
-        loc = streamlit_js_eval(js_expressions="navigator.geolocation.getCurrentPosition", key="get_loc_final_sync")
-        
-        # 取得中メッセージ
-        st.info("位置情報を取得中... ブラウザの許可ダイアログを確認してください。")
-
-        # 値が戻ってきた（JSからの応答があった）場合の処理
-        if loc and isinstance(loc, dict) and 'coords' in loc:
-            # 成功時：SessionStateを更新
-            st.session_state.lat = round(loc['coords']['latitude'], 4)
-            st.session_state.lon = round(loc['coords']['longitude'], 4)
-            st.session_state.last_basho = "現在地"
-            
-            # 重要：フラグをここで折り、メッセージを消す
-            st.session_state.waiting_loc = False
-            
-            # ブラウザのLocalStorageにも保存（同期維持）
-            save_data = {
-                "lat": st.session_state.lat, 
-                "lon": st.session_state.lon, 
-                "basho": st.session_state.last_basho,
-                "danger_v": st.session_state.get("danger_v", CONFIG["DEFAULT_DANGER_V"]),
-                "sel_dirs": st.session_state.get("sel_dirs", CONFIG["DEFAULT_DIRS"])
-            }
-            streamlit_js_eval(js_expressions=f"localStorage.setItem('{CONFIG['STORAGE_KEY']}', '{json.dumps(save_data)}')")
-            
-            st.success("地点を更新しました！")
-            st.rerun() # これによりメッセージが消え、上部の「現在：」が書き換わる
+    # 注意: この方式ではJS側が成功した瞬間に「ブラウザごとリロード」するため、
+    # Python側の SessionState ではなく、リロード後の sync_all_settings() が 
+    # LocalStorage から値を拾うことで、確実に「現在：緯度経度」が更新されます。
 
 
 #==========================================================================================
