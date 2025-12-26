@@ -321,58 +321,60 @@ def handle_location_selection():
     return basho
 
 #==========================================================================================
-# 8. 現在地取得サブルーチン (高信頼リロード方式・修正版)
+# 8. 現在地取得サブルーチン (不具合解消・安定版)
 #==========================================================================================
 def handle_current_location_update():
     """
-    JSで位置情報を取得し、LocalStorage保存後にページを強制リロードする。
-    Python側でフラグを持たず、HTML実行時のみメッセージを表示させる。
+    streamlit_js_evalを利用して位置情報を取得し、確実にSessionStateとLocalStorageを更新する。
+    メッセージが残り続けるフリーズ現象を解消したロジック。
     """
     st.markdown("---")
     STORAGE_KEY = CONFIG['STORAGE_KEY']
     
-    # ボタン押下時のみ動作するスコープ
+    # ボタンが押されたらフラグを立てる
     if st.button("📍 現在地からグラフを作成", use_container_width=True):
-        # メッセージ表示用の空コンテナ
-        placeholder = st.empty()
-        placeholder.info("ブラウザの位置情報許可を確認してください...")
+        st.session_state.waiting_loc = True
+        st.rerun()
+
+    # 取得待ち状態の処理
+    if st.session_state.get("waiting_loc"):
+        st.info("位置情報を取得中... ブラウザの許可ダイアログを確認してください。")
         
-        # 直接JavaScriptを実行するHTMLコンポーネント
-        # 書き込み完了を待つために setTimeout でリロードを0.1秒遅延させる
-        js_code = f"""
-            <script>
-            navigator.geolocation.getCurrentPosition(
-                (pos) => {{
-                    const lat = pos.coords.latitude;
-                    const lon = pos.coords.longitude;
-                    
-                    let data = localStorage.getItem('{STORAGE_KEY}');
-                    try {{
-                        data = data ? JSON.parse(data) : {{}};
-                    }} catch(e) {{
-                        data = {{}};
-                    }}
-                    
-                    data.lat = lat;
-                    data.lon = lon;
-                    data.basho = "現在地";
-                    
-                    localStorage.setItem('{STORAGE_KEY}', JSON.stringify(data));
-                    
-                    // 確実に保存されるよう僅かなディレイを入れてリロード
-                    setTimeout(() => {{
-                        window.parent.location.reload();
-                    }}, 100);
-                }},
-                (err) => {{
-                    alert("位置情報の取得に失敗しました。\\n設定 > サイトの設定 > 位置情報 が許可されているか確認してください。\\nエラー内容: " + err.message);
-                }},
-                {{ enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }}
-            );
-            </script>
-        """
-        components.html(js_code, height=0)
-        # Python側はこのまま後続の描画へ進むため、リロードが走るまでUIは維持される
+        # 安定性の高い get_geolocation 関数を直接呼び出す
+        loc = streamlit_js_eval(js_expressions="navigator.geolocation.getCurrentPosition", key="get_geo_loc")
+        
+        if loc and isinstance(loc, dict) and 'coords' in loc:
+            # 取得成功
+            new_lat = round(loc['coords']['latitude'], 4)
+            new_lon = round(loc['coords']['longitude'], 4)
+            
+            # 1. SessionStateの更新
+            st.session_state.lat = new_lat
+            st.session_state.lon = new_lon
+            st.session_state.last_basho = "現在地"
+            
+            # 2. LocalStorageへの即時書き込み（同期用）
+            save_data = {
+                "lat": new_lat, 
+                "lon": new_lon, 
+                "basho": "現在地",
+                "danger_v": st.session_state.get("danger_v", CONFIG["DEFAULT_DANGER_V"]),
+                "sel_dirs": st.session_state.get("sel_dirs", CONFIG["DEFAULT_DIRS"])
+            }
+            streamlit_js_eval(
+                js_expressions=f"localStorage.setItem('{STORAGE_KEY}', '{json.dumps(save_data)}')",
+                key="save_geo_loc"
+            )
+            
+            # 3. フラグを折り、再描画（これでメッセージが消える）
+            st.session_state.waiting_loc = False
+            st.success("現在地を反映しました。")
+            st.rerun()
+            
+        elif loc is False: # 取得失敗（拒否など）の場合
+            st.error("位置情報の取得に失敗しました。ブラウザの設定で許可されているか確認してください。")
+            st.session_state.waiting_loc = False
+            if st.button("閉じる"): st.rerun()
         
 
 #==========================================================================================
