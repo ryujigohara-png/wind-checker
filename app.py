@@ -321,47 +321,41 @@ def handle_location_selection():
     return basho
 
 #==========================================================================================
-# 8. 現在地取得サブルーチン (製品版・高精度版)
+# 8. 現在地取得サブルーチン (修正版：動的キー対応・保存競合回避)
 #==========================================================================================
 def handle_current_location_update():
     """
     スマホ環境で動作確認済みの位置情報取得ロジック。
-    不要なデバッグ表示を廃止し、スムーズな更新を実現。
+    ボタン押下ごとにユニークなKeyを生成し、キャッシュ詰まりを回避する。
+    保存はメインループの sync_all_settings に任せ、ここではState更新に専念する。
     """
     st.markdown("---")
-    STORAGE_KEY = CONFIG['STORAGE_KEY']
     
+    # ボタンが押されたら、待機フラグを立て、強制リフレッシュ用のキーを生成してリラン
     if st.button("📍 現在地からグラフを作成", use_container_width=True):
         st.session_state.waiting_loc = True
+        # 現在時刻を使ってユニークなキーを生成（キャッシュ回避）
+        st.session_state.geo_key = f"geo_{datetime.now().timestamp()}"
         st.rerun()
 
     if st.session_state.get("waiting_loc"):
         with st.status("🛰️ 現在地を計算中...", expanded=True) as status:
+            # ユニークなキーを使用してJavascriptを実行
+            key_name = st.session_state.get("geo_key", "geo_default")
             loc = streamlit_js_eval(
                 js_expressions="get_geolocation", 
-                key="get_geo_stable_prod"
+                key=key_name
             )
             
             if loc:
                 new_lat = round(loc['coords']['latitude'], 4)
                 new_lon = round(loc['coords']['longitude'], 4)
                 
-                # データの同期
+                # データの同期（Stateのみ更新する）
+                # ※ここでの物理保存は廃止。st.rerun()後のmain冒頭のsync_all_settingsで保存されるため。
                 st.session_state.lat = new_lat
                 st.session_state.lon = new_lon
                 st.session_state.last_basho = "現在地"
-                
-                save_data = {
-                    "lat": new_lat, 
-                    "lon": new_lon, 
-                    "basho": "現在地",
-                    "danger_v": st.session_state.get("danger_v", CONFIG["DEFAULT_DANGER_V"]),
-                    "sel_dirs": st.session_state.get("sel_dirs", CONFIG["DEFAULT_DIRS"])
-                }
-                streamlit_js_eval(
-                    js_expressions=f"localStorage.setItem('{STORAGE_KEY}', '{json.dumps(save_data)}')",
-                    key="save_geo_prod"
-                )
                 
                 status.update(label="✅ 現在地を反映しました！", state="complete", expanded=False)
                 st.session_state.waiting_loc = False
@@ -373,6 +367,7 @@ def handle_current_location_update():
                 if st.button("閉じる"):
                     st.session_state.waiting_loc = False
                     st.rerun()
+                    
         
         
 
