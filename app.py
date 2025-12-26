@@ -23,6 +23,7 @@ from streamlit_js_eval import streamlit_js_eval
 # ======================================================================================
 CONFIG = {
     "TITLE_SIZE": 24,
+    "TITLE_MARGIN_TOP": "-40px",
     "SUBTITLE_SIZE": 18,
     "GRAPH_FONT_SIZE": 13,
     "LABEL_SIZE": 13,
@@ -49,7 +50,13 @@ CONFIG = {
         "磯海岸沖(鹿児島県)": (31.614, 130.577), 
         "江口浜沖(鹿児島県)": (31.643, 130.322),
         "錦江湾(鹿児島県)": (31.590, 130.600)
-    }
+    },
+    "COL_RATIO_HEADER": [7, 3],
+    "COL_RATIO_ACTION": [6, 4],
+    "STATUS_BG_COLOR": "#f0f2f6",
+    "STATUS_FONT_SIZE_LABEL": "13px",
+    "STATUS_FONT_SIZE_MAIN": "16px",
+    "STATUS_FONT_SIZE_TIME": "11px"
 }
 
 ALL_DIRECTIONS = ["北", "北北東", "北東", "東北東", "東", "東南東", "南東", "南南東", "南", "南南西", "南西", "西南西", "西", "西北西", "北西", "北北西"]
@@ -413,57 +420,112 @@ def render_header_info():
             st.rerun()
 
 #==========================================================================================
-# メインフロー
+# 14. UIレイアウト：上部コントロール配置サブルーチン
+#==========================================================================================
+def render_top_controls():
+    """
+    地点選択と地図表示トグルを横並びに配置する。
+    """
+    c1, c2 = st.columns(CONFIG["COL_RATIO_HEADER"])
+    with c1:
+        master = CONFIG["LOCATION_MASTER"].copy()
+        if st.session_state.last_basho == "現在地":
+            master["現在地"] = (st.session_state.lat, st.session_state.lon)
+        master["地図で指定"] = (st.session_state.lat, st.session_state.lon)
+        
+        current_idx = list(master.keys()).index(st.session_state.last_basho) if st.session_state.last_basho in master else 0
+        basho = st.selectbox("地点を選択してください", list(master.keys()), index=current_idx, label_visibility="collapsed")
+    
+    with c2:
+        show_map = st.checkbox("🗺️ 地図", value=st.session_state.get('show_map_state', False))
+        st.session_state.show_map_state = show_map
+
+    if basho != st.session_state.last_basho:
+        st.session_state.last_basho = basho
+        if basho not in ["地図で指定", "現在地"]:
+            st.session_state.lat, st.session_state.lon = master[basho]
+        st.rerun()
+    
+    return show_map
+
+#==========================================================================================
+# 15. UIレイアウト：アクションボタン配置サブルーチン
+#==========================================================================================
+def render_action_buttons():
+    """
+    現在地取得ボタンと更新ボタンを横並びに配置する。
+    """
+    ac1, ac2 = st.columns(CONFIG["COL_RATIO_ACTION"])
+    with ac1:
+        # 既存の現在地取得サブルーチンを呼び出し
+        handle_current_location_update()
+    with ac2:
+        if st.button("🔄 グラフ更新", use_container_width=True):
+            st.cache_data.clear()
+            st.rerun()
+
+#==========================================================================================
+# 16. UIレイアウト：現在地点ステータス表示サブルーチン
+#==========================================================================================
+def render_status_display():
+    """
+    現在の地点情報と取得時刻をカード形式で表示する。
+    """
+    now = datetime.now(timezone(timedelta(hours=9)))
+    status_html = f"""
+    <div style="
+        background-color: {CONFIG['STATUS_BG_COLOR']}; 
+        padding: 8px 12px; 
+        border-radius: 8px; 
+        border-left: 5px solid {CONFIG['LOC_INFO_COLOR']};
+        margin: 5px 0px;">
+        <span style="font-size: {CONFIG['STATUS_FONT_SIZE_LABEL']}; color: #666;">📍 現在：</span>
+        <span style="font-size: {CONFIG['STATUS_FONT_SIZE_MAIN']}; color: {CONFIG['LOC_INFO_COLOR']}; font-weight: bold;">
+            {st.session_state.last_basho} ({st.session_state.lat:.4f}, {st.session_state.lon:.4f})
+        </span>
+        <span style="font-size: {CONFIG['STATUS_FONT_SIZE_TIME']}; color: gray; float: right; line-height: 25px;">
+            {now.strftime('%H:%M:%S')}
+        </span>
+    </div>
+    """
+    st.markdown(status_html, unsafe_allow_html=True)
+    
+
+#==========================================================================================
+# 17. メインフロー
 #==========================================================================================
 def main():
     setup_font()
-    st.markdown(f'<h1 style="font-size:{CONFIG["TITLE_SIZE"]}px;">⛵ 高須風チェッカー</h1>', unsafe_allow_html=True)
+    st.markdown(f'<h1 style="font-size:{CONFIG["TITLE_SIZE"]}px; margin-top:{CONFIG["TITLE_MARGIN_TOP"]}; margin-bottom:0px;">⛵ 高須風チェッカー</h1>', unsafe_allow_html=True)
     
     # SessionState初期化
     if 'lat' not in st.session_state: st.session_state.lat = CONFIG["DEFAULT_LAT"]
     if 'lon' not in st.session_state: st.session_state.lon = CONFIG["DEFAULT_LON"]
     if 'last_basho' not in st.session_state: st.session_state.last_basho = CONFIG["DEFAULT_BASHO"]
 
-    # LocalStorage同期（リロード後はここが現在地の値を拾う）
     sync_all_settings()
 
     if "initialized" not in st.session_state:
         st.info("設定を読み込み中...")
         st.stop()
 
-    # 地点選択コンボボックス（既存通り）
-    master = CONFIG["LOCATION_MASTER"].copy()
-    if st.session_state.last_basho == "現在地":
-        master["現在地"] = (st.session_state.lat, st.session_state.lon)
-    master["地図で指定"] = (st.session_state.lat, st.session_state.lon)
-    
-    current_idx = list(master.keys()).index(st.session_state.last_basho) if st.session_state.last_basho in master else 0
-    basho = st.selectbox("地点を選択してください", list(master.keys()), index=current_idx)
-    
-    if basho != st.session_state.last_basho:
-        st.session_state.last_basho = basho
-        if basho not in ["地図で指定", "現在地"]:
-            st.session_state.lat, st.session_state.lon = master[basho]
-        st.rerun()
+    # 1段目: コントロール表示
+    show_map = render_top_controls()
 
-    # 新しい現在地ボタンサブルーチンを呼び出す
-    handle_current_location_update()
-    
-    # --- 以下、地図表示・グラフ表示（既存通り） ---
-    
-    # 地図表示トグル
-    show_map = st.checkbox("地図表示", value=st.session_state.get('show_map_state', False))
-    st.session_state.show_map_state = show_map
+    # 地図表示 (既存の3x3レイアウトを呼び出し)
     if show_map:
         show_location_map()
 
-    # 時刻・座標・更新ボタン表示
-    render_header_info()
+    # 2段目: アクションボタン
+    render_action_buttons()
+
+    # 3段目: ステータス表示
+    render_status_display()
     
-    # サイドバー設定取得
+    # 既存のサイドバー設定
     danger_v, sel_dirs = show_sidebar_controls()
     
-    # グラフ描画
+    # 既存のグラフ描画
     img = generate_high_res_graph(st.session_state.lat, st.session_state.lon, danger_v, tuple(sel_dirs))
     
     if img:
