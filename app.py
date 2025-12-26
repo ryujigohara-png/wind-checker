@@ -22,8 +22,8 @@ from streamlit_js_eval import streamlit_js_eval
 # 1. 定数・基本設定 (CONFIG)
 # ======================================================================================
 CONFIG = {
-    "TITLE_SIZE": 24,
-    "TITLE_MARGIN_TOP": "-10px",      # 隠れないよう控えめに調整
+    "TITLE_SIZE": 20,                 # 3列中央配置のため少し小さめに調整
+    "TITLE_MARGIN_TOP": "0px", 
     "TITLE_MARGIN_BOTTOM": "0px", 
     "SUBTITLE_SIZE": 18,
     "GRAPH_FONT_SIZE": 13,
@@ -34,7 +34,6 @@ CONFIG = {
     "HEIGHT_RATIOS": [4.4, 1.2, 0.8],
     "LOC_INFO_FONT_SIZE": "16px",
     "LOC_INFO_COLOR": "#1e88e5",
-    "LOC_INFO_MARGIN_TOP": "-10px",
     "DEFAULT_LAT": 31.337,
     "DEFAULT_LON": 130.795,
     "DEFAULT_BASHO": "高須沖(鹿児島県)",
@@ -52,13 +51,13 @@ CONFIG = {
         "江口浜沖(鹿児島県)": (31.643, 130.322),
         "錦江湾(鹿児島県)": (31.590, 130.600)
     },
-    "COL_RATIO_HEADER": [7, 3],
-    "COL_RATIO_ACTION": [1, 1],       # スマホで5:5にするため均等に
+    "GRID_WIDTH": "95%",             # 全幅を画面の95%に制限（はみ出し防止）
+    "RATIO_R1": [1, 1, 1],           # 1行目: [空白, タイトル, 空白]
+    "RATIO_R2": [2, 1, 1],           # 2行目: [地点選択, 地図, 現在地取得]
+    "RATIO_R3": [2, 1, 1],           # 3行目: [現在：地点, 時刻, 更新]
     "STATUS_BG_COLOR": "#f0f2f6",
-    "STATUS_FONT_SIZE_LABEL": "13px",
-    "STATUS_FONT_SIZE_MAIN": "15px",  # スマホ1行に収めるため微縮小
-    "STATUS_FONT_SIZE_TIME": "11px",
-    "ELEMENT_SPACING": "2px"          # マイナスをやめ、最小のプラスに設定
+    "STATUS_FONT_SIZE_MAIN": "14px",
+    "STATUS_FONT_SIZE_TIME": "11px"
 }
 
 ALL_DIRECTIONS = ["北", "北北東", "北東", "東北東", "東", "東南東", "南東", "南南東", "南", "南南西", "南西", "西南西", "西", "西北西", "北西", "北北西"]
@@ -422,6 +421,66 @@ def render_header_info():
             st.rerun()
 
 #==========================================================================================
+# 14. UIレイアウト：行列配置サブルーチン
+#==========================================================================================
+def render_structured_grid():
+    """
+    ユーザー指定の3行構成を厳密に描画する。
+    """
+    # 全幅制限とスマホ横並び強制のCSS
+    st.markdown(f'''
+        <style>
+            .block-container {{ max-width: {CONFIG["GRID_WIDTH"]}; padding-top: 2rem; }}
+            [data-testid="column"] {{ min-width: 0px !important; }}
+            div.stButton > button {{ width: 100%; padding: 0px; }}
+        </style>
+    ''', unsafe_allow_html=True)
+
+    # --- 1行目: [空白, タイトル, 空白] (1:1:1) ---
+    r1c1, r1c2, r1c3 = st.columns(CONFIG["RATIO_R1"])
+    with r1c2:
+        st.markdown(f'<div style="text-align:center; font-size:{CONFIG["TITLE_SIZE"]}px; font-weight:bold; white-space:nowrap;">⛵高須風</div>', unsafe_allow_html=True)
+
+    # --- 2行目: [地点選択, 地図, 現在地取得] (2:1:1) ---
+    r2c1, r2c2, r2c3 = st.columns(CONFIG["RATIO_R2"])
+    with r2c1:
+        master = CONFIG["LOCATION_MASTER"].copy()
+        if st.session_state.last_basho == "現在地":
+            master["現在地"] = (st.session_state.lat, st.session_state.lon)
+        master["地図で指定"] = (st.session_state.lat, st.session_state.lon)
+        current_idx = list(master.keys()).index(st.session_state.last_basho) if st.session_state.last_basho in master else 0
+        basho = st.selectbox("地点", list(master.keys()), index=current_idx, label_visibility="collapsed")
+    with r2c2:
+        show_map = st.checkbox("🗺️地図", value=st.session_state.get('show_map_state', False))
+        st.session_state.show_map_state = show_map
+    with r2c3:
+        handle_current_location_update() # この中身はボタン1つ
+
+    if basho != st.session_state.last_basho:
+        st.session_state.last_basho = basho
+        if basho not in ["地図で指定", "現在地"]:
+            st.session_state.lat, st.session_state.lon = master[basho]
+        st.rerun()
+
+    if show_map:
+        show_location_map() # 既存の3x3地図
+
+    # --- 3行目: [現在：地点, 時刻, 更新] (2:1:1) ---
+    r3c1, r3c2, r3c3 = st.columns(CONFIG["RATIO_R3"])
+    now = datetime.now(timezone(timedelta(hours=9)))
+    with r3c1:
+        st.markdown(f'''<div style="background:{CONFIG['STATUS_BG_COLOR']}; padding:5px; border-radius:5px; font-size:{CONFIG['STATUS_FONT_SIZE_MAIN']}; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; border-left:3px solid {CONFIG['LOC_INFO_COLOR']};">📍{st.session_state.last_basho}</div>''', unsafe_allow_html=True)
+    with r3c2:
+        st.markdown(f'''<div style="text-align:center; line-height:35px; font-size:{CONFIG['STATUS_FONT_SIZE_TIME']}; color:gray;">{now.strftime('%H:%M')}</div>''', unsafe_allow_html=True)
+    with r3c3:
+        if st.button("🔄更新"):
+            st.cache_data.clear()
+            st.rerun()
+
+    return show_map
+    
+
+#==========================================================================================
 # 14. UIレイアウト：上部コントロール配置サブルーチン
 #==========================================================================================
 def render_top_controls():
@@ -506,19 +565,7 @@ def render_status_display():
 def main():
     setup_font()
     
-    # 画面上部の空白を削りつつ、タイトルを隠さないためのCSS
-    st.markdown("""
-        <style>
-            .block-container {padding-top: 2rem !important; padding-bottom: 0rem;}
-            header {display: none;}
-            footer {display: none;}
-        </style>
-    """, unsafe_allow_html=True)
-
-    # タイトルの表示
-    st.markdown(f'<h1 style="font-size:{CONFIG["TITLE_SIZE"]}px; margin-top:{CONFIG["TITLE_MARGIN_TOP"]}; margin-bottom:{CONFIG["TITLE_MARGIN_BOTTOM"]};">⛵ 高須風チェッカー</h1>', unsafe_allow_html=True)
-    
-    # 既存の初期化・同期処理
+    # SessionState初期化
     if 'lat' not in st.session_state: st.session_state.lat = CONFIG["DEFAULT_LAT"]
     if 'lon' not in st.session_state: st.session_state.lon = CONFIG["DEFAULT_LON"]
     if 'last_basho' not in st.session_state: st.session_state.last_basho = CONFIG["DEFAULT_BASHO"]
@@ -528,22 +575,18 @@ def main():
         st.info("設定を読み込み中...")
         st.stop()
 
-    # UIの描画
-    show_map = render_top_controls()
-    if show_map:
-        show_location_map()
+    # 構造化行列レイアウトの実行
+    render_structured_grid()
     
-    render_action_buttons()
-    render_status_display()
-    
-    # サイドバーとグラフ（既存維持）
+    # 既存のサイドバー設定
     danger_v, sel_dirs = show_sidebar_controls()
+    
+    # 既存のグラフ描画
     img = generate_high_res_graph(st.session_state.lat, st.session_state.lon, danger_v, tuple(sel_dirs))
     
     if img:
-        st.markdown(f'<div style="overflow-x: auto; background: white;"><img src="data:image/png;base64,{img}" style="height: 850px; max-width: none;"></div>', unsafe_allow_html=True)
+        st.markdown(f'<div style="overflow-x: auto; background: white; margin-top:10px;"><img src="data:image/png;base64,{img}" style="height: 850px; max-width: none;"></div>', unsafe_allow_html=True)
 
 if __name__ == "__main__":
     main()
-
 
