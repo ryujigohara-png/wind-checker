@@ -321,58 +321,77 @@ def handle_location_selection():
     return basho
 
 #==========================================================================================
-# 8. 現在地取得サブルーチン (最終解：独立JSインジェクション方式)
+# 8. 現在地取得サブルーチン (デバッグログ表示機能付き)
 #==========================================================================================
 def handle_current_location_update():
     """
-    ライブラリの不具合を回避するため、ピュアなJavaScriptをHTMLとして注入。
-    Python側で「待ち状態」を一切作らないため、フリーズは物理的に発生しない。
+    JSによる進捗ログを表示し、タイムアウトやエラーの詳細を可視化する。
     """
     st.markdown("---")
     STORAGE_KEY = CONFIG['STORAGE_KEY']
     
-    # 1. 取得開始ボタン
     if st.button("📍 現在地からグラフを作成", use_container_width=True):
-        # Python側でメッセージを出さず、JS側にすべてを任せる
+        # Python側ではボタンが押されたことだけを記録
+        st.write("🔄 ブラウザへ位置情報リクエストを送信しました...")
+        
         js_code = f"""
-            <div id="loc-status" style="padding:10px; border-radius:5px; background-color:#e1f5fe; color:#01579b; font-family:sans-serif; margin-bottom:10px;">
-                🛰️ 位置情報を取得中... ブラウザの許可ダイアログを確認してください。
+            <div id="debug-log" style="padding:10px; border:1px solid #ccc; border-radius:5px; background-color:#f9f9f9; font-family:monospace; font-size:12px; line-height:1.5;">
+                <div style="font-weight:bold; border-bottom:1px solid #ccc; margin-bottom:5px;">🛰️ デバッグログ</div>
+                <div id="log-content"></div>
             </div>
             <script>
-            const statusDiv = document.getElementById('loc-status');
-            navigator.geolocation.getCurrentPosition(
-                (pos) => {{
-                    const lat = pos.coords.latitude;
-                    const lon = pos.coords.longitude;
-                    
-                    // LocalStorageの更新
-                    let data = JSON.parse(localStorage.getItem('{STORAGE_KEY}') || '{{}}');
-                    data.lat = lat;
-                    data.lon = lon;
-                    data.basho = "現在地";
-                    localStorage.setItem('{STORAGE_KEY}', JSON.stringify(data));
-                    
-                    statusDiv.innerHTML = "✅ 取得成功！反映中...";
-                    statusDiv.style.backgroundColor = "#c8e6c9";
-                    statusDiv.style.color = "#1b5e20";
+            const logArea = document.getElementById('log-content');
+            function addLog(msg, color='black') {{
+                const div = document.createElement('div');
+                div.style.color = color;
+                div.innerText = `[${{new Date().toLocaleTimeString()}}] ${{msg}}`;
+                logArea.appendChild(div);
+            }}
 
-                    // 親ウィンドウ(Streamlit)をリロードしてLocalStorageの値を反映させる
-                    setTimeout(() => {{
-                        window.parent.location.reload();
-                    }}, 500);
-                }},
-                (err) => {{
-                    statusDiv.innerHTML = "❌ 失敗: " + err.message + "<br>設定から位置情報を許可してください。";
-                    statusDiv.style.backgroundColor = "#ffcdd2";
-                    statusDiv.style.color = "#b71c1c";
-                    console.error(err);
-                }},
-                {{ enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }}
-            );
+            addLog("Step 1: 位置情報リクエスト開始...");
+            
+            if (!navigator.geolocation) {{
+                addLog("Error: このブラウザは位置情報をサポートしていません。", "red");
+            }} else {{
+                navigator.geolocation.getCurrentPosition(
+                    (pos) => {{
+                        addLog("Step 2: 座標取得成功！", "green");
+                        const lat = pos.coords.latitude;
+                        const lon = pos.coords.longitude;
+                        addLog(`Step 3: 座標確定 (${{lat.toFixed(4)}}, ${{lon.toFixed(4)}})`, "green");
+                        
+                        let data = JSON.parse(localStorage.getItem('{STORAGE_KEY}') || '{{}}');
+                        data.lat = lat;
+                        data.lon = lon;
+                        data.basho = "現在地";
+                        localStorage.setItem('{STORAGE_KEY}', JSON.stringify(data));
+                        addLog("Step 4: LocalStorage書き込み完了。");
+                        
+                        addLog("Step 5: 0.5秒後にリロードを実行します...", "blue");
+                        setTimeout(() => {{ window.parent.location.reload(); }}, 500);
+                    }},
+                    (err) => {{
+                        let errorMsg = "";
+                        switch(err.code) {{
+                            case 1: errorMsg = "【拒否】ユーザーにより位置情報が拒否されました。"; break;
+                            case 2: errorMsg = "【不能】位置情報が判定できません（GPS信号弱）。"; break;
+                            case 3: errorMsg = "【タイムアウト】時間切れです。もう一度お試しください。"; break;
+                            default: errorMsg = "不明なエラーが発生しました。"; break;
+                        }}
+                        addLog(`❌ Error: ${{errorMsg}} (Code: ${{err.code}})`, "red");
+                        addLog("Tips: スマホの場合は、外が見える場所で試すか、Wi-Fiをオンにすると改善します。", "gray");
+                    }},
+                    {{ 
+                        enableHighAccuracy: false, // タイムアウト回避のため精度を少し落とす
+                        timeout: 20000,           // タイムアウトを20秒に延長
+                        maximumAge: 0 
+                    }}
+                );
+            }
             </script>
         """
-        # HTMLをボタンの直後に挿入。height=100程度持たせてメッセージを見せる。
-        components.html(js_code, height=100)
+        components.html(js_code, height=200)
+        
         
         
 
