@@ -411,28 +411,32 @@ def main():
 
     # --- タイトル前後の余白を安全に最小化するCSS ---
     # padding-top を 3.5rem に戻してタイトルの隠れを防止し、h1の上下余白のみを削ります。
-    st.markdown(f"""
+st.markdown(f"""
         <style>
-            /* 1. ページ最上部の空白を適度に確保（タイトルが隠れないように調整） */
+            /* ページ最上部の余白 */
             .block-container {{
                 padding-top: 3.5rem !important;
                 padding-bottom: 0rem !important;
             }}
-            /* 2. タイトル(h1)自体の上下マージンを最小化 */
+            /* タイトル(h1)設定 */
             h1 {{
                 margin-top: -10px !important;
-                margin-bottom: 10px !important;
+                /* 【ここを修正】下の余白をマイナスにして、次の要素を吸い寄せる */
+                margin-bottom: -15px !important; 
                 padding-top: 0px !important;
                 padding-bottom: 0px !important;
-                line-height: 1.1 !important;
+                line-height: 1.0 !important;
             }}
-            /* 3. 要素間の標準的な隙間を少しだけ詰める */
+            /* 要素間の標準的な隙間(Gap) */
             [data-testid="stVerticalBlock"] {{
-                gap: 0.8rem !important;
+                /* 【ここを修正】全体の間隔をさらに狭める(0.8rem -> 0.4rem) */
+                gap: 0.4rem !important;
             }}
         </style>
     """, unsafe_allow_html=True)
 
+    # 以下、既存のタイトル表示とロジックを継続
+    
     # タイトル表示（確実に表示されるよう、少しマージンを持たせたCSSを適用）
     st.markdown(f'<h1 style="font-size:{CONFIG["TITLE_SIZE"]}px;">⛵ 高須風チェッカー</h1>', unsafe_allow_html=True)
     
