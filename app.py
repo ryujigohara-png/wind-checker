@@ -15,6 +15,7 @@ import matplotlib.dates as mdates
 from streamlit_folium import st_folium
 import folium
 import streamlit.components.v1 as components
+import time
 import json
 from streamlit_js_eval import streamlit_js_eval, get_geolocation
 
@@ -263,11 +264,12 @@ def show_location_map():
             st.rerun()
 
 #==========================================================================================
-# 13. ブラウザのLocalStorageとSessionStateを同期するサブルーチン
+# 13. ブラウザのLocalStorageとSessionStateを同期するサブルーチン (安定化修正版)
 #==========================================================================================
 def sync_all_settings():
     STORAGE_KEY = CONFIG['STORAGE_KEY']
 
+    # --- 読み込み処理（一切変更していません） ---
     if "initialized" not in st.session_state:
         stored_data = streamlit_js_eval(js_expressions=f"localStorage.getItem('{STORAGE_KEY}')", key="load_storage")
         
@@ -289,6 +291,7 @@ def sync_all_settings():
         if "initialized" not in st.session_state:
             st.stop()
 
+    # --- 書き込み処理（キーのみを安全に変更） ---
     save_data = {
         "lat": st.session_state.lat,
         "lon": st.session_state.lon,
@@ -297,7 +300,11 @@ def sync_all_settings():
         "sel_dirs": st.session_state.get("sel_dirs", CONFIG["DEFAULT_DIRS"])
     }
     js_save = f"localStorage.setItem('{STORAGE_KEY}', '{json.dumps(save_data)}')"
-    streamlit_js_eval(js_expressions=js_save, key=f"save_storage_{time.time()}")
+    
+    # 【修正箇所】 time.time() は使わず、場所名を使うことで NameError を防ぎ、キー重複も回避します
+    # 場所名が変わるたびに新しいキーが発行され、重複エラーを回避できる仕組みです
+    safe_key = f"save_storage_{st.session_state.last_basho}"
+    streamlit_js_eval(js_expressions=js_save, key=safe_key)
     
 #==========================================================================================
 # 14. 地点選択のロジックを制御するサブルーチン
