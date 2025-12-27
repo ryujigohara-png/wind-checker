@@ -404,25 +404,53 @@ def render_header_info():
             st.rerun()
 
 #==========================================================================================
-# 18. メインフロー
+# 18. メインフロー (タイトル前後の余白削減版)
 #==========================================================================================
 def main():
     setup_font()
+
+    # --- タイトル前後の余白を最小化するためのCSS注入 ---
+    # 他の要素（地図やグラフ）に影響を与えないよう、ページトップとh1タグに限定して調整
+    st.markdown(f"""
+        <style>
+            /* 1. ページ最上部の空白(デフォルト約100px)を最小化 */
+            .block-container {{
+                padding-top: 1.5rem !important;
+                padding-bottom: 0rem !important;
+            }}
+            /* 2. タイトル(h1)の上下に自動でつくマージンを排除 */
+            h1 {{
+                margin-top: 0px !important;
+                margin-bottom: 0.2rem !important;
+                padding-top: 0px !important;
+                padding-bottom: 0px !important;
+                line-height: 1.2 !important;
+            }}
+            /* 3. タイトル直後の要素(地点選択)との隙間を微調整 */
+            [data-testid="stVerticalBlock"] > div:first-child {{
+                margin-bottom: -10px !important;
+            }}
+        </style>
+    """, unsafe_allow_html=True)
+
+    # タイトル表示
     st.markdown(f'<h1 style="font-size:{CONFIG["TITLE_SIZE"]}px;">⛵ 高須風チェッカー</h1>', unsafe_allow_html=True)
+    
+    # --- 以下、既存のロジックを完全維持 ---
     
     # SessionState初期化
     if 'lat' not in st.session_state: st.session_state.lat = CONFIG["DEFAULT_LAT"]
     if 'lon' not in st.session_state: st.session_state.lon = CONFIG["DEFAULT_LON"]
     if 'last_basho' not in st.session_state: st.session_state.last_basho = CONFIG["DEFAULT_BASHO"]
 
-    # LocalStorage同期（リロード後はここが現在地の値を拾う）
+    # LocalStorage同期
     sync_all_settings()
 
     if "initialized" not in st.session_state:
         st.info("設定を読み込み中...")
         st.stop()
 
-    # 地点選択コンボボックス（既存通り）
+    # 地点選択コンボボックス
     master = CONFIG["LOCATION_MASTER"].copy()
     if st.session_state.last_basho == "現在地":
         master["現在地"] = (st.session_state.lat, st.session_state.lon)
@@ -437,10 +465,8 @@ def main():
             st.session_state.lat, st.session_state.lon = master[basho]
         st.rerun()
 
-    # 新しい現在地ボタンサブルーチンを呼び出す
+    # 現在地ボタンサブルーチン
     handle_current_location_update()
-    
-    # --- 以下、地図表示・グラフ表示（既存通り） ---
     
     # 地図表示トグル
     show_map = st.checkbox("地図表示", value=st.session_state.get('show_map_state', False))
