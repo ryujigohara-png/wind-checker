@@ -206,30 +206,20 @@ def render_tide_curve_chart(ax, df):
     ax.set_yticks([])
 
 #==========================================================================================
-# 11b. 天気アイコンHTML生成 (ピッチ・位置完全同期版)
+# 11b. 天気アイコンHTML生成サブルーチン (新規追加)
 #==========================================================================================
 def generate_weather_icons_html(df, ratio_info):
     start_x, hour_w = ratio_info
     icon_html = ""
     for i in range(3, len(df), 3):
         row = df.iloc[i]
-        if 'w_icon' not in row: continue
-        
-        # グラフの座標系と100%一致するはずの計算
         pos_left = (start_x + (i * hour_w)) * 100
-        
-        icon_html += f'''
-            <div style="position: absolute; left: {pos_left}%; transform: translateX(-50%); width: 80px; text-align: center; font-size: 32px;">
-                {row["w_icon"]}
-            </div>'''
-            
+        icon_html += f'<div style="position: absolute; left: {pos_left}%; transform: translateX(-50%); width: 80px; text-align: center; font-size: 32px;">{row["w_icon"]}</div>'
     return f'<div style="position: relative; width: 8000px; height: 50px; margin-bottom: -15px;">{icon_html}</div>'
 
 #==========================================================================================
-# 11. 高解像度グラフ生成 (キャッシュ解除版)
+# 11. 高解像度グラフ生成 (天気マーク対応拡張版)
 #==========================================================================================
-# 修正：動作確認のため、一時的に @st.cache_data をコメントアウトします
-# @st.cache_data(show_spinner="グラフを生成中...")
 @st.cache_data(show_spinner="グラフを生成中...")
 def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple):
     df = fetch_weather_data(lat, lon, 8)
@@ -240,9 +230,7 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple):
     df = process_wind_data(df, list(selected_dirs_tuple))
     
     fig, axes = plt.subplots(3, 1, figsize=(40, 11), dpi=CONFIG["DPI"], gridspec_kw={'height_ratios': CONFIG["HEIGHT_RATIOS"]})
-    
-    # 余白を「自動」ではなく「固定」にします
-    plt.subplots_adjust(left=0.05, right=0.95, bottom=0.1, top=0.9, hspace=0.6)
+    plt.subplots_adjust(hspace=0.6)
     
     formatter = get_x_axis_formatter()
     now_jst = datetime.now(timezone(timedelta(hours=9))).replace(tzinfo=None)
@@ -255,17 +243,16 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple):
         if ax.get_visible():
             apply_common_axis_settings(ax, df, formatter, now_jst)
 
-    # 座標計算：固定した余白に基づき算出
+    # アイコン配置用の比率計算
+    fig.tight_layout()
     pos = axes[0].get_position()
     ratio_info = (pos.x0, pos.width / (len(df) - 1))
             
     buf = io.BytesIO()
-    # 【重要】bbox_inchesをNoneにすることで、上で設定した固定余白が維持されます
-    fig.savefig(buf, format="png", bbox_inches=None)
+    fig.savefig(buf, format="png", bbox_inches='tight', pad_inches=0.1)
     plt.close(fig) 
     return base64.b64encode(buf.getvalue()).decode(), ratio_info, df
-    
-    
+
 #==========================================================================================
 # 12. 地図UI表示サブルーチン (仕様5.2: 3x3格子レイアウト)
 #==========================================================================================
