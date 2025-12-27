@@ -331,7 +331,7 @@ def handle_current_location_update():
     st.markdown("---")
     
     # ボタン押下時：待機フラグを立て、キーを更新してリラン
-    if st.button("📍 現在地からグラフを作成", use_container_width=True):
+    if st.button("🔄 現在地グラフ更新", use_container_width=True):
         st.session_state.waiting_loc = True
         # キャッシュ回避用の新しいキーを発行
         st.session_state.geo_key = f"geo_{datetime.now().timestamp()}"
@@ -391,17 +391,29 @@ def show_sidebar_controls():
     return danger_v, sel_dirs
 
 #==========================================================================================
-# 17. 現在時刻と更新ボタンを表示するサブルーチン
+# 17. 現在時刻と更新ボタンを表示するサブルーチン (動的キャプション ＆ 時刻独立版)
 #==========================================================================================
-def render_header_info():
-    c1, c2 = st.columns([7, 3])
-    with c1:
-        now = datetime.now(timezone(timedelta(hours=9)))
-        st.markdown(f"<p style='font-size:{CONFIG['LOC_INFO_FONT_SIZE']}; color:{CONFIG['LOC_INFO_COLOR']}; font-weight:bold;'>📍 現在：{st.session_state.last_basho} ({st.session_state.lat:.4f}, {st.session_state.lon:.4f})<br><span style='font-size:12px; color:gray;'>取得時刻: {now.strftime('%Y/%m/%d %H:%M:%S')}</span></p>", unsafe_allow_html=True)
-    with c2:
-        if st.button("🔄 グラフ更新", use_container_width=True):
-            st.cache_data.clear()
-            st.rerun()
+def render_header_info(current_basho_name):
+    # ① 選択された場所名と座標をボタン名にする
+    # 設定ファイルから取得したフォントサイズ設定などは維持しつつ、ボタンとして構成
+    button_label = f"🔄 {current_basho_name} ({st.session_state.lat:.4f}, {st.session_state.lon:.4f}) グラフ更新"
+    
+    if st.button(button_label, use_container_width=False):
+        st.cache_data.clear()
+        st.rerun()
+    
+    # ② 取得時刻を独立して表示 (ボタンのすぐ下に小さく配置)
+    now = datetime.now(timezone(timedelta(hours=9)))
+    now_str = now.strftime('%Y/%m/%d %H:%M:%S')
+    
+    st.markdown(
+        f"""
+        <p style='font-size:12px; color:gray; margin-top:-10px; margin-left:5px;'>
+            最終データ取得時刻: {now_str}
+        </p>
+        """, 
+        unsafe_allow_html=True
+    )
 
 #==========================================================================================
 # 18. メインフロー (PC完全復元 ＆ スマホ安定表示版)
@@ -409,74 +421,38 @@ def render_header_info():
 def main():
     setup_font()
 
-    # --- CSS注入：タイトルの確実な表示と、スマホボタンの安定化 ---
     st.markdown(f"""
         <style>
-            /* 1. ページ全体の余白：タイトルが隠れないよう上部を少し確保 */
-            .block-container {{
-                padding-top: 3.5rem !important;
-                padding-bottom: 0rem !important;
+            .block-container {{ padding-top: 3.5rem !important; padding-bottom: 0rem !important; }}
+            h1 {{ 
+                margin-top: 0px !important; 
+                margin-bottom: -15px !important; 
+                line-height: 1.0 !important; 
             }}
-            
-            /* 2. タイトル：上下の巨大な隙間だけを消す */
-            h1 {{
-                margin-top: 0px !important;
-                margin-bottom: 10px !important; 
-                padding-top: 0px !important;
-                padding-bottom: 0px !important;
-                line-height: 1.1 !important;
-                display: block !important;
-            }}
-            
-            /* 3. 要素間の隙間：標準より少し詰める */
-            [data-testid="stVerticalBlock"] {{
-                gap: 0.5rem !important;
-            }}
-
-            /* 4. 不要な水平線(hr)を非表示にする */
-            hr {{
-                display: none !important;
-            }}
-
-            /* 5. スマホ版(幅640px以下)での強制リセット */
-            @media (max-width: 640px) {{
-                /* ボタンが半分になったり2行になったりするのを防ぐ */
-                .stButton {{
-                    width: 100% !important;
-                    display: block !important;
-                }}
-                .stButton button {{
-                    width: 100% !important;
-                    min-height: 45px !important;
-                    font-size: 14px !important; /* 文字を読みやすく */
-                }}
-                /* 地図表示チェックボックス周りの隙間を詰める */
-                [data-testid="stCheckbox"] {{
-                    margin-top: -5px !important;
-                    margin-bottom: -5px !important;
-                }}
+            [data-testid="stVerticalBlock"] {{ gap: 0.3rem !important; }}
+            hr {{ display: none !important; }}
+            div.stButton {{ text-align: left !important; margin-top: -5px !important; }}
+            div.stButton > button {{
+                width: auto !important;
+                min-width: 200px;
+                padding-left: 20px !important;
+                padding-right: 20px !important;
             }}
         </style>
     """, unsafe_allow_html=True)
 
-    # タイトル表示（CSSで確実に表示されるよう設定）
     st.markdown(f'<h1 style="font-size:{CONFIG["TITLE_SIZE"]}px;">⛵ 高須風チェッカー</h1>', unsafe_allow_html=True)
     
-    # --- 以下、ロジック部分は一切変更せず維持 ---
-    
-    # SessionState初期化
     if 'lat' not in st.session_state: st.session_state.lat = CONFIG["DEFAULT_LAT"]
     if 'lon' not in st.session_state: st.session_state.lon = CONFIG["DEFAULT_LON"]
     if 'last_basho' not in st.session_state: st.session_state.last_basho = CONFIG["DEFAULT_BASHO"]
 
-    # LocalStorage同期
     sync_all_settings()
 
     if "initialized" not in st.session_state:
         st.info("設定を読み込み中...")
         st.stop()
 
-    # 地点選択
     master = CONFIG["LOCATION_MASTER"].copy()
     if st.session_state.last_basho == "現在地":
         master["現在地"] = (st.session_state.lat, st.session_state.lon)
@@ -491,27 +467,23 @@ def main():
             st.session_state.lat, st.session_state.lon = master[basho]
         st.rerun()
 
-    # 現在地ボタン（苦労して完成させたロジックを維持）
+    # ① 現在地ボタン（名称変更版を呼び出し）
     handle_current_location_update()
     
-    # 地図表示・ヘッダー情報
     show_map = st.checkbox("地図表示", value=st.session_state.get('show_map_state', False))
     st.session_state.show_map_state = show_map
     if show_map:
         show_location_map()
 
-    render_header_info()
+    # ②・③ 動的ボタンと時刻（場所名を渡す）
+    render_header_info(basho) 
     
-    # サイドバー・グラフ描画
     danger_v, sel_dirs = show_sidebar_controls()
     img = generate_high_res_graph(st.session_state.lat, st.session_state.lon, danger_v, tuple(sel_dirs))
     
     if img:
         st.markdown(f'<div style="overflow-x: auto; background: white;"><img src="data:image/png;base64,{img}" style="height: 850px; max-width: none;"></div>', unsafe_allow_html=True)
-
-if __name__ == "__main__":
-    main()
-
+        
 #==========================================================================================
 # XX. 呼び出しコード
 #==========================================================================================
