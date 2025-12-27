@@ -241,7 +241,7 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple):
     df = pd.concat([padding_df, df], ignore_index=True)
     df = process_wind_data(df, list(selected_dirs_tuple))
     
-    # 既存の figsize=(40, 11) を維持（ここを変えても計算が壊れないようにします）
+    # figsizeは既存の(40, 11)を維持
     fig, axes = plt.subplots(3, 1, figsize=(40, 11), dpi=CONFIG["DPI"], gridspec_kw={'height_ratios': CONFIG["HEIGHT_RATIOS"]})
     plt.subplots_adjust(hspace=0.6)
     
@@ -257,20 +257,20 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple):
             apply_common_axis_settings(ax, df, formatter, now_jst)
 
     # --- 【重要】このグラフにおける「1時間」の物理ピクセル幅を計測 ---
-    # get_window_extent で軸の描画領域（ピクセル）を取得し、表示時間数で割る
+    # 軸の描画領域（プロットエリア）の幅(px)を取得
     renderer = fig.canvas.get_renderer()
     bbox = axes[0].get_window_extent(renderer)
-    # グラフの枠（プロットエリア）自体の横幅(px)を算出し、時間数で割る
+    # プロットエリア横幅 / データ間隔の数 = 1時間あたりの正確なピクセルピッチ
     px_per_hour = bbox.width / (len(df) - 1)
 
     buf = io.BytesIO()
+    # トリミングによる誤差を最小限にするため pad_inches=0.1
     fig.savefig(buf, format="png", bbox_inches='tight', pad_inches=0.1)
     plt.close(fig) 
     
     img_b64 = base64.b64encode(buf.getvalue()).decode()
     return img_b64, px_per_hour
     
-
 #==========================================================================================
 # 12. 地図UI表示サブルーチン (仕様5.2: 3x3格子レイアウト)
 #==========================================================================================
@@ -466,7 +466,7 @@ def main():
         st.info("設定を読み込み中...")
         st.stop()
 
-    # --- 地点選択コンボボックス ---
+    # --- 地点選択コンボボックス（座標を名前に統合） ---
     master = CONFIG["LOCATION_MASTER"].copy()
     display_options = {}
     for name, coords in master.items():
@@ -507,41 +507,34 @@ def main():
     
     danger_v, sel_dirs = show_sidebar_controls()
 
-    # 1. データ取得
+    # 1. グラフ用の生データ取得
     df_raw = fetch_weather_data(st.session_state.lat, st.session_state.lon, 8)
+    # 2. グラフ生成とピクセル計測
     img, px_per_hour = generate_high_res_graph(st.session_state.lat, st.session_state.lon, danger_v, tuple(sel_dirs))
     
-    # --- お天気アイコン表示ロジック（同期調整） ---
+    # --- お天気アイコン表示ロジック ---
     if img and df_raw is not None:
-        # 正確な3時間ピッチ
+        # 正確な3時間ピッチを算出
         pitch_3h = px_per_hour * 3
         
-        # アイコンの生成
+        # 3時間ごとのアイコンを生成
         icon_elements = []
         for i in range(0, len(df_raw), 3):
             icon = df_raw.iloc[i]['weather_icon']
-            # 計算されたピクセル値をそのまま幅に指定
-            icon_elements.append(f'<div style="min-width: {pitch_3h}px; text-align: center; font-size: 30px;">{icon}</div>')
+            # min-widthとmax-widthを一致させ、flex-shrink:0で幅を固定
+            icon_elements.append(f'<div style="min-width: {pitch_3h}px; max-width: {pitch_3h}px; flex-shrink: 0; text-align: center; font-size: 32px;">{icon}</div>')
         
         icon_html = "".join(icon_elements)
         
-        # padding-left は「左軸＋3時間分の空白」に相当するpxを動的に計算
-        # 1.15倍程度の係数は、Y軸ラベルの幅(約150-200px相当)を埋めるためのものです
-        left_offset = (px_per_hour * 3) + 145 
+        # スタート位置（左マージン）の計算
+        # グラフ枠の左端(0時)に合わせるため、Y軸ラベル分(約135〜145px)と、
+        # 最初の3時間分(padding分)を加算します
+        # スクリーンショットに基づき 145px を初期値として設定
+        left_offset = 145 
 
         st.markdown(f"""
             <div style="overflow-x: auto; background: white; white-space: nowrap; border-radius: 8px;">
                 <div style="display: flex; padding-left: {left_offset}px; margin-bottom: -15px; padding-top: 15px;">
-                    {icon_html}
-                </div>
-                <img src="data:image/png;base64,{img}" style="height: 850px; max-width: none; display: block;">
-            </div>
-        """, unsafe_allow_html=True)
-        
-        # HTML表示：グラフの左余白とアイコンの開始点を一致させる
-        st.markdown(f"""
-            <div style="overflow-x: auto; background: white; white-space: nowrap; border-radius: 8px;">
-                <div style="display: flex; padding-left: {graph_left_margin}px; margin-bottom: -15px; padding-top: 15px;">
                     {icon_html}
                 </div>
                 <img src="data:image/png;base64,{img}" style="height: 850px; max-width: none; display: block;">
