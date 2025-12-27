@@ -403,21 +403,19 @@ def show_sidebar_controls():
 # 17. 現在時刻と更新ボタンを表示するサブルーチン (動的キャプション ＆ 時刻独立版)
 #==========================================================================================
 def render_header_info(current_basho_name):
-    # ① 選択された場所名と座標をボタン名にする
-    # 設定ファイルから取得したフォントサイズ設定などは維持しつつ、ボタンとして構成
     button_label = f"🔄 {current_basho_name} ({st.session_state.lat:.4f}, {st.session_state.lon:.4f}) グラフ更新"
     
     if st.button(button_label, use_container_width=False):
         st.cache_data.clear()
         st.rerun()
     
-    # ② 取得時刻を独立して表示 (ボタンのすぐ下に小さく配置)
+    # 時刻表示の重なりを防ぐため、margin-topを -10px から 0px（あるいはわずかな隙間）に調整
     now = datetime.now(timezone(timedelta(hours=9)))
     now_str = now.strftime('%Y/%m/%d %H:%M:%S')
     
     st.markdown(
         f"""
-        <p style='font-size:12px; color:gray; margin-top:-10px; margin-left:5px;'>
+        <p style='font-size:12px; color:gray; margin-top: 2px; margin-left:5px;'>
             最終データ取得時刻: {now_str}
         </p>
         """, 
@@ -430,14 +428,11 @@ def render_header_info(current_basho_name):
 def main():
     setup_font()
 
+    # --- CSS注入：微調整 ---
     st.markdown(f"""
         <style>
             .block-container {{ padding-top: 3.5rem !important; padding-bottom: 0rem !important; }}
-            h1 {{ 
-                margin-top: 0px !important; 
-                margin-bottom: -15px !important; 
-                line-height: 1.0 !important; 
-            }}
+            h1 {{ margin-top: 0px !important; margin-bottom: -15px !important; line-height: 1.0 !important; }}
             [data-testid="stVerticalBlock"] {{ gap: 0.3rem !important; }}
             hr {{ display: none !important; }}
             div.stButton {{ text-align: left !important; margin-top: -5px !important; }}
@@ -447,21 +442,24 @@ def main():
                 padding-left: 20px !important;
                 padding-right: 20px !important;
             }}
+            /* チェックボックスの余白を少しだけ確保 */
+            [data-testid="stCheckbox"] {{ margin-top: 5px !important; margin-bottom: 5px !important; }}
         </style>
     """, unsafe_allow_html=True)
 
     st.markdown(f'<h1 style="font-size:{CONFIG["TITLE_SIZE"]}px;">⛵ 高須風チェッカー</h1>', unsafe_allow_html=True)
     
+    # SessionState初期化 & 同期
     if 'lat' not in st.session_state: st.session_state.lat = CONFIG["DEFAULT_LAT"]
     if 'lon' not in st.session_state: st.session_state.lon = CONFIG["DEFAULT_LON"]
     if 'last_basho' not in st.session_state: st.session_state.last_basho = CONFIG["DEFAULT_BASHO"]
-
     sync_all_settings()
 
     if "initialized" not in st.session_state:
         st.info("設定を読み込み中...")
         st.stop()
 
+    # 地点選択コンボボックス
     master = CONFIG["LOCATION_MASTER"].copy()
     if st.session_state.last_basho == "現在地":
         master["現在地"] = (st.session_state.lat, st.session_state.lon)
@@ -476,17 +474,19 @@ def main():
             st.session_state.lat, st.session_state.lon = master[basho]
         st.rerun()
 
-    # ① 現在地ボタン（名称変更版を呼び出し）
-    handle_current_location_update()
-    
+    # ① 【ここが修正点】地図表示チェックボックスを上に移動
     show_map = st.checkbox("地図表示", value=st.session_state.get('show_map_state', False))
     st.session_state.show_map_state = show_map
     if show_map:
         show_location_map()
 
-    # ②・③ 動的ボタンと時刻（場所名を渡す）
+    # ② 現在地ボタン
+    handle_current_location_update()
+    
+    # ③ 選択地点の更新ボタンと時刻表示
     render_header_info(basho) 
     
+    # サイドバー・グラフ描画
     danger_v, sel_dirs = show_sidebar_controls()
     img = generate_high_res_graph(st.session_state.lat, st.session_state.lon, danger_v, tuple(sel_dirs))
     
