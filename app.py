@@ -340,7 +340,7 @@ def handle_current_location_update():
     st.markdown("---")
     
     # ボタン押下時：待機フラグを立て、キーを更新してリラン
-    if st.button("🔄 現在地", use_container_width=True):
+    if st.button("🔄 📍現在地", use_container_width=True):
         st.session_state.waiting_loc = True
         # キャッシュ回避用の新しいキーを発行
         st.session_state.geo_key = f"geo_{datetime.now().timestamp()}"
