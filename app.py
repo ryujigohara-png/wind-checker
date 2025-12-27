@@ -29,6 +29,7 @@ CONFIG = {
     "LABEL_SIZE": 12,
     "ANNOT_SIZE": 15,
     "DPI": 200,
+    "GRAPH_WIDTH_INCH": 40,  # グラフの横幅（インチ）
     "MAP_HEIGHT": 350,
     "HEIGHT_RATIOS": [4.4, 1.2, 0.8],
     "LOC_INFO_FONT_SIZE": "16px",
@@ -52,6 +53,7 @@ CONFIG = {
         "錦江湾(鹿児島県)": (31.590, 130.600)
     }
 }
+
 
 ALL_DIRECTIONS = ["北", "北北東", "北東", "東北東", "東", "東南東", "南東", "南南東", "南", "南南西", "南西", "西南西", "西", "西北西", "北西", "北北西"]
 
@@ -426,7 +428,6 @@ def render_header_info(current_basho_name):
         st.cache_data.clear()
         st.rerun()
     
-    
 #==========================================================================================
 # 18. メインフロー (PC完全復元 ＆ スマホ安定表示版)
 #==========================================================================================
@@ -480,7 +481,6 @@ def main():
         if basho not in ["地図で指定", "現在地"]:
             st.session_state.lat, st.session_state.lon = master[basho]
 
-        # 【機能回復】「地図で指定」が選ばれたら、地図表示フラグを強制的にONにする
         if basho == "地図で指定":
             st.session_state.show_map_state = True
             
@@ -491,7 +491,6 @@ def main():
     if show_map:
         show_location_map()
 
-    # --- ボタン配置（カラム落ちハック：0.7+0.7） ---
     col1, col2 = st.columns([0.7, 0.7]) 
     with col1:
         handle_current_location_update()
@@ -500,28 +499,44 @@ def main():
     
     danger_v, sel_dirs = show_sidebar_controls()
 
-    # 1. グラフ用のデータ（アイコン用データ）を先に取得
-    df_for_icons = fetch_weather_data(st.session_state.lat, st.session_state.lon, 8)
+    # 1. グラフ用のデータ取得（8日間 = 192時間）
+    df_raw = fetch_weather_data(st.session_state.lat, st.session_state.lon, 8)
     
-    # 2. グラフ画像を生成
+    # 2. グラフ画像を生成（内部で3時間のパディングが行われる）
     img = generate_high_res_graph(st.session_state.lat, st.session_state.lon, danger_v, tuple(sel_dirs))
     
-    # --- main内の描画部分 ---
-    if img and df_for_icons is not None:
-        # fetch_weather_dataで作成したアイコン列を利用
-        icons = df_for_icons['weather_icon'].tolist()
+    # --- お天気アイコン表示ロジック ---
+    if img and df_raw is not None:
+        # パディング込の総時間数を計算 (パディング3h + データ192h = 195h)
+        total_hours = 3 + len(df_raw)
         
-        # 26pxで少し大きく、ハッキリ見えるようにします
-        icon_html = "".join([f'<div style="min-width: 80px; text-align: center; font-size: 26px;">{icon}</div>' for icon in icons])
+        # 1時間あたりのピクセル幅を計算 (DPI200 × 40インチ / 総時間)
+        # グラフの描画マージンを考慮し、微調整係数を乗算
+        pixel_per_hour = (CONFIG["GRAPH_WIDTH_INCH"] * CONFIG["DPI"]) / total_hours
         
+        # 3時間ごとのピッチ
+        pitch_3h = pixel_per_hour * 3
+        
+        # アイコンリストの作成 (3時間ごとに抽出)
+        # 最初の3時間は余白なので空のdivを入れる
+        icon_elements = [f'<div style="min-width: {pitch_3h}px; text-align: center;"></div>'] # Padding分
+        
+        for i in range(0, len(df_raw), 3):
+            icon = df_raw.iloc[i]['weather_icon']
+            icon_elements.append(f'<div style="min-width: {pitch_3h}px; text-align: center; font-size: 32px;">{icon}</div>')
+        
+        icon_html = "".join(icon_elements)
+        
+        # HTML表示
         st.markdown(f"""
             <div style="overflow-x: auto; background: white; white-space: nowrap; border-radius: 8px;">
-                <div style="display: flex; padding-left: 70px; margin-bottom: -10px; padding-top: 15px;">
+                <div style="display: flex; padding-left: 72px; margin-bottom: -15px; padding-top: 15px;">
                     {icon_html}
                 </div>
                 <img src="data:image/png;base64,{img}" style="height: 850px; max-width: none; display: block;">
             </div>
         """, unsafe_allow_html=True)
+        
 
 #==========================================================================================
 # XX. 呼び出しコード
