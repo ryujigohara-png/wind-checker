@@ -404,71 +404,59 @@ def render_header_info():
             st.rerun()
 
 #==========================================================================================
-# 18. メインフロー (インデント修正・間隔極小版)
+# 18. メインフロー (スマホ版ボタン1行化テスト)
 #==========================================================================================
 def main():
     setup_font()
 
-    # --- CSS注入：タイトルとコンボボックスの間隔を極小化 ---
     st.markdown(f"""
         <style>
-            .block-container {{
-                padding-top: 3.5rem !important;
-                padding-bottom: 0rem !important;
-            }}
-            h1 {{
-                margin-top: -10px !important;
-                margin-bottom: -18px !important; 
-                padding-top: 0px !important;
-                padding-bottom: 0px !important;
-                line-height: 1.0 !important;
-            }}
-            [data-testid="stVerticalBlock"] {{
-                gap: 0.4rem !important;
-            }}
+            /* 1. 共通：ページ上部とタイトルの余白（現状維持） */
+            .block-container {{ padding-top: 3.5rem !important; padding-bottom: 0rem !important; }}
+            h1 {{ margin-top: -10px !important; margin-bottom: -18px !important; line-height: 1.0 !important; }}
+            [data-testid="stVerticalBlock"] {{ gap: 0.4rem !important; }}
+            hr {{ display: none !important; }}
 
-            /* --- 【今回の追加修正：線とボタン間隔】 --- */
-            
-            /* 1. 不要な水平区切り線(hr)を完全に非表示にする（機能への影響なし） */
-            hr {{
-                display: none !important;
-                margin: 0px !important;
-                padding: 0px !important;
-            }}
-
-            /* 2. コンボボックス等の入力要素(Widget)の直後の余白を削る */
-            [data-testid="stWidgetLabel"] {{
-                margin-bottom: -5px !important;
-            }}
-            
-            /* 3. ボタンコンテナの上部マージンを強制排除 */
-            div.stButton {{
-                margin-top: -10px !important;
+            /* 2. スマホ版(幅640px以下)限定のボタンレイアウト調整 */
+            @media (max-width: 640px) {{
+                /* ボタンを内包するコンテナを横並びに設定 */
+                div[data-testid="column"] > div[data-testid="stVerticalBlock"] {{
+                    gap: 5px !important;
+                }}
+                
+                /* 現在地ボタンとグラフ更新ボタンを1行に収めるためのFlexbox適用 */
+                /* Streamlitのボタン要素をターゲットにします */
+                .stButton {{
+                    display: inline-block !important;
+                    width: 48% !important; /* 横幅を約半分に */
+                    margin-right: 2% !important;
+                    vertical-align: top !important;
+                }}
+                
+                /* ボタン内の文字サイズをスマホ向けに最適化 */
+                .stButton button {{
+                    font-size: 11px !important;
+                    padding: 0px 2px !important;
+                    min-height: 40px !important;
+                    width: 100% !important;
+                }}
             }}
         </style>
     """, unsafe_allow_html=True)
 
-    # 以降、既存のロジックを継続
-    # ...
-
-    # タイトル表示 (インデントを正確に修正)
+    # --- 以下、既存のロジック（絶対に書き換えない部分） ---
     st.markdown(f'<h1 style="font-size:{CONFIG["TITLE_SIZE"]}px;">⛵ 高須風チェッカー</h1>', unsafe_allow_html=True)
     
-    # --- 以下、既存のロジックを完全維持 ---
-    
-    # SessionState初期化
     if 'lat' not in st.session_state: st.session_state.lat = CONFIG["DEFAULT_LAT"]
     if 'lon' not in st.session_state: st.session_state.lon = CONFIG["DEFAULT_LON"]
     if 'last_basho' not in st.session_state: st.session_state.last_basho = CONFIG["DEFAULT_BASHO"]
 
-    # LocalStorage同期
     sync_all_settings()
 
     if "initialized" not in st.session_state:
         st.info("設定を読み込み中...")
         st.stop()
 
-    # 地点選択コンボボックス
     master = CONFIG["LOCATION_MASTER"].copy()
     if st.session_state.last_basho == "現在地":
         master["現在地"] = (st.session_state.lat, st.session_state.lon)
@@ -483,27 +471,23 @@ def main():
             st.session_state.lat, st.session_state.lon = master[basho]
         st.rerun()
 
-    # 現在地ボタンサブルーチン
+    # ロジックの要：現在地ボタン処理
     handle_current_location_update()
     
-    # 地図表示トグル
     show_map = st.checkbox("地図表示", value=st.session_state.get('show_map_state', False))
     st.session_state.show_map_state = show_map
     if show_map:
         show_location_map()
 
-    # 時刻・座標・更新ボタン表示
+    # ヘッダー情報表示（ここにグラフ更新ボタンが含まれる）
     render_header_info()
     
-    # サイドバー設定取得
     danger_v, sel_dirs = show_sidebar_controls()
-    
-    # グラフ描画
     img = generate_high_res_graph(st.session_state.lat, st.session_state.lon, danger_v, tuple(sel_dirs))
     
     if img:
         st.markdown(f'<div style="overflow-x: auto; background: white;"><img src="data:image/png;base64,{img}" style="height: 850px; max-width: none;"></div>', unsafe_allow_html=True)
-        
+
 #==========================================================================================
 # XX. 呼び出しコード
 #==========================================================================================
