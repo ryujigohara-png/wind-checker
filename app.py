@@ -435,36 +435,21 @@ def render_header_info(current_basho_name):
         st.rerun()
 
 #==========================================================================================
-# 18. お天気アイコンHTML生成 (比率配置・サブルーチン版)
+# 19. お天気アイコンHTML生成 (比率配置・サブルーチン版)
 #==========================================================================================
 def generate_weather_icons_html(df_raw, hour_ratio):
-    """
-    df_raw: 予報データ
-    hour_ratio: グラフ全体の幅に対する1時間の幅の割合
-    """
     # --- 調整パラメータ ---
-    # 画像左端から「0時」の垂直線までの距離（画像全幅に対する比率）
-    # ユーザー様の検証結果(145px/8000px ≒ 0.018)と、padding(3h)を考慮
-    left_axis_margin = 0.018  # Y軸ラベル分のマージン
-    start_offset_ratio = left_axis_margin + (hour_ratio * 3) # 3時間パディング込の開始点
+    left_axis_margin = 0.018 
+    start_offset_ratio = left_axis_margin + (hour_ratio * 3)
 
     icon_html = ""
     for i in range(0, len(df_raw), 3):
         icon = df_raw.iloc[i]['weather_icon']
-        # 各アイコンの左端位置を画像全体に対する % で指定
         pos_left = (start_offset_ratio + (i * hour_ratio)) * 100
-        
-        # アイコンを絶対座標で配置 (transformで中心合わせ)
-        icon_html += f'''
-            <div style="position: absolute; left: {pos_left}%; transform: translateX(-50%); 
-                        width: 100px; text-align: center; font-size: 32px;">
-                {icon}
-            </div>'''
+        icon_html += f'<div style="position: absolute; left: {pos_left}%; transform: translateX(-50%); width: 100px; text-align: center; font-size: 32px;">{icon}</div>'
             
-    return f'''
-        <div style="position: relative; width: 8000px; height: 50px; margin-bottom: -10px; margin-top: 10px;">
-            {icon_html}
-        </div>'''
+    # 【ここが重要】 return の後に f'...' でHTMLを囲って返しているか確認してください
+    return f'<div style="position: relative; width: 8000px; height: 50px; margin-bottom: -10px; margin-top: 10px;">{icon_html}</div>'
 
 #==========================================================================================
 # 19. メインフロー (位置同期 精密調整版)
@@ -542,22 +527,19 @@ def main():
     # --- main 内の描画ブロック (ここを差し替えてください) ---
     # --- main 内の描画ブロック (ここを差し替えてください) ---
     # --- main 内の描画ブロック ---
+    # --- main 内の描画ブロック ---
     img_data, hour_ratio = generate_high_res_graph(st.session_state.lat, st.session_state.lon, danger_v, tuple(sel_dirs))
     
+    # --- main 内の描画ブロック ---
     if img_data and df_raw is not None:
-        # 1. アイコンHTMLをサブルーチンで生成
         weather_icons_html = generate_weather_icons_html(df_raw, hour_ratio)
-        
-        # 2. グラフ画像HTMLを生成
         graph_html = f'<img src="data:image/png;base64,{img_data}" style="width: 8000px; max-width: none; display: block;">'
         
-        # 3. 【最重要】unsafe_allow_html=True を追加して表示
-        st.markdown(f"""
-            <div style="overflow-x: auto; background: white; border-radius: 8px; position: relative;">
-                {weather_icons_html}
-                {graph_html}
-            </div>
-        """, unsafe_allow_html=True)        
+        # 変数の展開を確実にするため、一旦一つの変数にまとめます
+        full_html = f'<div style="overflow-x: auto; background: white; border-radius: 8px; position: relative;">{weather_icons_html}{graph_html}</div>'
+        
+        st.markdown(full_html, unsafe_allow_html=True)
+        
 #==========================================================================================
 # XX. 呼び出しコード
 #==========================================================================================
