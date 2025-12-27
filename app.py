@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-#///// 最終更新 2025.12.27 23:30 天気マーク失敗版//////////////////////////////////////////////////////////////
+# 最終更新 2025.12.27 18:00 コンプリート版//////////////////////////////////////////////////////////////
 import streamlit as st
 import requests
 import pandas as pd
@@ -53,7 +53,6 @@ CONFIG = {
     }
 }
 
-
 ALL_DIRECTIONS = ["北", "北北東", "北東", "東北東", "東", "東南東", "南東", "南南東", "南", "南南西", "南西", "西南西", "西", "西北西", "北西", "北北西"]
 
 #==========================================================================================
@@ -76,16 +75,8 @@ def fetch_weather_data(lat, lon, days):
         data = requests.get(url).json()
         df = pd.DataFrame(data["hourly"])
         df['time'] = pd.to_datetime(df['time'])
-
-        # --- 天気情報を一括適用して3つの列（名称、色、アイコン）を追加 ---
-        weather_results = [get_weather_info(code) for code in df['weather_code']]
-        df['weather_name'] = [res[0] for res in weather_results]
-        df['weather_color'] = [res[1] for res in weather_results]
-        df['weather_icon'] = [res[2] for res in weather_results]
-        
         return df
-    except:
-        return None
+    except: return None
 
 #==========================================================================================
 # 4. 指定された時間リストに基づき簡易的な潮位を計算するサブルーチン (既存維持)
@@ -107,31 +98,11 @@ def get_tide_level(times):
 # 5. 天気コードを日本語の名称と表示用の色に変換するサブルーチン (既存維持)
 #==========================================================================================
 def get_weather_info(code):
-    if pd.isna(code): return "不明", "black", "・"
-    
-    # 0, 1: 快晴・晴れ
-    if code <= 1: 
-        return "晴", "#FF4500", "☀️"
-    # 2, 3: 時々曇り・曇り
-    if code <= 3: 
-        return "曇", "#696969", "☁️"
-    # 45, 48: 霧
-    if code <= 48: 
-        return "霧", "#A9A9A9", "🌫️"
-    # 51 - 67: 小雨・雨・みぞれ
-    if code <= 67: 
-        return "雨", "#00008B", "☔"
-    # 71 - 77: 雪
-    if code <= 77: 
-        return "雪", "#00BFFF", "❄️"
-    # 80 - 82: 俄か雨（シャワー）
-    if code <= 82: 
-        return "雨", "#4682B4", "🌦️"
-    # 95 - 99: 雷雨
-    if code <= 99: 
-        return "雷", "#800080", "⛈️"
-        
-    return "？", "black", "・"
+    if pd.isna(code): return "", "black"
+    if code <= 2: return "晴", "#FF4500"
+    if code <= 48: return "曇", "#696969"
+    if code <= 99: return "雨", "#00008B"
+    return "？", "black"
 
 #==========================================================================================
 # 6. 風向角度を名称と矢印に変換し、条件に基づきグラフの色を判定するサブルーチン (既存維持)
@@ -230,12 +201,12 @@ def render_tide_curve_chart(ax, df):
     ax.set_yticks([])
 
 #==========================================================================================
-# 11. 高解像度グラフ生成 (比率計測版)
+# 11. 高解像度グラフ生成 (既存維持)
 #==========================================================================================
 @st.cache_data(show_spinner="グラフを生成中...")
 def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple):
     df = fetch_weather_data(lat, lon, 8)
-    if df is None: return None, 0
+    if df is None: return None
     
     padding_df = pd.DataFrame({'time': [df['time'].iloc[0] - timedelta(hours=i) for i in range(1, 4)][::-1]})
     df = pd.concat([padding_df, df], ignore_index=True)
@@ -244,29 +215,22 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple):
     fig, axes = plt.subplots(3, 1, figsize=(40, 11), dpi=CONFIG["DPI"], gridspec_kw={'height_ratios': CONFIG["HEIGHT_RATIOS"]})
     plt.subplots_adjust(hspace=0.6)
     
-    # ... (既存の描画処理をそのまま実行) ...
+    formatter = get_x_axis_formatter()
+    now_jst = datetime.now(timezone(timedelta(hours=9))).replace(tzinfo=None)
+    
     render_wind_bar_chart(axes[0], df, danger_v, 3)
     render_temp_line_chart(axes[1], df)
     render_tide_curve_chart(axes[2], df)
+
     for ax in axes:
-        apply_common_axis_settings(ax, df, get_x_axis_formatter(), datetime.now())
-
-    # --- 比率の計測 (座標同期の肝) ---
-    renderer = fig.canvas.get_renderer()
-    bbox = axes[0].get_window_extent(renderer)
-    full_width_px = fig.get_size_inches()[0] * fig.dpi
-    # プロットエリア(枠)の幅 / データ間隔数 / 画像全体の幅
-    hour_ratio = (bbox.width / (len(df) - 1)) / full_width_px
-
+        if ax.get_visible():
+            apply_common_axis_settings(ax, df, formatter, now_jst)
+            
     buf = io.BytesIO()
-    # 座標の安定性を優先し bbox_inches='tight' を外して保存
-    fig.savefig(buf, format="png", bbox_inches=None, pad_inches=0)
+    fig.savefig(buf, format="png", bbox_inches='tight', pad_inches=0.1)
     plt.close(fig) 
-    
-    img_b64 = base64.b64encode(buf.getvalue()).decode()
-    return img_b64, hour_ratio
+    return base64.b64encode(buf.getvalue()).decode()
 
-    
 #==========================================================================================
 # 12. 地図UI表示サブルーチン (仕様5.2: 3x3格子レイアウト)
 #==========================================================================================
@@ -433,31 +397,15 @@ def render_header_info(current_basho_name):
     if st.button(update_label, use_container_width=True):
         st.cache_data.clear()
         st.rerun()
-
+    
+    
 #==========================================================================================
-# 19. お天気アイコンHTML生成 (比率配置・サブルーチン版)
-#==========================================================================================
-def generate_weather_icons_html(df_raw, hour_ratio):
-    # --- 調整パラメータ ---
-    left_axis_margin = 0.018 
-    start_offset_ratio = left_axis_margin + (hour_ratio * 3)
-
-    icon_html = ""
-    for i in range(0, len(df_raw), 3):
-        icon = df_raw.iloc[i]['weather_icon']
-        pos_left = (start_offset_ratio + (i * hour_ratio)) * 100
-        icon_html += f'<div style="position: absolute; left: {pos_left}%; transform: translateX(-50%); width: 100px; text-align: center; font-size: 32px;">{icon}</div>'
-            
-    # 【ここが重要】 return の後に f'...' でHTMLを囲って返しているか確認してください
-    return f'<div style="position: relative; width: 8000px; height: 50px; margin-bottom: -10px; margin-top: 10px;">{icon_html}</div>'
-
-#==========================================================================================
-# 19. メインフロー (位置同期 精密調整版)
+# 18. メインフロー (PC完全復元 ＆ スマホ安定表示版)
 #==========================================================================================
 def main():
     setup_font()
 
-    # --- CSS注入 ---
+    # --- CSS注入：最小限の左寄せ設定 ---
     st.markdown(f"""
         <style>
             .block-container {{ padding-top: 3.5rem !important; padding-bottom: 0rem !important; }}
@@ -503,8 +451,11 @@ def main():
         st.session_state.last_basho = basho
         if basho not in ["地図で指定", "現在地"]:
             st.session_state.lat, st.session_state.lon = master[basho]
+
+        # 【機能回復】「地図で指定」が選ばれたら、地図表示フラグを強制的にONにする
         if basho == "地図で指定":
             st.session_state.show_map_state = True
+            
         st.rerun()
 
     show_map = st.checkbox("地図表示", value=st.session_state.get('show_map_state', False))
@@ -512,6 +463,7 @@ def main():
     if show_map:
         show_location_map()
 
+    # --- ボタン配置（カラム落ちハック：0.7+0.7） ---
     col1, col2 = st.columns([0.7, 0.7]) 
     with col1:
         handle_current_location_update()
@@ -519,29 +471,10 @@ def main():
         render_header_info(basho) 
     
     danger_v, sel_dirs = show_sidebar_controls()
+    img = generate_high_res_graph(st.session_state.lat, st.session_state.lon, danger_v, tuple(sel_dirs))
+    if img:
+        st.markdown(f'<div style="overflow-x: auto; background: white;"><img src="data:image/png;base64,{img}" style="height: 850px; max-width: none;"></div>', unsafe_allow_html=True)
 
-    # 1. グラフ用の生データ取得
-    df_raw = fetch_weather_data(st.session_state.lat, st.session_state.lon, 8)
-    
-    # 2. グラフ生成とピクセル計測
-    # --- main 内の描画ブロック (ここを差し替えてください) ---
-    # --- main 内の描画ブロック (ここを差し替えてください) ---
-    # --- main 内の描画ブロック ---
-    # --- main 内の描画ブロック ---
-    # --- main 内の描画ブロック (image_569822.png の右側 546行目以降をこれに差し替え) ---
-    # 1. データの受け取り (img と hour_ratio)
-    img, hour_ratio = generate_high_res_graph(st.session_state.lat, st.session_state.lon, danger_v, tuple(sel_dirs))
-    
-    if img and df_raw is not None:
-        # 1. アイコンHTMLを生成
-        weather_icons_html = generate_weather_icons_html(df_raw, hour_ratio)
-        
-        # 2. グラフ画像HTMLを生成 (名前を img に修正)
-        graph_html = f'<img src="data:image/png;base64,{img}" style="width: 8000px; max-width: none; display: block;">'
-        
-        # 3. 合体表示
-        full_html = f'<div style="overflow-x: auto; background: white; border-radius: 8px; position: relative;">{weather_icons_html}{graph_html}</div>'
-        st.markdown(full_html, unsafe_allow_html=True)
 #==========================================================================================
 # XX. 呼び出しコード
 #==========================================================================================
