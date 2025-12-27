@@ -264,12 +264,12 @@ def show_location_map():
             st.rerun()
 
 #==========================================================================================
-# 13. ブラウザのLocalStorageとSessionStateを同期するサブルーチン (安定化修正版)
+# 13. ブラウザのLocalStorageとSessionStateを同期するサブルーチン (NameError回避版)
 #==========================================================================================
 def sync_all_settings():
     STORAGE_KEY = CONFIG['STORAGE_KEY']
 
-    # --- 読み込み処理（一切変更していません） ---
+    # --- 読み込み処理（一切変更せず維持） ---
     if "initialized" not in st.session_state:
         stored_data = streamlit_js_eval(js_expressions=f"localStorage.getItem('{STORAGE_KEY}')", key="load_storage")
         
@@ -291,7 +291,7 @@ def sync_all_settings():
         if "initialized" not in st.session_state:
             st.stop()
 
-    # --- 書き込み処理（キーのみを安全に変更） ---
+    # --- 書き込み処理（NameErrorを回避しつつ重複を防ぐ） ---
     save_data = {
         "lat": st.session_state.lat,
         "lon": st.session_state.lon,
@@ -301,10 +301,11 @@ def sync_all_settings():
     }
     js_save = f"localStorage.setItem('{STORAGE_KEY}', '{json.dumps(save_data)}')"
     
-    # 【修正箇所】 time.time() は使わず、場所名を使うことで NameError を防ぎ、キー重複も回避します
-    # 場所名が変わるたびに新しいキーが発行され、重複エラーを回避できる仕組みです
+    # 修正ポイント: time.time() を削除し、既に定義済みの last_basho を key に使います。
+    # これで import time がなくても NameError は発生せず、重複エラーも回避できます。
     safe_key = f"save_storage_{st.session_state.last_basho}"
     streamlit_js_eval(js_expressions=js_save, key=safe_key)
+    
     
 #==========================================================================================
 # 14. 地点選択のロジックを制御するサブルーチン
