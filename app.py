@@ -528,18 +528,20 @@ def main():
     # --- main 内の描画ブロック (ここを差し替えてください) ---
     # --- main 内の描画ブロック ---
     # --- main 内の描画ブロック ---
-    img_data, hour_ratio = generate_high_res_graph(st.session_state.lat, st.session_state.lon, danger_v, tuple(sel_dirs))
+    # --- main 内の描画ブロック (image_569822.png の右側 546行目以降をこれに差し替え) ---
+    # 1. データの受け取り (img と hour_ratio)
+    img, hour_ratio = generate_high_res_graph(st.session_state.lat, st.session_state.lon, danger_v, tuple(sel_dirs))
     
-    # --- main 内の描画ブロック ---
-    if img_data and df_raw is not None:
+    if img and df_raw is not None:
+        # 2. アイコンHTMLを生成
         weather_icons_html = generate_weather_icons_html(df_raw, hour_ratio)
-        graph_html = f'<img src="data:image/png;base64,{img_data}" style="width: 8000px; max-width: none; display: block;">'
         
-        # 変数の展開を確実にするため、一旦一つの変数にまとめます
+        # 3. グラフ画像HTMLを生成 (変数名を img に統一)
+        graph_html = f'<img src="data:image/png;base64,{img}" style="width: 8000px; max-width: none; display: block;">'
+        
+        # 4. 合体して表示
         full_html = f'<div style="overflow-x: auto; background: white; border-radius: 8px; position: relative;">{weather_icons_html}{graph_html}</div>'
-        
-        st.markdown(full_html, unsafe_allow_html=True)
-        
+        st.markdown(full_html, unsafe_allow_html=True)        
 #==========================================================================================
 # XX. 呼び出しコード
 #==========================================================================================
