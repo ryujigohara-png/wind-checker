@@ -429,12 +429,12 @@ def render_header_info(current_basho_name):
         st.rerun()
     
 #==========================================================================================
-# 18. メインフロー (PC完全復元 ＆ スマホ安定表示版)
+# 18. メインフロー (位置同期 精密調整版)
 #==========================================================================================
 def main():
     setup_font()
 
-    # --- CSS注入：最小限の左寄せ設定 ---
+    # --- CSS注入 ---
     st.markdown(f"""
         <style>
             .block-container {{ padding-top: 3.5rem !important; padding-bottom: 0rem !important; }}
@@ -456,7 +456,7 @@ def main():
         st.info("設定を読み込み中...")
         st.stop()
 
-    # --- 地点選択コンボボックス（座標を名前に統合） ---
+    # --- 地点選択コンボボックス ---
     master = CONFIG["LOCATION_MASTER"].copy()
     display_options = {}
     for name, coords in master.items():
@@ -480,10 +480,8 @@ def main():
         st.session_state.last_basho = basho
         if basho not in ["地図で指定", "現在地"]:
             st.session_state.lat, st.session_state.lon = master[basho]
-
         if basho == "地図で指定":
             st.session_state.show_map_state = True
-            
         st.rerun()
 
     show_map = st.checkbox("地図表示", value=st.session_state.get('show_map_state', False))
@@ -499,38 +497,37 @@ def main():
     
     danger_v, sel_dirs = show_sidebar_controls()
 
-    # 1. グラフ用のデータ取得（8日間 = 192時間）
+    # 1. データ取得
     df_raw = fetch_weather_data(st.session_state.lat, st.session_state.lon, 8)
-    
-    # 2. グラフ画像を生成（内部で3時間のパディングが行われる）
     img = generate_high_res_graph(st.session_state.lat, st.session_state.lon, danger_v, tuple(sel_dirs))
     
-    # --- お天気アイコン表示ロジック ---
+    # --- お天気アイコン表示ロジック（同期調整） ---
     if img and df_raw is not None:
-        # パディング込の総時間数を計算 (パディング3h + データ192h = 195h)
+        # パディング込の総時間数 (パディング3h + 予報192h = 195h)
         total_hours = 3 + len(df_raw)
         
-        # 1時間あたりのピクセル幅を計算 (DPI200 × 40インチ / 総時間)
-        # グラフの描画マージンを考慮し、微調整係数を乗算
+        # 1時間あたりのピクセル幅
         pixel_per_hour = (CONFIG["GRAPH_WIDTH_INCH"] * CONFIG["DPI"]) / total_hours
-        
-        # 3時間ごとのピッチ
         pitch_3h = pixel_per_hour * 3
         
-        # アイコンリストの作成 (3時間ごとに抽出)
-        # 最初の3時間は余白なので空のdivを入れる
-        icon_elements = [f'<div style="min-width: {pitch_3h}px; text-align: center;"></div>'] # Padding分
-        
+        # スタート位置の微調整 (画像全体の端の余白を考慮)
+        # スクリーンショットに基づき、72pxからさらに微調整
+        graph_left_margin = 135 # Y軸ラベル + 余白の合計幅(px)
+
+        icon_elements = []
+        # 最初の3時間分（グラフの空白部分）をスキップ
+        # その後、3時間おきにアイコンを配置
         for i in range(0, len(df_raw), 3):
             icon = df_raw.iloc[i]['weather_icon']
-            icon_elements.append(f'<div style="min-width: {pitch_3h}px; text-align: center; font-size: 32px;">{icon}</div>')
+            # 各アイコンを pitch_3h の幅を持つ枠に入れて並べる
+            icon_elements.append(f'<div style="min-width: {pitch_3h}px; text-align: center; font-size: 30px;">{icon}</div>')
         
         icon_html = "".join(icon_elements)
         
-        # HTML表示
+        # HTML表示：グラフの左余白とアイコンの開始点を一致させる
         st.markdown(f"""
             <div style="overflow-x: auto; background: white; white-space: nowrap; border-radius: 8px;">
-                <div style="display: flex; padding-left: 72px; margin-bottom: -15px; padding-top: 15px;">
+                <div style="display: flex; padding-left: {graph_left_margin}px; margin-bottom: -15px; padding-top: 15px;">
                     {icon_html}
                 </div>
                 <img src="data:image/png;base64,{img}" style="height: 850px; max-width: none; display: block;">
