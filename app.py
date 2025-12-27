@@ -206,7 +206,43 @@ def render_tide_curve_chart(ax, df):
     ax.set_yticks([])
 
 #==========================================================================================
-# 11. 高解像度グラフ生成 (余白固定版)
+# 11b. 天気アイコンHTML生成 (絶対座標・強制補正版)
+#==========================================================================================
+def generate_weather_icons_html(df, ratio_info):
+    start_x, hour_w = ratio_info
+    
+    # --- 物理的なズレを解消する補正係数 ---
+    # 画像内のY軸ラベルエリアを考慮し、全体を左へシフトしつつ倍率を微調整します
+    # 0.985で幅を縮め、-0.8で左に寄せます（画像からのフィードバックに基づき最適化）
+    WIDTH_SCALE = 0.985
+    GLOBAL_OFFSET = -0.8
+    
+    icon_html = ""
+    # 3時間ごとにアイコンを配置
+    for i in range(3, len(df), 3):
+        row = df.iloc[i]
+        if 'w_icon' not in row: continue
+        
+        # 補正計算を適用した左からの位置(%)
+        pos_left = ((start_x + (i * hour_w)) * 100 * WIDTH_SCALE) + GLOBAL_OFFSET
+        
+        icon_html += f'''
+            <div style="
+                position: absolute; 
+                left: {pos_left}%; 
+                transform: translateX(-50%); 
+                width: 80px; 
+                text-align: center; 
+                font-size: 32px; 
+                z-index: 10;">
+                {row["w_icon"]}
+            </div>'''
+            
+    # margin-bottom を少し広げ、グラフとの重なりを最適化
+    return f'<div style="position: relative; width: 8000px; height: 50px; margin-bottom: -18px;">{icon_html}</div>'
+
+#==========================================================================================
+# 11. 高解像度グラフ生成 (余白仕様固定)
 #==========================================================================================
 @st.cache_data(show_spinner="グラフを生成中...")
 def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple):
@@ -231,51 +267,18 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple):
         if ax.get_visible():
             apply_common_axis_settings(ax, df, formatter, now_jst)
 
-    # 重要：一度レイアウトを確定させてから座標を取得
+    # レイアウトを確定
     fig.tight_layout()
     pos = axes[0].get_position()
+    # 描画エリアの開始位置(x0)と、1時間ごとの幅(width/時間数)を正確に計算
     ratio_info = (pos.x0, pos.width / (len(df) - 1))
             
     buf = io.BytesIO()
-    # bbox_inches='tight'を使うと計算が狂うため、None(標準)で保存します
+    # 余白の変化を一切許さないため、bbox_inches='tight'は使用しません
     fig.savefig(buf, format="png", bbox_inches=None)
     plt.close(fig) 
     return base64.b64encode(buf.getvalue()).decode(), ratio_info, df
-
-#==========================================================================================
-# 11b. 天気アイコンHTML生成 (ズレ補正版)
-#==========================================================================================
-def generate_weather_icons_html(df, ratio_info):
-    start_x, hour_w = ratio_info
     
-    # --- ズレ補正用パラメータ ---
-    # グラフ左側の「風速(m/s)」ラベル分の余白を補正します
-    RATIO_ADJUST = 0.985  # 全体の幅に対する微調整
-    OFFSET_LEFT = -0.5    # 左へのずらし量(%)
-    
-    icon_html = ""
-    for i in range(3, len(df), 3):
-        row = df.iloc[i]
-        if 'w_icon' not in row: continue
-        
-        # グラフ内の座標(pos_left)を計算し、補正をかける
-        pos_left = ((start_x + (i * hour_w)) * 100 * RATIO_ADJUST) + OFFSET_LEFT
-        
-        icon_html += f'''
-            <div style="
-                position: absolute; 
-                left: {pos_left}%; 
-                transform: translateX(-50%); 
-                width: 80px; 
-                text-align: center; 
-                font-size: 32px;
-                z-index: 10;">
-                {row["w_icon"]}
-            </div>'''
-            
-    return f'<div style="position: relative; width: 8000px; height: 50px; margin-bottom: -15px;">{icon_html}</div>'
-
-
 #==========================================================================================
 # 12. 地図UI表示サブルーチン (仕様5.2: 3x3格子レイアウト)
 #==========================================================================================
