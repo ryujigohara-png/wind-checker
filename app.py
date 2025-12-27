@@ -206,22 +206,26 @@ def render_tide_curve_chart(ax, df):
     ax.set_yticks([])
 
 #==========================================================================================
-# 11b. 天気アイコンHTML生成 (キャッシュ無効・強制位置指定版)
+# 11b. 天気アイコンHTML生成 (ピッチ・位置完全同期版)
 #==========================================================================================
 def generate_weather_icons_html(df, ratio_info):
     start_x, hour_w = ratio_info
     
-    # --- 物理補正（ここを書き換えて動くか確認してください） ---
-    # 画像から判断して、左側のラベル分（約1.5%）をマイナスします
-    GLOBAL_SHIFT = -1.5 
+    # --- フィードバックに基づく精密補正 ---
+    # ピッチ（間隔）が狭い＝倍率が足りないので、1.012 (約1.2%拡大) に調整
+    # 全体の開始位置を右へ戻すため、OFFSETを -0.3 に緩和
+    PITCH_CORRECTION = 1.012  
+    LEFT_OFFSET = -0.3       
     
     icon_html = ""
     for i in range(3, len(df), 3):
         row = df.iloc[i]
         if 'w_icon' not in row: continue
         
-        # 位置計算
-        pos_left = ((start_x + (i * hour_w)) * 100) + GLOBAL_SHIFT
+        # 1. 基準位置を計算
+        # 2. ピッチ補正を掛けて、右に行くほど広がるようにする
+        # 3. 全体のオフセットを加える
+        pos_left = ((start_x + (i * hour_w)) * 100 * PITCH_CORRECTION) + LEFT_OFFSET
         
         icon_html += f'''
             <div style="
@@ -236,6 +240,7 @@ def generate_weather_icons_html(df, ratio_info):
             </div>'''
             
     return f'<div style="position: relative; width: 8000px; height: 50px; margin-bottom: -15px;">{icon_html}</div>'
+    
 
 #==========================================================================================
 # 11. 高解像度グラフ生成 (キャッシュ解除版)
