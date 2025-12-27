@@ -412,12 +412,10 @@ def main():
     # --- CSS注入：タイトルとコンボボックスの間隔を極小化 ---
     st.markdown(f"""
         <style>
-            /* 1. ページ最上部の余白設定 */
             .block-container {{
                 padding-top: 3.5rem !important;
                 padding-bottom: 0rem !important;
             }}
-            /* 2. タイトル(h1)設定：下のマージンをマイナスにして次行を引き寄せる */
             h1 {{
                 margin-top: -10px !important;
                 margin-bottom: -18px !important; 
@@ -425,12 +423,33 @@ def main():
                 padding-bottom: 0px !important;
                 line-height: 1.0 !important;
             }}
-            /* 3. 要素間の標準ギャップ(gap)をさらに狭める */
             [data-testid="stVerticalBlock"] {{
                 gap: 0.4rem !important;
             }}
+
+            /* --- 【今回の追加修正：線とボタン間隔】 --- */
+            
+            /* 1. 不要な水平区切り線(hr)を完全に非表示にする（機能への影響なし） */
+            hr {{
+                display: none !important;
+                margin: 0px !important;
+                padding: 0px !important;
+            }}
+
+            /* 2. コンボボックス等の入力要素(Widget)の直後の余白を削る */
+            [data-testid="stWidgetLabel"] {{
+                margin-bottom: -5px !important;
+            }}
+            
+            /* 3. ボタンコンテナの上部マージンを強制排除 */
+            div.stButton {{
+                margin-top: -10px !important;
+            }}
         </style>
     """, unsafe_allow_html=True)
+
+    # 以降、既存のロジックを継続
+    # ...
 
     # タイトル表示 (インデントを正確に修正)
     st.markdown(f'<h1 style="font-size:{CONFIG["TITLE_SIZE"]}px;">⛵ 高須風チェッカー</h1>', unsafe_allow_html=True)
