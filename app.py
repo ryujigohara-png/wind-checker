@@ -541,23 +541,23 @@ def main():
     # 2. グラフ生成とピクセル計測
     # --- main 内の描画ブロック (ここを差し替えてください) ---
     # --- main 内の描画ブロック (ここを差し替えてください) ---
+    # --- main 内の描画ブロック ---
     img_data, hour_ratio = generate_high_res_graph(st.session_state.lat, st.session_state.lon, danger_v, tuple(sel_dirs))
     
     if img_data and df_raw is not None:
-        # 1. アイコン部分のHTMLをサブルーチンから取得
+        # 1. アイコンHTMLをサブルーチンで生成
         weather_icons_html = generate_weather_icons_html(df_raw, hour_ratio)
         
-        # 2. グラフ画像部分のHTMLを作成
-        graph_image_html = f'<img src="data:image/png;base64,{img_data}" style="width: 8000px; max-width: none; display: block;">'
+        # 2. グラフ画像HTMLを生成
+        graph_html = f'<img src="data:image/png;base64,{img_data}" style="width: 8000px; max-width: none; display: block;">'
         
-        # 3. 重要：unsafe_allow_html=True を指定してHTMLとして描画
+        # 3. 【最重要】unsafe_allow_html=True を追加して表示
         st.markdown(f"""
             <div style="overflow-x: auto; background: white; border-radius: 8px; position: relative;">
                 {weather_icons_html}
-                {graph_image_html}
+                {graph_html}
             </div>
-        """, unsafe_allow_html=True)
-        
+        """, unsafe_allow_html=True)        
 #==========================================================================================
 # XX. 呼び出しコード
 #==========================================================================================
