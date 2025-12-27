@@ -451,6 +451,11 @@ def main():
         st.session_state.last_basho = basho
         if basho not in ["地図で指定", "現在地"]:
             st.session_state.lat, st.session_state.lon = master[basho]
+
+        # 【機能回復】「地図で指定」が選ばれたら、地図表示フラグを強制的にONにする
+        if basho == "地図で指定":
+            st.session_state.show_map_state = True
+            
         st.rerun()
 
     show_map = st.checkbox("地図表示", value=st.session_state.get('show_map_state', False))
