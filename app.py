@@ -75,8 +75,16 @@ def fetch_weather_data(lat, lon, days):
         data = requests.get(url).json()
         df = pd.DataFrame(data["hourly"])
         df['time'] = pd.to_datetime(df['time'])
+
+        # --- 天気情報を一括適用して3つの列（名称、色、アイコン）を追加 ---
+        weather_results = [get_weather_info(code) for code in df['weather_code']]
+        df['weather_name'] = [res[0] for res in weather_results]
+        df['weather_color'] = [res[1] for res in weather_results]
+        df['weather_icon'] = [res[2] for res in weather_results]
+        
         return df
-    except: return None
+    except:
+        return None
 
 #==========================================================================================
 # 4. 指定された時間リストに基づき簡易的な潮位を計算するサブルーチン (既存維持)
@@ -98,11 +106,31 @@ def get_tide_level(times):
 # 5. 天気コードを日本語の名称と表示用の色に変換するサブルーチン (既存維持)
 #==========================================================================================
 def get_weather_info(code):
-    if pd.isna(code): return "", "black"
-    if code <= 2: return "晴", "#FF4500"
-    if code <= 48: return "曇", "#696969"
-    if code <= 99: return "雨", "#00008B"
-    return "？", "black"
+    if pd.isna(code): return "不明", "black", "・"
+    
+    # 0, 1: 快晴・晴れ
+    if code <= 1: 
+        return "晴", "#FF4500", "☀️"
+    # 2, 3: 時々曇り・曇り
+    if code <= 3: 
+        return "曇", "#696969", "☁️"
+    # 45, 48: 霧
+    if code <= 48: 
+        return "霧", "#A9A9A9", "🌫️"
+    # 51 - 67: 小雨・雨・みぞれ
+    if code <= 67: 
+        return "雨", "#00008B", "☔"
+    # 71 - 77: 雪
+    if code <= 77: 
+        return "雪", "#00BFFF", "❄️"
+    # 80 - 82: 俄か雨（シャワー）
+    if code <= 82: 
+        return "雨", "#4682B4", "🌦️"
+    # 95 - 99: 雷雨
+    if code <= 99: 
+        return "雷", "#800080", "⛈️"
+        
+    return "？", "black", "・"
 
 #==========================================================================================
 # 6. 風向角度を名称と矢印に変換し、条件に基づきグラフの色を判定するサブルーチン (既存維持)
@@ -471,31 +499,29 @@ def main():
         render_header_info(basho) 
     
     danger_v, sel_dirs = show_sidebar_controls()
+
+    # 1. グラフ用のデータ（アイコン用データ）を先に取得
+    df_for_icons = fetch_weather_data(st.session_state.lat, st.session_state.lon, 8)
+    
+    # 2. グラフ画像を生成
     img = generate_high_res_graph(st.session_state.lat, st.session_state.lon, danger_v, tuple(sel_dirs))
     
-    if img:
-        # 1. グラフと同じデータ（8時間分）を取得してアイコン列を作成
-        weather_df = fetch_weather_data(st.session_state.lat, st.session_state.lon, 8)
-        weather_icons = {
-            "晴れ": "☀️", "晴": "☀️", "曇り": "☁️", "曇": "☁️",
-            "小雨": "🌦️", "雨": "☔", "大雨": "⛈️", "雪": "❄️"
-        }
-        icons = [weather_icons.get(name, "・") for name in weather_df['weather_name']]
+    # --- main内の描画部分 ---
+    if img and df_for_icons is not None:
+        # fetch_weather_dataで作成したアイコン列を利用
+        icons = df_for_icons['weather_icon'].tolist()
         
-        # 2. お天気バーの作成（HTML/CSSでグラフの横スクロールと同期させる準備）
-        # ※グラフの1目盛り（1時間分）の幅に合わせて絵文字を等間隔に並べます
-        icon_html = "".join([f'<div style="min-width: 80px; text-align: center; font-size: 24px;">{icon}</div>' for icon in icons])
+        # 26pxで少し大きく、ハッキリ見えるようにします
+        icon_html = "".join([f'<div style="min-width: 80px; text-align: center; font-size: 26px;">{icon}</div>' for icon in icons])
         
-        # 3. 表示（グラフとセットでスクロールするように一つのdivにまとめます）
         st.markdown(f"""
-            <div style="overflow-x: auto; background: white; white-space: nowrap;">
-                <div style="display: flex; padding-left: 65px; margin-bottom: -10px;">
+            <div style="overflow-x: auto; background: white; white-space: nowrap; border-radius: 8px;">
+                <div style="display: flex; padding-left: 70px; margin-bottom: -10px; padding-top: 15px;">
                     {icon_html}
                 </div>
-                <img src="data:image/png;base64,{img}" style="height: 850px; max-width: none;">
+                <img src="data:image/png;base64,{img}" style="height: 850px; max-width: none; display: block;">
             </div>
         """, unsafe_allow_html=True)
-
 
 #==========================================================================================
 # XX. 呼び出しコード
