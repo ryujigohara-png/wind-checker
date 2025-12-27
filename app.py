@@ -472,8 +472,30 @@ def main():
     
     danger_v, sel_dirs = show_sidebar_controls()
     img = generate_high_res_graph(st.session_state.lat, st.session_state.lon, danger_v, tuple(sel_dirs))
+    
     if img:
-        st.markdown(f'<div style="overflow-x: auto; background: white;"><img src="data:image/png;base64,{img}" style="height: 850px; max-width: none;"></div>', unsafe_allow_html=True)
+        # 1. グラフと同じデータ（8時間分）を取得してアイコン列を作成
+        weather_df = fetch_weather_data(st.session_state.lat, st.session_state.lon, 8)
+        weather_icons = {
+            "晴れ": "☀️", "晴": "☀️", "曇り": "☁️", "曇": "☁️",
+            "小雨": "🌦️", "雨": "☔", "大雨": "⛈️", "雪": "❄️"
+        }
+        icons = [weather_icons.get(name, "・") for name in weather_df['weather_name']]
+        
+        # 2. お天気バーの作成（HTML/CSSでグラフの横スクロールと同期させる準備）
+        # ※グラフの1目盛り（1時間分）の幅に合わせて絵文字を等間隔に並べます
+        icon_html = "".join([f'<div style="min-width: 80px; text-align: center; font-size: 24px;">{icon}</div>' for icon in icons])
+        
+        # 3. 表示（グラフとセットでスクロールするように一つのdivにまとめます）
+        st.markdown(f"""
+            <div style="overflow-x: auto; background: white; white-space: nowrap;">
+                <div style="display: flex; padding-left: 65px; margin-bottom: -10px;">
+                    {icon_html}
+                </div>
+                <img src="data:image/png;base64,{img}" style="height: 850px; max-width: none;">
+            </div>
+        """, unsafe_allow_html=True)
+
 
 #==========================================================================================
 # XX. 呼び出しコード
