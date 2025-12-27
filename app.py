@@ -515,7 +515,7 @@ def main():
     # --- お天気アイコン表示ロジック ---
     if img and df_raw is not None:
         # 正確な3時間ピッチを算出
-        pitch_3h = px_per_hour  # * 3
+        pitch_3h = px_per_hour   * 3 / 2.4
         
         # 3時間ごとのアイコンを生成
         icon_elements = []
