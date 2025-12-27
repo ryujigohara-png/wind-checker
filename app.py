@@ -404,56 +404,65 @@ def render_header_info():
             st.rerun()
 
 #==========================================================================================
-# 18. メインフロー (最終安定版：余白徹底排除)
+# 18. メインフロー (PC完全復元 ＆ スマホ安定表示版)
 #==========================================================================================
 def main():
     setup_font()
 
-
+    # --- CSS注入：タイトルの確実な表示と、スマホボタンの安定化 ---
     st.markdown(f"""
         <style>
+            /* 1. ページ全体の余白：タイトルが隠れないよう上部を少し確保 */
             .block-container {{
                 padding-top: 3.5rem !important;
                 padding-bottom: 0rem !important;
             }}
+            
+            /* 2. タイトル：上下の巨大な隙間だけを消す */
             h1 {{
-                margin-top: -10px !important;
-                margin-bottom: -18px !important; 
+                margin-top: 0px !important;
+                margin-bottom: 10px !important; 
                 padding-top: 0px !important;
                 padding-bottom: 0px !important;
-                line-height: 1.0 !important;
+                line-height: 1.1 !important;
+                display: block !important;
             }}
+            
+            /* 3. 要素間の隙間：標準より少し詰める */
             [data-testid="stVerticalBlock"] {{
-                gap: 0.4rem !important;
+                gap: 0.5rem !important;
             }}
 
-            /* --- 【今回の追加修正：線とボタン間隔】 --- */
-            
-            /* 1. 不要な水平区切り線(hr)を完全に非表示にする（機能への影響なし） */
+            /* 4. 不要な水平線(hr)を非表示にする */
             hr {{
                 display: none !important;
-                margin: 0px !important;
-                padding: 0px !important;
             }}
 
-            /* 2. コンボボックス等の入力要素(Widget)の直後の余白を削る */
-            [data-testid="stWidgetLabel"] {{
-                margin-bottom: -5px !important;
-            }}
-            
-            /* 3. ボタンコンテナの上部マージンを強制排除 */
-            div.stButton {{
-                margin-top: -10px !important;
+            /* 5. スマホ版(幅640px以下)での強制リセット */
+            @media (max-width: 640px) {{
+                /* ボタンが半分になったり2行になったりするのを防ぐ */
+                .stButton {{
+                    width: 100% !important;
+                    display: block !important;
+                }}
+                .stButton button {{
+                    width: 100% !important;
+                    min-height: 45px !important;
+                    font-size: 14px !important; /* 文字を読みやすく */
+                }}
+                /* 地図表示チェックボックス周りの隙間を詰める */
+                [data-testid="stCheckbox"] {{
+                    margin-top: -5px !important;
+                    margin-bottom: -5px !important;
+                }}
             }}
         </style>
     """, unsafe_allow_html=True)
 
-    
-    
-    # タイトル表示
+    # タイトル表示（CSSで確実に表示されるよう設定）
     st.markdown(f'<h1 style="font-size:{CONFIG["TITLE_SIZE"]}px;">⛵ 高須風チェッカー</h1>', unsafe_allow_html=True)
     
-    # --- 以下、既存のロジック（完全に維持） ---
+    # --- 以下、ロジック部分は一切変更せず維持 ---
     
     # SessionState初期化
     if 'lat' not in st.session_state: st.session_state.lat = CONFIG["DEFAULT_LAT"]
@@ -467,7 +476,7 @@ def main():
         st.info("設定を読み込み中...")
         st.stop()
 
-    # 地点選択コンボボックス
+    # 地点選択
     master = CONFIG["LOCATION_MASTER"].copy()
     if st.session_state.last_basho == "現在地":
         master["現在地"] = (st.session_state.lat, st.session_state.lon)
@@ -482,26 +491,26 @@ def main():
             st.session_state.lat, st.session_state.lon = master[basho]
         st.rerun()
 
-    # 現在地ボタン（苦労して完成させたロジックをそのまま使用）
+    # 現在地ボタン（苦労して完成させたロジックを維持）
     handle_current_location_update()
     
-    # 地図表示トグル
+    # 地図表示・ヘッダー情報
     show_map = st.checkbox("地図表示", value=st.session_state.get('show_map_state', False))
     st.session_state.show_map_state = show_map
     if show_map:
         show_location_map()
 
-    # 時刻・座標・「グラフ更新」ボタン表示
     render_header_info()
     
-    # サイドバー設定取得
+    # サイドバー・グラフ描画
     danger_v, sel_dirs = show_sidebar_controls()
-    
-    # グラフ描画
     img = generate_high_res_graph(st.session_state.lat, st.session_state.lon, danger_v, tuple(sel_dirs))
     
     if img:
         st.markdown(f'<div style="overflow-x: auto; background: white;"><img src="data:image/png;base64,{img}" style="height: 850px; max-width: none;"></div>', unsafe_allow_html=True)
+
+if __name__ == "__main__":
+    main()
 
 #==========================================================================================
 # XX. 呼び出しコード
