@@ -336,7 +336,7 @@ def handle_current_location_update():
     """
     現在地取得ボタン。末尾に空白を入れて左寄せを擬似的に表現。
     """
-    if st.button("🔄 📍現在地を取得　　　　　　", use_container_width=True):
+    if st.button("🔄 📍現在地を取得　　　　　　　　　　", use_container_width=True):
         st.session_state.waiting_loc = True
         st.session_state.geo_key = f"geo_{datetime.now().timestamp()}"
         st.rerun()
@@ -389,7 +389,7 @@ def render_header_info(current_basho_name):
     # 現在の日時を取得（日本時間）
     now = datetime.now(timezone(timedelta(hours=9)))
     # 日付と時刻のフォーマット（例：2025/12/27 17:24）
-    date_time_str = now.strftime('%y/%m/%d %H:%M:%S')
+    date_time_str = now.strftime('yyyy/%m/%d %H:%M:%S')
     
     # ボタンのラベルに日付・時刻を組み込み
     update_label = f"🔄 データ更新 ({date_time_str})　　"
