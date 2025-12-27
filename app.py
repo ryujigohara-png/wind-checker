@@ -335,39 +335,26 @@ def handle_location_selection():
 def handle_current_location_update():
     """
     スマホ環境で動作確認済みの位置情報取得ロジック。
-    st.statusなどのコンテナを使わず、シンプルに実装してJSの発火を確実にする。
     """
-    # st.markdown("---") # 元のコードにあった区切り線（必要に応じて戻してください）
-
-    # --- ボタン配置部分のみ修正：use_container_width=True で下のボタンと幅を揃えます ---
+    # 修正：use_container_width=True を指定
     if st.button("🔄 📍現在地", use_container_width=True):
         st.session_state.waiting_loc = True
-        # キャッシュ回避用の新しいキーを発行（元のロジック通り）
         st.session_state.geo_key = f"geo_{datetime.now().timestamp()}"
         st.rerun()
 
-    # --- 待機モード時の処理（ここは元のコードを完全に維持しています） ---
     if st.session_state.get("waiting_loc"):
-        st.info("🛰️ 現在地を取得しています... (許可ポップアップが出たら「許可」を押してください)")
-        
-        # 専用関数 get_geolocation を使用（元のロジック通り）
+        st.info("🛰️ 現在地を取得しています...")
         loc = get_geolocation(component_key=st.session_state.get("geo_key"))
 
         if loc:
-            new_lat = round(loc['coords']['latitude'], 4)
-            new_lon = round(loc['coords']['longitude'], 4)
-            
-            # データの同期（State更新）
-            st.session_state.lat = new_lat
-            st.session_state.lon = new_lon
+            st.session_state.lat = round(loc['coords']['latitude'], 4)
+            st.session_state.lon = round(loc['coords']['longitude'], 4)
             st.session_state.last_basho = "現在地"
-            
-            st.success("✅ 取得成功！描画を更新します。")
+            st.success("✅ 取得成功！")
             st.session_state.waiting_loc = False
             st.rerun()
-        
         elif loc is False:
-            st.error("❌ 位置情報の取得に失敗しました。ブラウザの設定を確認してください。")
+            st.error("❌ 取得失敗")
             if st.button("キャンセル"):
                 st.session_state.waiting_loc = False
                 st.rerun()
@@ -399,34 +386,21 @@ def show_sidebar_controls():
 # 17. 現在時刻と更新ボタンを表示するサブルーチン (1行化・全幅・左寄せ)
 #==========================================================================================
 def render_header_info(current_basho_name):
-    """
-    選択された地点の情報をボタンとして表示し、その下に取得時刻を配置します。
-    引数 current_basho_name: selectboxで選択されている場所の名前
-    """
-    
-    # ボタンのラベル：スマホでの2行化を防ぐため「 グラフ更新」を削除
-    # 例：「🔄 高須沖(鹿児島県) (31.3370, 130.7950)」
+    # ラベルを1行に収める
     button_label = f"🔄 {current_basho_name} ({st.session_state.lat:.4f}, {st.session_state.lon:.4f})"
     
-    # 修正：use_container_width=True にすることで、CSSの左寄せ設定と連動し、
-    # 上の現在地ボタンと全く同じ幅で綺麗に並びます。
+    # 修正：use_container_width=True を指定
     if st.button(button_label, use_container_width=True):
         st.cache_data.clear()
         st.rerun()
     
-    # 取得時刻：ボタンのすぐ下に小さく表示（重なりを防ぐため margin-top を微調整）
     now = datetime.now(timezone(timedelta(hours=9)))
     now_str = now.strftime('%Y/%m/%d %H:%M:%S')
     
     st.markdown(
-        f"""
-        <p style='font-size:12px; color:gray; margin-top: 2px; margin-left:5px;'>
-            最終データ取得時刻: {now_str}
-        </p>
-        """, 
+        f"<p style='font-size:12px; color:gray; margin-top: 2px; margin-left:5px;'>最終データ取得時刻: {now_str}</p>", 
         unsafe_allow_html=True
     )
-    
     
     
 #==========================================================================================
@@ -435,7 +409,7 @@ def render_header_info(current_basho_name):
 def main():
     setup_font()
 
-    # --- CSS注入：ボタンを左寄せ・全幅に強制する最新設定 ---
+    # --- CSS注入：ボタンを「左寄せ・全幅」に強力に固定 ---
     st.markdown(f"""
         <style>
             .block-container {{ padding-top: 3.5rem !important; padding-bottom: 0rem !important; }}
@@ -443,18 +417,26 @@ def main():
             [data-testid="stVerticalBlock"] {{ gap: 0.3rem !important; }}
             hr {{ display: none !important; }}
 
-            /* ボタン本体の横幅を100%にし、中身を左寄せにする */
+            /* 1. ボタン全体のコンテナを全幅にする */
+            div.stButton {{
+                width: 100% !important;
+            }}
+
+            /* 2. ボタン本体を全幅にし、中身を左寄せにする */
             div.stButton > button {{
                 width: 100% !important;
                 display: flex !important;
-                justify-content: flex-start !important; /* 左寄せ */
+                justify-content: flex-start !important; /* ボタン内の要素を左端へ */
+                align-items: center !important;
+                text-align: left !important;
                 padding-left: 15px !important;
-                text-align: left !important;
+                min-height: 45px !important; /* 押しやすさの確保 */
             }}
-            /* ボタン内のテキストラベルも左寄せに固定 */
-            div.stButton > button p {{
-                margin-left: 0 !important;
+
+            /* 3. ボタン内のテキストラベルも強制的に左寄せ */
+            div.stButton > button div[data-testid="stMarkdownContainer"] p {{
                 text-align: left !important;
+                margin: 0 !important;
                 width: 100% !important;
             }}
         </style>
@@ -462,6 +444,7 @@ def main():
 
     st.markdown(f'<h1 style="font-size:{CONFIG["TITLE_SIZE"]}px;">⛵ 高須風チェッカー</h1>', unsafe_allow_html=True)
     
+    # SessionState初期化
     if 'lat' not in st.session_state: st.session_state.lat = CONFIG["DEFAULT_LAT"]
     if 'lon' not in st.session_state: st.session_state.lon = CONFIG["DEFAULT_LON"]
     if 'last_basho' not in st.session_state: st.session_state.last_basho = CONFIG["DEFAULT_BASHO"]
@@ -472,6 +455,7 @@ def main():
         st.info("設定を読み込み中...")
         st.stop()
 
+    # 地点選択
     master = CONFIG["LOCATION_MASTER"].copy()
     if st.session_state.last_basho == "現在地":
         master["現在地"] = (st.session_state.lat, st.session_state.lon)
@@ -486,16 +470,14 @@ def main():
             st.session_state.lat, st.session_state.lon = master[basho]
         st.rerun()
 
-    # 地図表示チェックボックス
+    # チェックボックスを上に配置
     show_map = st.checkbox("地図表示", value=st.session_state.get('show_map_state', False))
     st.session_state.show_map_state = show_map
     if show_map:
         show_location_map()
 
-    # ① 現在地ボタンの呼び出し
+    # ボタン呼び出し
     handle_current_location_update()
-    
-    # ② 選択地点のボタンと時刻表示の呼び出し
     render_header_info(basho) 
     
     danger_v, sel_dirs = show_sidebar_controls()
@@ -503,7 +485,7 @@ def main():
     
     if img:
         st.markdown(f'<div style="overflow-x: auto; background: white;"><img src="data:image/png;base64,{img}" style="height: 850px; max-width: none;"></div>', unsafe_allow_html=True)
-
+        
 #==========================================================================================
 # XX. 呼び出しコード
 #==========================================================================================
