@@ -409,38 +409,43 @@ def render_header_info(current_basho_name):
 def main():
     setup_font()
 
-    # --- CSS注入：ボタンを「左寄せ・全幅」に強力に固定 ---
+# --- CSS注入：ボタンの左寄せと全幅を強制 ---
     st.markdown(f"""
         <style>
             .block-container {{ padding-top: 3.5rem !important; padding-bottom: 0rem !important; }}
             h1 {{ margin-top: 0px !important; margin-bottom: -15px !important; line-height: 1.0 !important; }}
             [data-testid="stVerticalBlock"] {{ gap: 0.3rem !important; }}
-            hr {{ display: none !important; }}
-
-            /* 1. ボタン全体のコンテナを全幅にする */
-            div.stButton {{
+            
+            /* ボタンの外枠を全幅に */
+            div[data-testid="stButton"] {{
                 width: 100% !important;
             }}
 
-            /* 2. ボタン本体を全幅にし、中身を左寄せにする */
-            div.stButton > button {{
+            /* ボタン本体のスタイル強制 */
+            div[data-testid="stButton"] > button {{
                 width: 100% !important;
                 display: flex !important;
-                justify-content: flex-start !important; /* ボタン内の要素を左端へ */
-                align-items: center !important;
+                justify-content: flex-start !important; /* 中身を左へ */
                 text-align: left !important;
-                padding-left: 15px !important;
-                min-height: 45px !important; /* 押しやすさの確保 */
+                padding-left: 1rem !important;
+                border-radius: 5px !important;
             }}
 
-            /* 3. ボタン内のテキストラベルも強制的に左寄せ */
-            div.stButton > button div[data-testid="stMarkdownContainer"] p {{
+            /* ボタン内のテキスト要素を左寄せに固定 */
+            div[data-testid="stButton"] button div[data-testid="stMarkdownContainer"] p {{
                 text-align: left !important;
-                margin: 0 !important;
+                justify-content: flex-start !important;
+                display: flex !important;
                 width: 100% !important;
+            }}
+
+            /* チェックボックス周りの余白微調整 */
+            .stCheckbox {{
+                margin-bottom: 5px !important;
             }}
         </style>
     """, unsafe_allow_html=True)
+    
 
     st.markdown(f'<h1 style="font-size:{CONFIG["TITLE_SIZE"]}px;">⛵ 高須風チェッカー</h1>', unsafe_allow_html=True)
     
