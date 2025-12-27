@@ -409,53 +409,47 @@ def render_header_info():
 def main():
     setup_font()
 
-    # --- CSS注入：全体の密度を上げ、グラフを最優先で表示させる ---
+
     st.markdown(f"""
         <style>
-            /* 1. ページ最上部とタイトルの余白設定 */
-            .block-container {{ 
-                padding-top: 3.5rem !important; 
-                padding-bottom: 0rem !important; 
+            .block-container {{
+                padding-top: 3.5rem !important;
+                padding-bottom: 0rem !important;
             }}
-            h1 {{ 
-                margin-top: -10px !important; 
-                margin-bottom: -20px !important; 
-                line-height: 1.0 !important; 
+            h1 {{
+                margin-top: -10px !important;
+                margin-bottom: -18px !important; 
+                padding-top: 0px !important;
+                padding-bottom: 0px !important;
+                line-height: 1.0 !important;
             }}
-            
-            /* 2. 要素間の標準ギャップを極限まで縮小 */
-            [data-testid="stVerticalBlock"] {{ 
-                gap: 0.1rem !important; 
-            }}
-            
-            /* 3. 水平線(hr)を非表示にし、チェックボックス周りの隙間を削る */
-            hr {{ display: none !important; }}
-            
-            [data-testid="stCheckbox"] {{ 
-                margin-top: -15px !important; 
-                margin-bottom: -15px !important; 
-            }}
-            
-            /* 4. 入力ラベルとボタン周りの余白を最小化 */
-            [data-testid="stWidgetLabel"] {{ 
-                margin-bottom: -12px !important; 
-            }}
-            
-            div.stButton {{ 
-                margin-top: -10px !important; 
-                margin-bottom: -5px !important; 
+            [data-testid="stVerticalBlock"] {{
+                gap: 0.4rem !important;
             }}
 
-            /* 5. 念のため、スマホでのボタン幅を100%に固定して安定させる */
-            @media (max-width: 640px) {{
-                .stButton button {{
-                    width: 100% !important;
-                    min-height: 45px !important;
-                }}
+            /* --- 【今回の追加修正：線とボタン間隔】 --- */
+            
+            /* 1. 不要な水平区切り線(hr)を完全に非表示にする（機能への影響なし） */
+            hr {{
+                display: none !important;
+                margin: 0px !important;
+                padding: 0px !important;
+            }}
+
+            /* 2. コンボボックス等の入力要素(Widget)の直後の余白を削る */
+            [data-testid="stWidgetLabel"] {{
+                margin-bottom: -5px !important;
+            }}
+            
+            /* 3. ボタンコンテナの上部マージンを強制排除 */
+            div.stButton {{
+                margin-top: -10px !important;
             }}
         </style>
     """, unsafe_allow_html=True)
 
+    
+    
     # タイトル表示
     st.markdown(f'<h1 style="font-size:{CONFIG["TITLE_SIZE"]}px;">⛵ 高須風チェッカー</h1>', unsafe_allow_html=True)
     
