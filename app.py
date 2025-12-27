@@ -404,36 +404,36 @@ def render_header_info():
             st.rerun()
 
 #==========================================================================================
-# 18. メインフロー (タイトル前後の余白削減版)
+# 18. メインフロー (タイトル再表示・安全調整版)
 #==========================================================================================
 def main():
     setup_font()
 
-    # --- タイトル前後の余白を最小化するためのCSS注入 ---
-    # 他の要素（地図やグラフ）に影響を与えないよう、ページトップとh1タグに限定して調整
+    # --- タイトル前後の余白を安全に最小化するCSS ---
+    # padding-top を 3.5rem に戻してタイトルの隠れを防止し、h1の上下余白のみを削ります。
     st.markdown(f"""
         <style>
-            /* 1. ページ最上部の空白(デフォルト約100px)を最小化 */
+            /* 1. ページ最上部の空白を適度に確保（タイトルが隠れないように調整） */
             .block-container {{
-                padding-top: 1.5rem !important;
+                padding-top: 3.5rem !important;
                 padding-bottom: 0rem !important;
             }}
-            /* 2. タイトル(h1)の上下に自動でつくマージンを排除 */
+            /* 2. タイトル(h1)自体の上下マージンを最小化 */
             h1 {{
-                margin-top: 0px !important;
-                margin-bottom: 0.2rem !important;
+                margin-top: -10px !important;
+                margin-bottom: 10px !important;
                 padding-top: 0px !important;
                 padding-bottom: 0px !important;
-                line-height: 1.2 !important;
+                line-height: 1.1 !important;
             }}
-            /* 3. タイトル直後の要素(地点選択)との隙間を微調整 */
-            [data-testid="stVerticalBlock"] > div:first-child {{
-                margin-bottom: -10px !important;
+            /* 3. 要素間の標準的な隙間を少しだけ詰める */
+            [data-testid="stVerticalBlock"] {{
+                gap: 0.8rem !important;
             }}
         </style>
     """, unsafe_allow_html=True)
 
-    # タイトル表示
+    # タイトル表示（確実に表示されるよう、少しマージンを持たせたCSSを適用）
     st.markdown(f'<h1 style="font-size:{CONFIG["TITLE_SIZE"]}px;">⛵ 高須風チェッカー</h1>', unsafe_allow_html=True)
     
     # --- 以下、既存のロジックを完全維持 ---
