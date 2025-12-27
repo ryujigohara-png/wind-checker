@@ -392,7 +392,7 @@ def render_header_info(current_basho_name):
     date_time_str = now.strftime('%Y/%m/%d %H:%M:%S')
     
     # ボタンのラベルに日付・時刻を組み込み
-    update_label = f"🔄 データ更新 ({date_time_str})　　"
+    update_label = f"🔄 データ更新 ({date_time_str})　   　"
     
     if st.button(update_label, use_container_width=True):
         st.cache_data.clear()
