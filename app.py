@@ -297,8 +297,8 @@ def sync_all_settings():
         "sel_dirs": st.session_state.get("sel_dirs", CONFIG["DEFAULT_DIRS"])
     }
     js_save = f"localStorage.setItem('{STORAGE_KEY}', '{json.dumps(save_data)}')"
-    streamlit_js_eval(js_expressions=js_save, key="save_storage")
-
+    streamlit_js_eval(js_expressions=js_save, key=f"save_storage_{time.time()}")
+    
 #==========================================================================================
 # 14. 地点選択のロジックを制御するサブルーチン
 #==========================================================================================
