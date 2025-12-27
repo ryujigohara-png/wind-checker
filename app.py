@@ -29,7 +29,6 @@ CONFIG = {
     "LABEL_SIZE": 12,
     "ANNOT_SIZE": 15,
     "DPI": 200,
-    "GRAPH_WIDTH_INCH": 40,  # グラフの横幅（インチ）
     "MAP_HEIGHT": 350,
     "HEIGHT_RATIOS": [4.4, 1.2, 0.8],
     "LOC_INFO_FONT_SIZE": "16px",
@@ -231,17 +230,18 @@ def render_tide_curve_chart(ax, df):
     ax.set_yticks([])
 
 #==========================================================================================
-# 11. 高解像度グラフ生成 (既存維持)
+# 11. 高解像度グラフ生成 (px精度 同期版)
 #==========================================================================================
 @st.cache_data(show_spinner="グラフを生成中...")
 def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple):
     df = fetch_weather_data(lat, lon, 8)
-    if df is None: return None
+    if df is None: return None, 0
     
     padding_df = pd.DataFrame({'time': [df['time'].iloc[0] - timedelta(hours=i) for i in range(1, 4)][::-1]})
     df = pd.concat([padding_df, df], ignore_index=True)
     df = process_wind_data(df, list(selected_dirs_tuple))
     
+    # 既存の figsize=(40, 11) を維持（ここを変えても計算が壊れないようにします）
     fig, axes = plt.subplots(3, 1, figsize=(40, 11), dpi=CONFIG["DPI"], gridspec_kw={'height_ratios': CONFIG["HEIGHT_RATIOS"]})
     plt.subplots_adjust(hspace=0.6)
     
@@ -255,11 +255,21 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple):
     for ax in axes:
         if ax.get_visible():
             apply_common_axis_settings(ax, df, formatter, now_jst)
-            
+
+    # --- 【重要】このグラフにおける「1時間」の物理ピクセル幅を計測 ---
+    # get_window_extent で軸の描画領域（ピクセル）を取得し、表示時間数で割る
+    renderer = fig.canvas.get_renderer()
+    bbox = axes[0].get_window_extent(renderer)
+    # グラフの枠（プロットエリア）自体の横幅(px)を算出し、時間数で割る
+    px_per_hour = bbox.width / (len(df) - 1)
+
     buf = io.BytesIO()
     fig.savefig(buf, format="png", bbox_inches='tight', pad_inches=0.1)
     plt.close(fig) 
-    return base64.b64encode(buf.getvalue()).decode()
+    
+    img_b64 = base64.b64encode(buf.getvalue()).decode()
+    return img_b64, px_per_hour
+    
 
 #==========================================================================================
 # 12. 地図UI表示サブルーチン (仕様5.2: 3x3格子レイアウト)
@@ -499,30 +509,34 @@ def main():
 
     # 1. データ取得
     df_raw = fetch_weather_data(st.session_state.lat, st.session_state.lon, 8)
-    img = generate_high_res_graph(st.session_state.lat, st.session_state.lon, danger_v, tuple(sel_dirs))
+    img, px_per_hour = generate_high_res_graph(st.session_state.lat, st.session_state.lon, danger_v, tuple(sel_dirs))
     
     # --- お天気アイコン表示ロジック（同期調整） ---
     if img and df_raw is not None:
-        # パディング込の総時間数 (パディング3h + 予報192h = 195h)
-        total_hours = 3 + len(df_raw)
+        # 正確な3時間ピッチ
+        pitch_3h = px_per_hour * 3
         
-        # 1時間あたりのピクセル幅
-        pixel_per_hour = (CONFIG["GRAPH_WIDTH_INCH"] * CONFIG["DPI"]) / total_hours
-        pitch_3h = pixel_per_hour * 3
-        
-        # スタート位置の微調整 (画像全体の端の余白を考慮)
-        # スクリーンショットに基づき、72pxからさらに微調整
-        graph_left_margin = 135 # Y軸ラベル + 余白の合計幅(px)
-
+        # アイコンの生成
         icon_elements = []
-        # 最初の3時間分（グラフの空白部分）をスキップ
-        # その後、3時間おきにアイコンを配置
         for i in range(0, len(df_raw), 3):
             icon = df_raw.iloc[i]['weather_icon']
-            # 各アイコンを pitch_3h の幅を持つ枠に入れて並べる
+            # 計算されたピクセル値をそのまま幅に指定
             icon_elements.append(f'<div style="min-width: {pitch_3h}px; text-align: center; font-size: 30px;">{icon}</div>')
         
         icon_html = "".join(icon_elements)
+        
+        # padding-left は「左軸＋3時間分の空白」に相当するpxを動的に計算
+        # 1.15倍程度の係数は、Y軸ラベルの幅(約150-200px相当)を埋めるためのものです
+        left_offset = (px_per_hour * 3) + 145 
+
+        st.markdown(f"""
+            <div style="overflow-x: auto; background: white; white-space: nowrap; border-radius: 8px;">
+                <div style="display: flex; padding-left: {left_offset}px; margin-bottom: -15px; padding-top: 15px;">
+                    {icon_html}
+                </div>
+                <img src="data:image/png;base64,{img}" style="height: 850px; max-width: none; display: block;">
+            </div>
+        """, unsafe_allow_html=True)
         
         # HTML表示：グラフの左余白とアイコンの開始点を一致させる
         st.markdown(f"""
