@@ -404,40 +404,35 @@ def render_header_info():
             st.rerun()
 
 #==========================================================================================
-# 18. メインフロー (タイトル再表示・安全調整版)
+# 18. メインフロー (インデント修正・間隔極小版)
 #==========================================================================================
 def main():
     setup_font()
 
-    # --- タイトル前後の余白を安全に最小化するCSS ---
-    # padding-top を 3.5rem に戻してタイトルの隠れを防止し、h1の上下余白のみを削ります。
-st.markdown(f"""
+    # --- CSS注入：タイトルとコンボボックスの間隔を極小化 ---
+    st.markdown(f"""
         <style>
-            /* ページ最上部の余白 */
+            /* 1. ページ最上部の余白設定 */
             .block-container {{
                 padding-top: 3.5rem !important;
                 padding-bottom: 0rem !important;
             }}
-            /* タイトル(h1)設定 */
+            /* 2. タイトル(h1)設定：下のマージンをマイナスにして次行を引き寄せる */
             h1 {{
                 margin-top: -10px !important;
-                /* 【ここを修正】下の余白をマイナスにして、次の要素を吸い寄せる */
-                margin-bottom: -15px !important; 
+                margin-bottom: -18px !important; 
                 padding-top: 0px !important;
                 padding-bottom: 0px !important;
                 line-height: 1.0 !important;
             }}
-            /* 要素間の標準的な隙間(Gap) */
+            /* 3. 要素間の標準ギャップ(gap)をさらに狭める */
             [data-testid="stVerticalBlock"] {{
-                /* 【ここを修正】全体の間隔をさらに狭める(0.8rem -> 0.4rem) */
                 gap: 0.4rem !important;
             }}
         </style>
     """, unsafe_allow_html=True)
 
-    # 以下、既存のタイトル表示とロジックを継続
-    
-    # タイトル表示（確実に表示されるよう、少しマージンを持たせたCSSを適用）
+    # タイトル表示 (インデントを正確に修正)
     st.markdown(f'<h1 style="font-size:{CONFIG["TITLE_SIZE"]}px;">⛵ 高須風チェッカー</h1>', unsafe_allow_html=True)
     
     # --- 以下、既存のロジックを完全維持 ---
@@ -489,6 +484,9 @@ st.markdown(f"""
     
     if img:
         st.markdown(f'<div style="overflow-x: auto; background: white;"><img src="data:image/png;base64,{img}" style="height: 850px; max-width: none;"></div>', unsafe_allow_html=True)
-
+        
+#==========================================================================================
+# XX. 呼び出しコード
+#==========================================================================================
 if __name__ == "__main__":
     main()
