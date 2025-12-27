@@ -409,43 +409,23 @@ def render_header_info(current_basho_name):
 def main():
     setup_font()
 
-# --- CSS注入：ボタンの左寄せと全幅を強制 ---
+    # --- 逆転の発想」を取り入れた修正案 ---
     st.markdown(f"""
         <style>
             .block-container {{ padding-top: 3.5rem !important; padding-bottom: 0rem !important; }}
             h1 {{ margin-top: 0px !important; margin-bottom: -15px !important; line-height: 1.0 !important; }}
             [data-testid="stVerticalBlock"] {{ gap: 0.3rem !important; }}
             
-            /* ボタンの外枠を全幅に */
-            div[data-testid="stButton"] {{
+            /* ボタン内の文字を左寄せにするだけのシンプルな指定 */
+            div.stButton > button p {{
+                text-align: left !important;
                 width: 100% !important;
             }}
-
-            /* ボタン本体のスタイル強制 */
-            div[data-testid="stButton"] > button {{
-                width: 100% !important;
-                display: flex !important;
-                justify-content: flex-start !important; /* 中身を左へ */
-                text-align: left !important;
-                padding-left: 1rem !important;
-                border-radius: 5px !important;
-            }}
-
-            /* ボタン内のテキスト要素を左寄せに固定 */
-            div[data-testid="stButton"] button div[data-testid="stMarkdownContainer"] p {{
-                text-align: left !important;
+            div.stButton > button {{
                 justify-content: flex-start !important;
-                display: flex !important;
-                width: 100% !important;
-            }}
-
-            /* チェックボックス周りの余白微調整 */
-            .stCheckbox {{
-                margin-bottom: 5px !important;
             }}
         </style>
     """, unsafe_allow_html=True)
-    
 
     st.markdown(f'<h1 style="font-size:{CONFIG["TITLE_SIZE"]}px;">⛵ 高須風チェッカー</h1>', unsafe_allow_html=True)
     
@@ -482,9 +462,17 @@ def main():
         show_location_map()
 
     # ボタン呼び出し
-    handle_current_location_update()
-    render_header_info(basho) 
+    # --- 修正箇所：あえて「入り切らない幅」のカラムを作り、縦に並べる ---
+    # 合計が 1.0 (100%) を超えるように設定します（例：0.7 + 0.7 = 1.4）
+    # これにより、一つ目のボタンが70%幅、二つ目が入りきらずに「同じ幅」で下に落ちます。
+    col1, col2 = st.columns([0.7, 0.7]) 
+
+    with col1:
+        handle_current_location_update()
     
+    with col2:
+        render_header_info(basho)  
+
     danger_v, sel_dirs = show_sidebar_controls()
     img = generate_high_res_graph(st.session_state.lat, st.session_state.lon, danger_v, tuple(sel_dirs))
     
