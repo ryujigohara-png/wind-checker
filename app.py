@@ -334,23 +334,20 @@ def handle_location_selection():
 #==========================================================================================
 def handle_current_location_update():
     """
-    スマホ環境で動作確認済みの位置情報取得ロジック。
+    現在地取得ボタン。末尾に空白を入れて左寄せを擬似的に表現。
     """
-    # 修正：use_container_width=True を指定
-    if st.button("🔄 📍現在地", use_container_width=True):
+    if st.button("🔄 📍現在地を取得　　　　　　", use_container_width=True):
         st.session_state.waiting_loc = True
         st.session_state.geo_key = f"geo_{datetime.now().timestamp()}"
         st.rerun()
 
     if st.session_state.get("waiting_loc"):
-        st.info("🛰️ 現在地を取得しています...")
+        st.info("🛰️ 現在地を取得中...")
         loc = get_geolocation(component_key=st.session_state.get("geo_key"))
-
         if loc:
             st.session_state.lat = round(loc['coords']['latitude'], 4)
             st.session_state.lon = round(loc['coords']['longitude'], 4)
             st.session_state.last_basho = "現在地"
-            st.success("✅ 取得成功！")
             st.session_state.waiting_loc = False
             st.rerun()
         elif loc is False:
@@ -386,21 +383,20 @@ def show_sidebar_controls():
 # 17. 現在時刻と更新ボタンを表示するサブルーチン (1行化・全幅・左寄せ)
 #==========================================================================================
 def render_header_info(current_basho_name):
-    # ラベルを1行に収める
-    button_label = f"🔄 {current_basho_name} ({st.session_state.lat:.4f}, {st.session_state.lon:.4f})"
+    """
+    データ更新ボタン。ラベルに日付と時刻を組み込みます。
+    """
+    # 現在の日時を取得（日本時間）
+    now = datetime.now(timezone(timedelta(hours=9)))
+    # 日付と時刻のフォーマット（例：2025/12/27 17:24）
+    date_time_str = now.strftime('%y/%m/%d %H:%M:%S')
     
-    # 修正：use_container_width=True を指定
-    if st.button(button_label, use_container_width=True):
+    # ボタンのラベルに日付・時刻を組み込み
+    update_label = f"🔄 データ更新 ({date_time_str})　　"
+    
+    if st.button(update_label, use_container_width=True):
         st.cache_data.clear()
         st.rerun()
-    
-    now = datetime.now(timezone(timedelta(hours=9)))
-    now_str = now.strftime('%Y/%m/%d %H:%M:%S')
-    
-    st.markdown(
-        f"<p style='font-size:12px; color:gray; margin-top: 2px; margin-left:5px;'>最終データ取得時刻: {now_str}</p>", 
-        unsafe_allow_html=True
-    )
     
     
 #==========================================================================================
@@ -409,76 +405,71 @@ def render_header_info(current_basho_name):
 def main():
     setup_font()
 
-    # --- 逆転の発想」を取り入れた修正案 ---
+    # --- CSS注入：最小限の左寄せ設定 ---
     st.markdown(f"""
         <style>
             .block-container {{ padding-top: 3.5rem !important; padding-bottom: 0rem !important; }}
             h1 {{ margin-top: 0px !important; margin-bottom: -15px !important; line-height: 1.0 !important; }}
             [data-testid="stVerticalBlock"] {{ gap: 0.3rem !important; }}
-            
-            /* ボタン内の文字を左寄せにするだけのシンプルな指定 */
-            div.stButton > button p {{
-                text-align: left !important;
-                width: 100% !important;
-            }}
-            div.stButton > button {{
-                justify-content: flex-start !important;
-            }}
+            div.stButton > button p {{ text-align: left !important; width: 100% !important; }}
+            div.stButton > button {{ justify-content: flex-start !important; }}
         </style>
     """, unsafe_allow_html=True)
 
     st.markdown(f'<h1 style="font-size:{CONFIG["TITLE_SIZE"]}px;">⛵ 高須風チェッカー</h1>', unsafe_allow_html=True)
     
-    # SessionState初期化
     if 'lat' not in st.session_state: st.session_state.lat = CONFIG["DEFAULT_LAT"]
     if 'lon' not in st.session_state: st.session_state.lon = CONFIG["DEFAULT_LON"]
     if 'last_basho' not in st.session_state: st.session_state.last_basho = CONFIG["DEFAULT_BASHO"]
-
     sync_all_settings()
 
     if "initialized" not in st.session_state:
         st.info("設定を読み込み中...")
         st.stop()
 
-    # 地点選択
+    # --- 地点選択コンボボックス（座標を名前に統合） ---
     master = CONFIG["LOCATION_MASTER"].copy()
-    if st.session_state.last_basho == "現在地":
-        master["現在地"] = (st.session_state.lat, st.session_state.lon)
-    master["地図で指定"] = (st.session_state.lat, st.session_state.lon)
+    display_options = {}
+    for name, coords in master.items():
+        display_options[f"{name} ({coords[0]:.4f}, {coords[1]:.4f})"] = name
+
+    current_loc_label = f"📍 現在地 ({st.session_state.lat:.4f}, {st.session_state.lon:.4f})"
+    display_options[current_loc_label] = "現在地"
+    display_options["🗺️ 地図で指定"] = "地図で指定"
+
+    reverse_display = {v: k for k, v in display_options.items()}
+    current_display_val = reverse_display.get(st.session_state.last_basho, current_loc_label)
     
-    current_idx = list(master.keys()).index(st.session_state.last_basho) if st.session_state.last_basho in master else 0
-    basho = st.selectbox("地点を選択してください", list(master.keys()), index=current_idx)
-    
+    selected_display = st.selectbox(
+        "地点を選択してください", 
+        list(display_options.keys()), 
+        index=list(display_options.keys()).index(current_display_val)
+    )
+    basho = display_options[selected_display]
+
     if basho != st.session_state.last_basho:
         st.session_state.last_basho = basho
         if basho not in ["地図で指定", "現在地"]:
             st.session_state.lat, st.session_state.lon = master[basho]
         st.rerun()
 
-    # チェックボックスを上に配置
     show_map = st.checkbox("地図表示", value=st.session_state.get('show_map_state', False))
     st.session_state.show_map_state = show_map
     if show_map:
         show_location_map()
 
-    # ボタン呼び出し
-    # --- 修正箇所：あえて「入り切らない幅」のカラムを作り、縦に並べる ---
-    # 合計が 1.0 (100%) を超えるように設定します（例：0.7 + 0.7 = 1.4）
-    # これにより、一つ目のボタンが70%幅、二つ目が入りきらずに「同じ幅」で下に落ちます。
+    # --- ボタン配置（カラム落ちハック：0.7+0.7） ---
     col1, col2 = st.columns([0.7, 0.7]) 
-
     with col1:
         handle_current_location_update()
-    
     with col2:
-        render_header_info(basho)  
-
+        render_header_info(basho) 
+    
     danger_v, sel_dirs = show_sidebar_controls()
     img = generate_high_res_graph(st.session_state.lat, st.session_state.lon, danger_v, tuple(sel_dirs))
-    
     if img:
         st.markdown(f'<div style="overflow-x: auto; background: white;"><img src="data:image/png;base64,{img}" style="height: 850px; max-width: none;"></div>', unsafe_allow_html=True)
-        
+
 #==========================================================================================
 # XX. 呼び出しコード
 #==========================================================================================
