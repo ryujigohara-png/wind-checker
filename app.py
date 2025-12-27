@@ -210,43 +210,27 @@ def render_tide_curve_chart(ax, df):
 #==========================================================================================
 def generate_weather_icons_html(df, ratio_info):
     start_x, hour_w = ratio_info
-    
-    # --- フィードバックに基づく精密補正 ---
-    # ピッチ（間隔）が狭い＝倍率が足りないので、1.012 (約1.2%拡大) に調整
-    # 全体の開始位置を右へ戻すため、OFFSETを -0.3 に緩和
-    PITCH_CORRECTION = 1.012  
-    LEFT_OFFSET = -0.3       
-    
     icon_html = ""
     for i in range(3, len(df), 3):
         row = df.iloc[i]
         if 'w_icon' not in row: continue
         
-        # 1. 基準位置を計算
-        # 2. ピッチ補正を掛けて、右に行くほど広がるようにする
-        # 3. 全体のオフセットを加える
-        pos_left = ((start_x + (i * hour_w)) * 100 * PITCH_CORRECTION) + LEFT_OFFSET
+        # グラフの座標系と100%一致するはずの計算
+        pos_left = (start_x + (i * hour_w)) * 100
         
         icon_html += f'''
-            <div style="
-                position: absolute; 
-                left: {pos_left}%; 
-                transform: translateX(-50%); 
-                width: 80px; 
-                text-align: center; 
-                font-size: 32px; 
-                z-index: 10;">
+            <div style="position: absolute; left: {pos_left}%; transform: translateX(-50%); width: 80px; text-align: center; font-size: 32px;">
                 {row["w_icon"]}
             </div>'''
             
     return f'<div style="position: relative; width: 8000px; height: 50px; margin-bottom: -15px;">{icon_html}</div>'
-    
 
 #==========================================================================================
 # 11. 高解像度グラフ生成 (キャッシュ解除版)
 #==========================================================================================
 # 修正：動作確認のため、一時的に @st.cache_data をコメントアウトします
 # @st.cache_data(show_spinner="グラフを生成中...")
+@st.cache_data(show_spinner="グラフを生成中...")
 def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple):
     df = fetch_weather_data(lat, lon, 8)
     if df is None: return None, None, None
@@ -256,7 +240,9 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple):
     df = process_wind_data(df, list(selected_dirs_tuple))
     
     fig, axes = plt.subplots(3, 1, figsize=(40, 11), dpi=CONFIG["DPI"], gridspec_kw={'height_ratios': CONFIG["HEIGHT_RATIOS"]})
-    plt.subplots_adjust(hspace=0.6)
+    
+    # 余白を「自動」ではなく「固定」にします
+    plt.subplots_adjust(left=0.05, right=0.95, bottom=0.1, top=0.9, hspace=0.6)
     
     formatter = get_x_axis_formatter()
     now_jst = datetime.now(timezone(timedelta(hours=9))).replace(tzinfo=None)
@@ -269,12 +255,12 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple):
         if ax.get_visible():
             apply_common_axis_settings(ax, df, formatter, now_jst)
 
-    fig.tight_layout()
+    # 座標計算：固定した余白に基づき算出
     pos = axes[0].get_position()
     ratio_info = (pos.x0, pos.width / (len(df) - 1))
             
     buf = io.BytesIO()
-    # 完全に固定されたレイアウトで出力
+    # 【重要】bbox_inchesをNoneにすることで、上で設定した固定余白が維持されます
     fig.savefig(buf, format="png", bbox_inches=None)
     plt.close(fig) 
     return base64.b64encode(buf.getvalue()).decode(), ratio_info, df
