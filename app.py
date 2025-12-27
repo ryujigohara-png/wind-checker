@@ -230,7 +230,7 @@ def render_tide_curve_chart(ax, df):
     ax.set_yticks([])
 
 #==========================================================================================
-# 11. 高解像度グラフ生成 (px精度 同期版)
+# 11. 高解像度グラフ生成 (比率計測版)
 #==========================================================================================
 @st.cache_data(show_spinner="グラフを生成中...")
 def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple):
@@ -241,35 +241,31 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple):
     df = pd.concat([padding_df, df], ignore_index=True)
     df = process_wind_data(df, list(selected_dirs_tuple))
     
-    # figsizeは既存の(40, 11)を維持
     fig, axes = plt.subplots(3, 1, figsize=(40, 11), dpi=CONFIG["DPI"], gridspec_kw={'height_ratios': CONFIG["HEIGHT_RATIOS"]})
     plt.subplots_adjust(hspace=0.6)
     
-    formatter = get_x_axis_formatter()
-    now_jst = datetime.now(timezone(timedelta(hours=9))).replace(tzinfo=None)
-    
+    # ... (既存の描画処理をそのまま実行) ...
     render_wind_bar_chart(axes[0], df, danger_v, 3)
     render_temp_line_chart(axes[1], df)
     render_tide_curve_chart(axes[2], df)
-
     for ax in axes:
-        if ax.get_visible():
-            apply_common_axis_settings(ax, df, formatter, now_jst)
+        apply_common_axis_settings(ax, df, get_x_axis_formatter(), datetime.now())
 
-    # --- 【重要】このグラフにおける「1時間」の物理ピクセル幅を計測 ---
-    # 軸の描画領域（プロットエリア）の幅(px)を取得
+    # --- 比率の計測 (座標同期の肝) ---
     renderer = fig.canvas.get_renderer()
     bbox = axes[0].get_window_extent(renderer)
-    # プロットエリア横幅 / データ間隔の数 = 1時間あたりの正確なピクセルピッチ
-    px_per_hour = bbox.width / (len(df) - 1)
+    full_width_px = fig.get_size_inches()[0] * fig.dpi
+    # プロットエリア(枠)の幅 / データ間隔数 / 画像全体の幅
+    hour_ratio = (bbox.width / (len(df) - 1)) / full_width_px
 
     buf = io.BytesIO()
-    # トリミングによる誤差を最小限にするため pad_inches=0.1
-    fig.savefig(buf, format="png", bbox_inches='tight', pad_inches=0.1)
+    # 座標の安定性を優先し bbox_inches='tight' を外して保存
+    fig.savefig(buf, format="png", bbox_inches=None, pad_inches=0)
     plt.close(fig) 
     
     img_b64 = base64.b64encode(buf.getvalue()).decode()
-    return img_b64, px_per_hour
+    return img_b64, hour_ratio
+
     
 #==========================================================================================
 # 12. 地図UI表示サブルーチン (仕様5.2: 3x3格子レイアウト)
@@ -437,9 +433,41 @@ def render_header_info(current_basho_name):
     if st.button(update_label, use_container_width=True):
         st.cache_data.clear()
         st.rerun()
-    
+
 #==========================================================================================
-# 18. メインフロー (位置同期 精密調整版)
+# 18. お天気アイコンHTML生成 (比率配置・サブルーチン版)
+#==========================================================================================
+def generate_weather_icons_html(df_raw, hour_ratio):
+    """
+    df_raw: 予報データ
+    hour_ratio: グラフ全体の幅に対する1時間の幅の割合
+    """
+    # --- 調整パラメータ ---
+    # 画像左端から「0時」の垂直線までの距離（画像全幅に対する比率）
+    # ユーザー様の検証結果(145px/8000px ≒ 0.018)と、padding(3h)を考慮
+    left_axis_margin = 0.018  # Y軸ラベル分のマージン
+    start_offset_ratio = left_axis_margin + (hour_ratio * 3) # 3時間パディング込の開始点
+
+    icon_html = ""
+    for i in range(0, len(df_raw), 3):
+        icon = df_raw.iloc[i]['weather_icon']
+        # 各アイコンの左端位置を画像全体に対する % で指定
+        pos_left = (start_offset_ratio + (i * hour_ratio)) * 100
+        
+        # アイコンを絶対座標で配置 (transformで中心合わせ)
+        icon_html += f'''
+            <div style="position: absolute; left: {pos_left}%; transform: translateX(-50%); 
+                        width: 100px; text-align: center; font-size: 32px;">
+                {icon}
+            </div>'''
+            
+    return f'''
+        <div style="position: relative; width: 8000px; height: 50px; margin-bottom: -10px; margin-top: 10px;">
+            {icon_html}
+        </div>'''
+
+#==========================================================================================
+# 19. メインフロー (位置同期 精密調整版)
 #==========================================================================================
 def main():
     setup_font()
@@ -509,38 +537,21 @@ def main():
 
     # 1. グラフ用の生データ取得
     df_raw = fetch_weather_data(st.session_state.lat, st.session_state.lon, 8)
-    # 2. グラフ生成とピクセル計測
-    img, px_per_hour = generate_high_res_graph(st.session_state.lat, st.session_state.lon, danger_v, tuple(sel_dirs))
     
-    # --- お天気アイコン表示ロジック ---
-    if img and df_raw is not None:
-        # 正確な3時間ピッチを算出
-        pitch_3h = px_per_hour   * 3 / 2.2
+    # 2. グラフ生成とピクセル計測
+    img_data, hour_ratio = generate_high_res_graph(st.session_state.lat, st.session_state.lon, danger_v, tuple(sel_dirs))
+    
+    if img_data and df_raw is not None:
+        # 1. アイコンHTMLをサブルーチンで生成
+        weather_icons_html = generate_weather_icons_html(df_raw, hour_ratio)
         
-        # 3時間ごとのアイコンを生成
-        icon_elements = []
-        for i in range(0, len(df_raw), 3):
-            icon = df_raw.iloc[i]['weather_icon']
-            # min-widthとmax-widthを一致させ、flex-shrink:0で幅を固定
-            icon_elements.append(f'<div style="min-width: {pitch_3h}px; max-width: {pitch_3h}px; flex-shrink: 0; text-align: center; font-size: 32px;">{icon}</div>')
-        
-        icon_html = "".join(icon_elements)
-        
-        # スタート位置（左マージン）の計算
-        # グラフ枠の左端(0時)に合わせるため、Y軸ラベル分(約135〜145px)と、
-        # 最初の3時間分(padding分)を加算します
-        # スクリーンショットに基づき 145px を初期値として設定
-        left_offset = 145 
-
+        # 2. 描画
         st.markdown(f"""
-            <div style="overflow-x: auto; background: white; white-space: nowrap; border-radius: 8px;">
-                <div style="display: flex; padding-left: {left_offset}px; margin-bottom: -15px; padding-top: 15px;">
-                    {icon_html}
-                </div>
-                <img src="data:image/png;base64,{img}" style="height: 850px; max-width: none; display: block;">
+            <div style="overflow-x: auto; background: white; border-radius: 8px;">
+                {weather_icons_html}
+                <img src="data:image/png;base64,{img_data}" style="width: 8000px; max-width: none; display: block;">
             </div>
-        """, unsafe_allow_html=True)
-        
+        """, unsafe_allow_html=True) 
 
 #==========================================================================================
 # XX. 呼び出しコード
