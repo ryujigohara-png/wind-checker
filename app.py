@@ -340,7 +340,7 @@ def handle_current_location_update():
     st.markdown("---")
     
     # ボタン押下時：待機フラグを立て、キーを更新してリラン
-    if st.button("🔄 現在地グラフ更新", use_container_width=True):
+    if st.button("🔄 現在地", use_container_width=True):
         st.session_state.waiting_loc = True
         # キャッシュ回避用の新しいキーを発行
         st.session_state.geo_key = f"geo_{datetime.now().timestamp()}"
@@ -403,7 +403,7 @@ def show_sidebar_controls():
 # 17. 現在時刻と更新ボタンを表示するサブルーチン (動的キャプション ＆ 時刻独立版)
 #==========================================================================================
 def render_header_info(current_basho_name):
-    button_label = f"🔄 {current_basho_name} ({st.session_state.lat:.4f}, {st.session_state.lon:.4f}) グラフ更新"
+    button_label = f"🔄 {current_basho_name} ({st.session_state.lat:.4f}, {st.session_state.lon:.4f}) "
     
     if st.button(button_label, use_container_width=False):
         st.cache_data.clear()
