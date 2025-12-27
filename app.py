@@ -330,52 +330,42 @@ def handle_location_selection():
     return basho
 
 #==========================================================================================
-# 15.. 現在地取得サブルーチン (修正版：専用関数利用・シンプル化)
+# 15.. 現在地取得サブルーチン (左寄せ・幅統一版)
 #==========================================================================================
 def handle_current_location_update():
     """
     スマホ環境で動作確認済みの位置情報取得ロジック。
-    st.statusなどのコンテナを使わず、シンプルに実装してJSの発火を確実にする。
+    幅を100%に広げつつ、左寄せのスタイルを維持します。
     """
-    st.markdown("---")
-    
-    # ボタン押下時：待機フラグを立て、キーを更新してリラン
+    # st.markdown("---") # 不要であればコメントアウトのまま
+
+    # ボタンを直接配置（CSSで左寄せに制御されます）
     if st.button("🔄 📍現在地", use_container_width=True):
         st.session_state.waiting_loc = True
-        # キャッシュ回避用の新しいキーを発行
         st.session_state.geo_key = f"geo_{datetime.now().timestamp()}"
         st.rerun()
 
     # 待機モード時の処理
     if st.session_state.get("waiting_loc"):
-        st.info("🛰️ 現在地を取得しています... (許可ポップアップが出たら「許可」を押してください)")
-        
-        # 専用関数 get_geolocation を使用（コンポーネントの非表示設定）
-        # ここで動的なキーを使うことで、毎回必ず新しい取得リクエストが走る
+        st.info("🛰️ 現在地を取得しています...")
         loc = get_geolocation(component_key=st.session_state.get("geo_key"))
 
         if loc:
             new_lat = round(loc['coords']['latitude'], 4)
             new_lon = round(loc['coords']['longitude'], 4)
-            
-            # データの同期（State更新）
             st.session_state.lat = new_lat
             st.session_state.lon = new_lon
             st.session_state.last_basho = "現在地"
-            
-            st.success("✅ 取得成功！描画を更新します。")
+            st.success("✅ 取得成功！")
             st.session_state.waiting_loc = False
             st.rerun()
         
-        # 明示的なエラーまたはタイムアウト（ユーザーがブロックした場合など）
-        # loc が None の間はここを通過して画面は「取得しています...」のまま待機となる
         elif loc is False:
-            st.error("❌ 位置情報の取得に失敗しました。ブラウザの設定を確認してください。")
+            st.error("❌ 位置情報の取得に失敗しました。")
             if st.button("キャンセル"):
                 st.session_state.waiting_loc = False
                 st.rerun()
                 
-
 #==========================================================================================
 # 16. サイドバー設定サブルーチン (保存対応版)
 #==========================================================================================
@@ -403,16 +393,18 @@ def show_sidebar_controls():
 # 17. 現在時刻と更新ボタンを表示するサブルーチン (動的キャプション ＆ 時刻独立版)
 #==========================================================================================
 def render_header_info(current_basho_name):
-    button_label = f"🔄 {current_basho_name} ({st.session_state.lat:.4f}, {st.session_state.lon:.4f}) "
+    # ラベルを「🔄 地名 (座標)」のみに短縮して1行に収める
+    button_label = f"🔄 {current_basho_name} ({st.session_state.lat:.4f}, {st.session_state.lon:.4f})"
     
-    if st.button(button_label, use_container_width=False):
+    # 上のボタンと幅を揃える
+    if st.button(button_label, use_container_width=True):
         st.cache_data.clear()
         st.rerun()
     
-    # 時刻表示の重なりを防ぐため、margin-topを -10px から 0px（あるいはわずかな隙間）に調整
     now = datetime.now(timezone(timedelta(hours=9)))
     now_str = now.strftime('%Y/%m/%d %H:%M:%S')
     
+    # 時刻表示の重なりを防ぐ設定
     st.markdown(
         f"""
         <p style='font-size:12px; color:gray; margin-top: 2px; margin-left:5px;'>
@@ -421,7 +413,7 @@ def render_header_info(current_basho_name):
         """, 
         unsafe_allow_html=True
     )
-
+    
 #==========================================================================================
 # 18. メインフロー (PC完全復元 ＆ スマホ安定表示版)
 #==========================================================================================
