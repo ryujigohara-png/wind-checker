@@ -533,15 +533,15 @@ def main():
     img, hour_ratio = generate_high_res_graph(st.session_state.lat, st.session_state.lon, danger_v, tuple(sel_dirs))
     
     if img and df_raw is not None:
-        # 2. アイコンHTMLを生成
+        # 1. アイコンHTMLを生成
         weather_icons_html = generate_weather_icons_html(df_raw, hour_ratio)
         
-        # 3. グラフ画像HTMLを生成 (変数名を img に統一)
+        # 2. グラフ画像HTMLを生成 (名前を img に修正)
         graph_html = f'<img src="data:image/png;base64,{img}" style="width: 8000px; max-width: none; display: block;">'
         
-        # 4. 合体して表示
+        # 3. 合体表示
         full_html = f'<div style="overflow-x: auto; background: white; border-radius: 8px; position: relative;">{weather_icons_html}{graph_html}</div>'
-        st.markdown(full_html, unsafe_allow_html=True)        
+        st.markdown(full_html, unsafe_allow_html=True)
 #==========================================================================================
 # XX. 呼び出しコード
 #==========================================================================================
