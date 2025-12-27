@@ -206,7 +206,7 @@ def render_tide_curve_chart(ax, df):
     ax.set_yticks([])
 
 #==========================================================================================
-# 11. 高解像度グラフ生成 (座標固定版)
+# 11. 高解像度グラフ生成 (余白固定版)
 #==========================================================================================
 @st.cache_data(show_spinner="グラフを生成中...")
 def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple):
@@ -231,31 +231,50 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple):
         if ax.get_visible():
             apply_common_axis_settings(ax, df, formatter, now_jst)
 
-    # --- 座標計算の修正 ---
-    fig.tight_layout() # レイアウトを一度確定させる
-    pos = axes[0].get_position() # 確定後の座標を取得
+    # 重要：一度レイアウトを確定させてから座標を取得
+    fig.tight_layout()
+    pos = axes[0].get_position()
     ratio_info = (pos.x0, pos.width / (len(df) - 1))
             
     buf = io.BytesIO()
-    # bbox_inches='tight' を削除し、コンプリート版の標準余白で保存
-    fig.savefig(buf, format="png", bbox_inches=None, pad_inches=0)
+    # bbox_inches='tight'を使うと計算が狂うため、None(標準)で保存します
+    fig.savefig(buf, format="png", bbox_inches=None)
     plt.close(fig) 
     return base64.b64encode(buf.getvalue()).decode(), ratio_info, df
 
 #==========================================================================================
-# 11b. 天気アイコンHTML生成 (マージン微調整版)
+# 11b. 天気アイコンHTML生成 (ズレ補正版)
 #==========================================================================================
 def generate_weather_icons_html(df, ratio_info):
     start_x, hour_w = ratio_info
+    
+    # --- ズレ補正用パラメータ ---
+    # グラフ左側の「風速(m/s)」ラベル分の余白を補正します
+    RATIO_ADJUST = 0.985  # 全体の幅に対する微調整
+    OFFSET_LEFT = -0.5    # 左へのずらし量(%)
+    
     icon_html = ""
     for i in range(3, len(df), 3):
         row = df.iloc[i]
-        # パーセント指定で位置を固定
-        pos_left = (start_x + (i * hour_w)) * 100
-        icon_html += f'<div style="position: absolute; left: {pos_left}%; transform: translateX(-50%); width: 80px; text-align: center; font-size: 32px;">{row["w_icon"]}</div>'
-    # 下のマージンを調整してグラフとの距離を一定に保つ
-    return f'<div style="position: relative; width: 8000px; height: 50px; margin-bottom: -10px;">{icon_html}</div>'
-    
+        if 'w_icon' not in row: continue
+        
+        # グラフ内の座標(pos_left)を計算し、補正をかける
+        pos_left = ((start_x + (i * hour_w)) * 100 * RATIO_ADJUST) + OFFSET_LEFT
+        
+        icon_html += f'''
+            <div style="
+                position: absolute; 
+                left: {pos_left}%; 
+                transform: translateX(-50%); 
+                width: 80px; 
+                text-align: center; 
+                font-size: 32px;
+                z-index: 10;">
+                {row["w_icon"]}
+            </div>'''
+            
+    return f'<div style="position: relative; width: 8000px; height: 50px; margin-bottom: -15px;">{icon_html}</div>'
+
 
 #==========================================================================================
 # 12. 地図UI表示サブルーチン (仕様5.2: 3x3格子レイアウト)
