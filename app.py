@@ -264,12 +264,12 @@ def show_location_map():
             st.rerun()
 
 #==========================================================================================
-# 13. ブラウザのLocalStorageとSessionStateを同期するサブルーチン (NameError回避版)
+# 13. ブラウザのLocalStorageとSessionStateを同期するサブルーチン (NameError回避・安定版)
 #==========================================================================================
 def sync_all_settings():
     STORAGE_KEY = CONFIG['STORAGE_KEY']
 
-    # --- 読み込み処理（一切変更せず維持） ---
+    # --- 読み込み処理（一切変更せず維持：苦労して完成させたロジックを保護） ---
     if "initialized" not in st.session_state:
         stored_data = streamlit_js_eval(js_expressions=f"localStorage.getItem('{STORAGE_KEY}')", key="load_storage")
         
@@ -291,7 +291,7 @@ def sync_all_settings():
         if "initialized" not in st.session_state:
             st.stop()
 
-    # --- 書き込み処理（NameErrorを回避しつつ重複を防ぐ） ---
+    # --- 書き込み処理（NameErrorの元となる time.time() を完全に排除） ---
     save_data = {
         "lat": st.session_state.lat,
         "lon": st.session_state.lon,
@@ -301,8 +301,9 @@ def sync_all_settings():
     }
     js_save = f"localStorage.setItem('{STORAGE_KEY}', '{json.dumps(save_data)}')"
     
-    # 修正ポイント: time.time() を削除し、既に定義済みの last_basho を key に使います。
-    # これで import time がなくても NameError は発生せず、重複エラーも回避できます。
+    # 解決策：
+    # エラーの原因である time.time() を削除し、代わりにアプリで定義済みの last_basho を使用します。
+    # これにより、import time を追加する必要がなくなり、NameError は確実に消えます。
     safe_key = f"save_storage_{st.session_state.last_basho}"
     streamlit_js_eval(js_expressions=js_save, key=safe_key)
     
