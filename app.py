@@ -168,7 +168,8 @@ def get_x_axis_formatter():
 #==========================================================================================
 # 8. グラフの共通軸設定を適用するサブルーチン
 #==========================================================================================
-def apply_common_axis_settings(ax, df, formatter, now_jst):
+def apply_common_axis_settings(ax, df, formatter, now_jst, design_params):
+    # 引数で受け取った now_jst を使用して現在時刻ラインを描画
     ax.axvline(now_jst, color='blue', linestyle='-', alpha=0.6, linewidth=2.5)
     ax.xaxis.set_major_locator(mdates.HourLocator(byhour=range(0, 24, 3)))
     ax.xaxis.set_major_formatter(plt.FuncFormatter(formatter))
@@ -176,8 +177,11 @@ def apply_common_axis_settings(ax, df, formatter, now_jst):
     ax.set_xlim(df['time'].iloc[0], df['time'].iloc[-1])
     ax.grid(True, which='major', linestyle=':', alpha=0.6, color='#000000')
     ax.grid(True, which='minor', linestyle=':', alpha=0.2, color='#888888')
-    ax.tick_params(axis='x', which='major', labelsize=CONFIG["LABEL_SIZE"], pad=10)
-    ax.tick_params(axis='y', labelsize=CONFIG["LABEL_SIZE"])
+    
+    # サイドバーから渡されたラベルサイズを適用
+    l_size = design_params.get("label_font_size", CONFIG["LABEL_SIZE"])
+    ax.tick_params(axis='x', which='major', labelsize=l_size, pad=10)
+    ax.tick_params(axis='y', labelsize=l_size)
 
 #==========================================================================================
 # 9. 風速棒グラフを描画するサブルーチン
@@ -227,7 +231,6 @@ def render_tide_curve_chart(ax, df):
 #==========================================================================================
 # 12. 高解像度グラフ画像を生成するサブルーチン
 #==========================================================================================
-# ttl=600 (10分) を追加し、10分経てば自動でキャッシュを破棄する設定にします
 @st.cache_data(show_spinner="グラフを生成中...", ttl=600)
 def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_params, now_jst):
     df = fetch_weather_data(lat, lon, 8)
@@ -261,7 +264,6 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
     plt.subplots_adjust(hspace=design_params.get("hspace", CONFIG["HSPACE"]))
     
     formatter = get_x_axis_formatter()
-    # 以前は関数内で取得していましたが、引数の now_jst を使うように変更
     
     idx = 0
     if "wind" in active_plots:
@@ -275,6 +277,7 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
         idx += 1
 
     for ax in axes:
+        # 修正ポイント: ここで渡す引数が定義側と一致しました
         apply_common_axis_settings(ax, df, formatter, now_jst, design_params)
 
     fig.tight_layout(pad=1.0) 
