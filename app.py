@@ -409,15 +409,16 @@ def render_header_info(current_basho_name):
         st.rerun()
 
 #==========================================================================================
-# 18. メインフロー (UI・ロジック完全統合版)
+# 18. メインフロー (UI完全復元 ＆ デザイン調整機能 統合版)
 #==========================================================================================
 def main():
-# サイドバーからパラメータを取得
+    # サイドバーからパラメータを取得（デザイン調整用の辞書 design_params を受け取る）
     danger_v, sel_dirs, design_params = show_sidebar_controls()
     
-    # フォント設定を反映
+    # スライダーで選ばれた基本フォントサイズを反映
     setup_font(design_params["font_size"])
 
+    # --- CSS注入：UIの左寄せと余白調整 ---
     st.markdown(f"""
         <style>
             .block-container {{ padding-top: 3.5rem !important; padding-bottom: 0rem !important; }}
@@ -428,18 +429,21 @@ def main():
         </style>
     """, unsafe_allow_html=True)
 
-    st.markdown(f'<h1 style="font-size:{CONFIG["TITLE_SIZE"]}px;">⛵ 高須風チェッカー</h1>', unsafe_allow_html=True)
+    st.markdown(f'<h1 style="font-size:{CONFIG["TITLE_SIZE"]}px;">⛵ Wind_Checker! </h1>', unsafe_allow_html=True)
     
+    # セッション状態の初期化
     if 'lat' not in st.session_state: st.session_state.lat = CONFIG["DEFAULT_LAT"]
     if 'lon' not in st.session_state: st.session_state.lon = CONFIG["DEFAULT_LON"]
     if 'last_basho' not in st.session_state: st.session_state.last_basho = CONFIG["DEFAULT_BASHO"]
+    
+    # ブラウザLocalStorageとの同期（苦労して完成させたロジックを維持）
     sync_all_settings()
 
     if "initialized" not in st.session_state:
         st.info("設定を読み込み中...")
         st.stop()
 
-    # 地点選択コンボボックス
+    # --- 地点選択コンボボックス ---
     master = CONFIG["LOCATION_MASTER"].copy()
     display_options = {}
     for name, coords in master.items():
@@ -467,36 +471,48 @@ def main():
             st.session_state.show_map_state = True
         st.rerun()
 
+    # 地図の表示制御
     show_map = st.checkbox("地図表示", value=st.session_state.get('show_map_state', False))
     st.session_state.show_map_state = show_map
     if show_map:
         show_location_map()
 
-    # ボタン配置（0.7+0.7のカラム配置を復元）
+    # --- ボタン配置（0.7+0.7の黄金比カラムを維持） ---
     col1, col2 = st.columns([0.7, 0.7]) 
     with col1:
         handle_current_location_update()
     with col2:
         render_header_info(basho) 
     
-    danger_v, sel_dirs = show_sidebar_controls()
-
-    # グラフ描画（最新の数学的配置ロジック）
-    # img_b64, ratio_info =     img_b64, ratio_info =     #img_b64, ratio_info = generate_high_res_graph(st.session_state.
-    # グラフ描画（デザインパラメータを渡す）
+    # --- グラフ描画実行 ---
+    # デザインパラメータ（スライダーの値）を引数として渡す
     img_b64, ratio_info = generate_high_res_graph(
-        st.session_state.lat, st.session_state.lon, 
-        danger_v, tuple(sel_dirs), design_params
+        st.session_state.lat, 
+        st.session_state.lon, 
+        danger_v, 
+        tuple(sel_dirs), 
+        design_params
     )
-
+    
     if img_b64:
+        # 天気アイコン用のデータ準備
         df_for_icons = fetch_weather_data(st.session_state.lat, st.session_state.lon, 8)
         padding_df = pd.DataFrame({'time': [df_for_icons['time'].iloc[0] - timedelta(hours=i) for i in range(1, 4)][::-1]})
         df_full = pd.concat([padding_df, df_for_icons], ignore_index=True)
-        icons_html = generate_weather_icons_html(df_full, ratio_info)
-        graph_html = f'<img src="data:image/png;base64,{img_b64}" style="width: 100%; min-width: 8000px; display: block;">'
-        st.markdown(f'<div style="overflow-x: auto; background: white; white-space: nowrap;">{icons_html}{graph_html}</div>', unsafe_allow_html=True)
         
+        # HTML生成（アイコン＋グラフ画像）
+        icons_html = generate_weather_icons_html(df_full, ratio_info)
+        # グラフ本体は100%幅で表示（中身はmin-widthでスクロール可能に）
+        graph_html = f'<img src="data:image/png;base64,{img_b64}" style="width: 100%; min-width: 8000px; display: block;">'
+        
+        st.markdown(
+            f'<div style="overflow-x: auto; background: white; white-space: nowrap;">'
+            f'{icons_html}{graph_html}</div>', 
+            unsafe_allow_html=True
+        )
 
+#==========================================================================================
+# アプリケーション起動
+#==========================================================================================
 if __name__ == "__main__":
     main()
