@@ -183,7 +183,7 @@ def render_tide_curve_chart(ax, df):
     ax.set_yticks([])
 
 #==========================================================================================
-# 11. 高解像度グラフ生成 (サイズ最適化版)
+# 11. 高解像度グラフ生成 (サイズをさらに縮小: Y=0まで見えるように調整)
 #==========================================================================================
 @st.cache_data(show_spinner="グラフを生成中...")
 def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple):
@@ -194,8 +194,9 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple):
     df = pd.concat([padding_df, df], ignore_index=True)
     df = process_wind_data(df, list(selected_dirs_tuple))
     
-    # FIG_SIZEの高さ(height)を11から7.5へ。解像度(DPI)は維持してボケを防止。
-    fig, axes = plt.subplots(3, 1, figsize=(40, 7.5), dpi=CONFIG["DPI"], gridspec_kw={'height_ratios': CONFIG["HEIGHT_RATIOS"]})
+    # 【修正点】figsizeの第2引数（高さ）を 7.5 -> 5.5 に変更
+    # これにより、文字の鮮明さを保ったまま、グラフの縦方向のサイズが小さくなります。
+    fig, axes = plt.subplots(3, 1, figsize=(40, 5.5), dpi=CONFIG["DPI"], gridspec_kw={'height_ratios': CONFIG["HEIGHT_RATIOS"]})
     plt.subplots_adjust(hspace=0.6)
     
     formatter = get_x_axis_formatter()
@@ -220,7 +221,7 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple):
     return img_b64, ratio_info
 
 #==========================================================================================
-# 12. お天気アイコンHTML生成サブルーチン (既存維持・精密調整)
+# 12. お天気アイコンHTML生成サブルーチン (高さを詰めてコンパクト化)
 #==========================================================================================
 def generate_weather_icons_html(df, ratio_info):
     start_x, hour_w = ratio_info
@@ -229,8 +230,9 @@ def generate_weather_icons_html(df, ratio_info):
         row = df.iloc[i]
         pos_left = (start_x + (i * hour_w)) * 100
         icon_html += f'<div style="position: absolute; left: {pos_left}%; transform: translateX(-50%); width: 80px; text-align: center; font-size: 32px;">{row["weather_icon"]}</div>'
-        
-    return f'<div style="position: relative; width: 8000px; height: 50px; margin-bottom: -15px;">{icon_html}</div>'
+    
+    # 【修正点】heightを 50px -> 40px に変更し、グラフとの距離をさらに詰める
+    return f'<div style="position: relative; width: 8000px; height: 40px; margin-bottom: -15px;">{icon_html}</div>'
 
 #==========================================================================================
 # 13. UI共通コンポーネント (同期・位置・既存維持)
