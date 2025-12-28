@@ -32,8 +32,8 @@ CONFIG = {
     "ANNOT_SIZE": 10,
     "DPI": 200,
     "MAP_HEIGHT": 350,
-    "DEFAULT_LEFT_MARGIN": 0.05,  # 初期状態で左端に寄せるための値
-    "HEIGHT_RATIOS": [4.4, 1.2, 0.8], # 縦比率を厳守
+    "DEFAULT_LEFT_MARGIN": 0.02,  # 初期状態で左端に寄せるための値
+    "HEIGHT_RATIOS": [4, 2.0, 1.5], # 縦比率を厳守4.4,1.2,0.8
     "LOC_INFO_FONT_SIZE": "16px",
     "LOC_INFO_COLOR": "#1e88e5",
     "LOC_INFO_MARGIN_TOP": "-10px",
