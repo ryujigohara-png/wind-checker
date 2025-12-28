@@ -318,15 +318,18 @@ def render_header_info(current_basho_name):
 # サイドバー制御（重複を避けるため、ここで1回だけ描画するようにします）
 # ==========================================================================================
 def show_sidebar_controls():
+    """
+    サイドバーの重複を避けるため、すべてのウィジェットに固有の key を付与します。
+    """
     st.sidebar.header("表示設定")
     
-    # 危険風速ライン
+    # 危険風速ライン（重複回避のため key を指定）
     danger_v = st.sidebar.number_input(
         "危険風速ライン(m/s)", 
         min_value=0.0, max_value=30.0, 
-        value=float(CONFIG.get("DANGER_WIND_SPEED", 10.0)), # 初期値10.0
+        value=float(CONFIG.get("DANGER_WIND_SPEED", 12.0)), 
         step=0.5,
-        key="sb_danger_v" # 重複回避のためのユニークなキー
+        key="unique_danger_v_input"
     )
 
     # 色付風向
@@ -339,26 +342,26 @@ def show_sidebar_controls():
     
     for i, d in enumerate(all_dirs):
         with cols[i % 2]:
-            if st.checkbox(d, value=(d in default_sel), key=f"dir_{d}"):
+            # key を個別に設定
+            if st.sidebar.checkbox(d, value=(d in default_sel), key=f"unique_dir_chk_{d}"):
                 sel_dirs.append(d)
 
     st.sidebar.markdown("---")
     
+    # デザイン調整モード
     design_params = {}
-    # デザイン調整モード（初期状態：オン）
-    if st.sidebar.checkbox("🛠 開発者デザイン調整モード", value=True, key="sb_dev_mode"):
+    if st.sidebar.checkbox("🛠 開発者デザイン調整モード", value=True, key="unique_dev_mode_chk"):
         st.sidebar.subheader("外観微調整スライダー")
         
-        design_params["width"] = st.sidebar.slider("グラフの横幅(3h幅)", 10, 100, int(CONFIG.get("GRAPH_WIDTH", 40)), key="sl_width")
-        design_params["left_margin"] = st.sidebar.slider("左余白(0.02-0.2)", 0.02, 0.20, float(CONFIG.get("DEFAULT_LEFT_MARGIN", 0.02)), step=0.01, key="sl_l_mar")
-        design_params["right_margin"] = st.sidebar.slider("右余白(0.8-0.99)", 0.80, 0.99, float(CONFIG.get("DEFAULT_RIGHT_MARGIN", 0.98)), step=0.01, key="sl_r_mar")
-        design_params["height"] = st.sidebar.slider("グラフの高さ", 3.0, 15.0, float(CONFIG.get("GRAPH_HIGHT", 5.5)), step=0.5, key="sl_height")
-        
-        design_params["base_font_size"] = st.sidebar.slider("基本フォント", 5, 20, int(CONFIG.get("BASE_FONT_SIZE", 10)), key="sl_base_f")
-        design_params["label_size"] = st.sidebar.slider("軸ラベル", 5, 20, int(CONFIG.get("LABEL_SIZE", 9)), key="sl_label_f")
-        design_params["annot_size"] = st.sidebar.slider("グラフ内文字", 5, 20, int(CONFIG.get("ANNOT_SIZE", 10)), key="sl_annot_f")
+        # すべてのスライダーに unique な key を付与
+        design_params["width"] = st.sidebar.slider("グラフの横幅(3h幅)", 10, 100, int(CONFIG.get("GRAPH_WIDTH", 40)), key="sl_w")
+        design_params["left_margin"] = st.sidebar.slider("左余白(0.02-0.2)", 0.02, 0.20, float(CONFIG.get("DEFAULT_LEFT_MARGIN", 0.02)), step=0.01, key="sl_l")
+        design_params["right_margin"] = st.sidebar.slider("右余白(0.8-0.99)", 0.80, 0.99, float(CONFIG.get("DEFAULT_RIGHT_MARGIN", 0.98)), step=0.01, key="sl_r")
+        design_params["height"] = st.sidebar.slider("グラフの高さ", 3.0, 15.0, float(CONFIG.get("GRAPH_HIGHT", 5.5)), step=0.5, key="sl_h")
+        design_params["base_font_size"] = st.sidebar.slider("基本フォント", 5, 20, int(CONFIG.get("BASE_FONT_SIZE", 10)), key="sl_f")
+        design_params["label_size"] = st.sidebar.slider("軸ラベル", 5, 20, int(CONFIG.get("LABEL_SIZE", 9)), key="sl_ls")
+        design_params["annot_size"] = st.sidebar.slider("グラフ内文字", 5, 20, int(CONFIG.get("ANNOT_SIZE", 10)), key="sl_as")
     else:
-        # チェックオフ時は CONFIG のデフォルト値を使用
         design_params = {
             "width": CONFIG.get("GRAPH_WIDTH", 40),
             "height": CONFIG.get("GRAPH_HIGHT", 5.5),
@@ -372,16 +375,15 @@ def show_sidebar_controls():
     return danger_v, sel_dirs, design_params
 
 
-
 #==========================================================================================
 #  ブラウザの記録読み取り
 #==========================================================================================
 def sync_all_settings():
     """
-    ブラウザに保存されている wind_checker_basho や wind_checker_lat を
-    session_state に書き写し、現在の表示を同期させる重要な関数
+    ブラウザに記憶された wind_checker_basho などの値を読み込み、
+    アプリの状態（session_state）を最新に更新する最重要サブルーチンです。
     """
-    # ブラウザ保存値（JavaScript経由で取得したもの）を Streamlit の状態に同期
+    # ブラウザからの保存値を session_state に同期
     if "wind_checker_basho" in st.session_state:
         st.session_state["sel_basho"] = st.session_state["wind_checker_basho"]
     
@@ -391,15 +393,15 @@ def sync_all_settings():
     if "wind_checker_lon" in st.session_state:
         st.session_state["lon_input"] = st.session_state["wind_checker_lon"]
 
-    # グラフのパラメータなども保存されている場合はここで復元
     if "wind_checker_danger_v" in st.session_state:
         st.session_state["danger_v"] = st.session_state["wind_checker_danger_v"]
+
 
 #==========================================================================================
 # 18. メインフロー (UI完全復元 ＆ デザイン調整機能 統合版)
 #==========================================================================================
 def main():
-# 1. 非常に重要なサブルーチン：ブラウザ保存値の同期
+    # 1. 非常に重要なサブルーチン：ブラウザ保存値の同期
     sync_all_settings()
 
     # 2. サイドバー制御の呼び出し（ここだけで実行する）
