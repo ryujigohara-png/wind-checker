@@ -227,8 +227,9 @@ def render_tide_curve_chart(ax, df):
 #==========================================================================================
 # 12. 高解像度グラフ画像を生成するサブルーチン
 #==========================================================================================
-@st.cache_data(show_spinner="グラフを生成中...")
-def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_params):
+# ttl=600 (10分) を追加し、10分経てば自動でキャッシュを破棄する設定にします
+@st.cache_data(show_spinner="グラフを生成中...", ttl=600)
+def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_params, now_jst):
     df = fetch_weather_data(lat, lon, 8)
     if df is None: return None, (0, 0)
     
@@ -236,7 +237,6 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
     df = pd.concat([padding_df, df], ignore_index=True)
     df = process_wind_data(df, list(selected_dirs_tuple))
     
-    # 表示するグラフを判定
     active_plots = []
     if design_params.get("show_wind", True): active_plots.append("wind")
     if design_params.get("show_temp", True): active_plots.append("temp")
@@ -244,7 +244,6 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
     
     if not active_plots: return None, (0, 0)
     
-    # 比率の設定
     ratios = design_params.get("ratios", CONFIG["DEFAULT_RATIOS"])
     current_ratios = []
     if "wind" in active_plots: current_ratios.append(ratios[0])
@@ -257,14 +256,12 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
     fig, axes = plt.subplots(len(active_plots), 1, figsize=(fig_w, fig_h), dpi=CONFIG["DPI"], 
                              gridspec_kw={'height_ratios': current_ratios})
     
-    # グラフが1つの場合、axesをリスト化してループに対応
     if len(active_plots) == 1: axes = [axes]
     
-    # グラフ間の隙間（ピンク部分）を調整。hspaceが小さいほど狭くなる
     plt.subplots_adjust(hspace=design_params.get("hspace", CONFIG["HSPACE"]))
     
     formatter = get_x_axis_formatter()
-    now_jst = datetime.now(timezone(timedelta(hours=9))).replace(tzinfo=None)
+    # 以前は関数内で取得していましたが、引数の now_jst を使うように変更
     
     idx = 0
     if "wind" in active_plots:
@@ -280,7 +277,7 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
     for ax in axes:
         apply_common_axis_settings(ax, df, formatter, now_jst, design_params)
 
-    fig.tight_layout(pad=1.0) # 全体の余白も最小限に
+    fig.tight_layout(pad=1.0) 
     pos = axes[0].get_position() 
     ratio_info = (pos.x0, pos.width / (len(df) - 1))
     
@@ -290,7 +287,7 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
     
     img_b64 = base64.b64encode(buf.getvalue()).decode()
     return img_b64, ratio_info
-
+    
 #==========================================================================================
 # 13. お天気アイコンのHTMLを生成するサブルーチン
 #==========================================================================================
@@ -492,6 +489,10 @@ def main():
     danger_v, sel_dirs, design_params = show_sidebar_controls()
     setup_font(design_params["base_font_size"])
 
+    # 現在時刻を10分単位で丸めて取得（キャッシュ効率のため）
+    raw_now = datetime.now(timezone(timedelta(hours=9))).replace(tzinfo=None)
+    now_jst = raw_now.replace(minute=(raw_now.minute // 10) * 10, second=0, microsecond=0)
+
     st.markdown(f"""
         <style>
             .block-container {{ padding-top: 2rem !important; padding-bottom: 0rem !important; }}
@@ -532,7 +533,7 @@ def main():
             st.session_state.lat, st.session_state.lon = master[basho]
         if basho == "地図で指定":
             st.session_state.show_map_state = True
-        st.cache_data.clear() # 地点変更時は即座にクリア
+        st.cache_data.clear()
         st.rerun()
 
     show_map = st.checkbox("地図表示", value=st.session_state.get('show_map_state', False))
@@ -546,14 +547,14 @@ def main():
     with col2:
         render_header_info(basho) 
     
-    # generate_high_res_graph が design_params を引数に取っているため、
-    # design_params の中身が変わらない限り（＝キャッシュがある限り）再描画されません。
+    # 引数に now_jst を追加。これにより時刻が変われば新しいキャッシュが作成されます。
     img_b64, ratio_info = generate_high_res_graph(
         st.session_state.lat, 
         st.session_state.lon, 
         danger_v, 
         tuple(sel_dirs), 
-        design_params
+        design_params,
+        now_jst
     )
     
     if img_b64:
