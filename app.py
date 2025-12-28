@@ -25,14 +25,19 @@ from streamlit_js_eval import streamlit_js_eval, get_geolocation
 CONFIG = {
     "TITLE_SIZE": 24,
     "SUBTITLE_SIZE": 18,
-    "GRAPH_FONT_SIZE": 10,       # 風向文字等の基準サイズ
-    "GRAPH_WIDTH": 20,           # 既定値を20に設定
+    "GRAPH_FONT_SIZE": 10,
+    "GRAPH_WIDTH": 20,
     "GRAPH_HIGHT": 5.5,
-    "LABEL_SIZE": 9,             # X軸ラベルの基準サイズ
+    "LABEL_SIZE": 9,
     "ANNOT_SIZE": 10,
     "DPI": 200,
     "MAP_HEIGHT": 350,
-    "HEIGHT_RATIOS": [4.4, 1.2, 0.8],
+    # 初期値の設定
+    "DEFAULT_RATIOS": [4.4, 1.2, 0.8],
+    "SHOW_WIND": True,
+    "SHOW_TEMP": True,
+    "SHOW_TIDE": True,
+    "HSPACE": 0.3,               # グラフ間の余白（ピンク部分の調整用）
     "DEFAULT_LAT": 31.337,
     "DEFAULT_LON": 130.795,
     "DEFAULT_BASHO": "高須沖(鹿児島県)",
@@ -231,23 +236,51 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
     df = pd.concat([padding_df, df], ignore_index=True)
     df = process_wind_data(df, list(selected_dirs_tuple))
     
+    # 表示するグラフを判定
+    active_plots = []
+    if design_params.get("show_wind", True): active_plots.append("wind")
+    if design_params.get("show_temp", True): active_plots.append("temp")
+    if design_params.get("show_tide", True): active_plots.append("tide")
+    
+    if not active_plots: return None, (0, 0)
+    
+    # 比率の設定
+    ratios = design_params.get("ratios", CONFIG["DEFAULT_RATIOS"])
+    current_ratios = []
+    if "wind" in active_plots: current_ratios.append(ratios[0])
+    if "temp" in active_plots: current_ratios.append(ratios[1])
+    if "tide" in active_plots: current_ratios.append(ratios[2])
+    
     fig_w = design_params.get("width", CONFIG["GRAPH_WIDTH"])
     fig_h = design_params.get("height", CONFIG["GRAPH_HIGHT"])
     
-    fig, axes = plt.subplots(3, 1, figsize=(fig_w, fig_h), dpi=CONFIG["DPI"], gridspec_kw={'height_ratios': CONFIG["HEIGHT_RATIOS"]})
-    plt.subplots_adjust(hspace=0.6)
+    fig, axes = plt.subplots(len(active_plots), 1, figsize=(fig_w, fig_h), dpi=CONFIG["DPI"], 
+                             gridspec_kw={'height_ratios': current_ratios})
+    
+    # グラフが1つの場合、axesをリスト化してループに対応
+    if len(active_plots) == 1: axes = [axes]
+    
+    # グラフ間の隙間（ピンク部分）を調整。hspaceが小さいほど狭くなる
+    plt.subplots_adjust(hspace=design_params.get("hspace", CONFIG["HSPACE"]))
     
     formatter = get_x_axis_formatter()
     now_jst = datetime.now(timezone(timedelta(hours=9))).replace(tzinfo=None)
     
-    render_wind_bar_chart(axes[0], df, danger_v, 3, design_params)
-    render_temp_line_chart(axes[1], df)
-    render_tide_curve_chart(axes[2], df)
+    idx = 0
+    if "wind" in active_plots:
+        render_wind_bar_chart(axes[idx], df, danger_v, 3, design_params)
+        idx += 1
+    if "temp" in active_plots:
+        render_temp_line_chart(axes[idx], df)
+        idx += 1
+    if "tide" in active_plots:
+        render_tide_curve_chart(axes[idx], df)
+        idx += 1
 
     for ax in axes:
-        apply_common_axis_settings(ax, df, formatter, now_jst)
+        apply_common_axis_settings(ax, df, formatter, now_jst, design_params)
 
-    fig.tight_layout() 
+    fig.tight_layout(pad=1.0) # 全体の余白も最小限に
     pos = axes[0].get_position() 
     ratio_info = (pos.x0, pos.width / (len(df) - 1))
     
@@ -393,13 +426,33 @@ def show_sidebar_controls():
         "base_font_size": CONFIG["GRAPH_FONT_SIZE"],
         "label_font_size": CONFIG["LABEL_SIZE"],
         "bar_width": 0.035,
-        "annot_size": CONFIG["ANNOT_SIZE"]
+        "annot_size": CONFIG["ANNOT_SIZE"],
+        "ratios": CONFIG["DEFAULT_RATIOS"],
+        "hspace": CONFIG["HSPACE"],
+        "show_wind": CONFIG["SHOW_WIND"],
+        "show_temp": CONFIG["SHOW_TEMP"],
+        "show_tide": CONFIG["SHOW_TIDE"]
     }
 
     if is_dev:
-        # スライダー等の値をセッションに保持（これだけでは rerun しない）
+        st.sidebar.subheader("表示・非表示")
+        design_params["show_wind"] = st.sidebar.toggle("風向グラフを表示", value=design_params["show_wind"])
+        design_params["show_temp"] = st.sidebar.toggle("気温グラフを表示", value=design_params["show_temp"])
+        design_params["show_tide"] = st.sidebar.toggle("潮位グラフを表示", value=design_params["show_tide"])
+        
+        st.sidebar.subheader("サイズ・余白")
         design_params["width"] = st.sidebar.slider("グラフ横幅 (inch)", 10, 80, design_params["width"])
-        design_params["height"] = st.sidebar.slider("グラフ縦幅 (inch)", 3.0, 10.0, design_params["height"])
+        design_params["height"] = st.sidebar.slider("グラフ縦幅 (inch)", 3.0, 15.0, design_params["height"])
+        design_params["hspace"] = st.sidebar.slider("グラフ間余白 (ピンク部)", 0.0, 1.0, design_params["hspace"], step=0.05)
+        
+        st.sidebar.subheader("高さ比率")
+        r = design_params["ratios"]
+        r_wind = st.sidebar.slider("比率:風向", 0.5, 10.0, r[0], step=0.1)
+        r_temp = st.sidebar.slider("比率:気温", 0.5, 5.0, r[1], step=0.1)
+        r_tide = st.sidebar.slider("比率:潮位", 0.5, 5.0, r[2], step=0.1)
+        design_params["ratios"] = [r_wind, r_temp, r_tide]
+        
+        st.sidebar.subheader("フォント")
         design_params["base_font_size"] = st.sidebar.slider("グラフ内文字サイズ", 6, 20, design_params["base_font_size"])
         design_params["label_font_size"] = st.sidebar.slider("X軸ラベルサイズ", 5, 20, design_params["label_font_size"])
         design_params["bar_width"] = st.sidebar.slider("棒グラフ余白 (width)", 0.01, 0.1, 0.035, step=0.005)
