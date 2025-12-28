@@ -140,7 +140,7 @@ def get_x_axis_formatter():
     def formatter(x, p):
         dt = mdates.num2date(x)
         if dt.hour == 0:
-            return dt.strftime('%H:%M') + f'\n({dt.strftime('%m/%d')})\n'  + jp_weeks[dt.weekday()])
+            return dt.strftime('%H:%M') + f'\n({dt.strftime('%m/%d')})\n'  + f'(jp_weeks[dt.weekday()])'
         elif dt.hour in [3, 9, 15, 21]:
             returndt.strftime('%H:%M')       # f"\n{dt.strftime('%H:%M')}"
         else:
