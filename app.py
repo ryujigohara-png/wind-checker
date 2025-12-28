@@ -139,12 +139,17 @@ def get_x_axis_formatter():
     jp_weeks = ["月", "火", "水", "木", "金", "土", "日"]
     def formatter(x, p):
         dt = mdates.num2date(x)
+        # 0:00の時は3行表示（時刻 / 日付 / 曜日の順）
         if dt.hour == 0:
-            return dt.strftime('%H:%M') + f'\n({dt.strftime('%m/%d')})\n'  + f'(jp_weeks[dt.weekday()])'
-        elif dt.hour in [3, 9, 15, 21]:
-            returndt.strftime('%H:%M')       # f"\n{dt.strftime('%H:%M')}"
-        else:
+            return dt.strftime('%H:%M') + f'\n{dt.strftime("%m/%d")}\n({jp_weeks[dt.weekday()]})'
+        
+        # 3時間おきの時は時刻のみ（改行コード \n を取って高さを詰めました）
+        elif dt.hour in [3, 6, 9, 12, 15, 18, 21]:
             return dt.strftime('%H:%M')
+            
+        else:
+            return "" # それ以外の時間はラベルを表示しない（軸のみ）
+            
     return formatter
 
 def apply_common_axis_settings(ax, df, formatter, now_jst):
