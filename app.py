@@ -257,15 +257,27 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
 #==========================================================================================
 # 13. お天気アイコンのHTMLを生成するサブルーチン
 #==========================================================================================
-def generate_weather_icons_html(df, ratio_info, graph_width_px):
+def generate_weather_icons_html(df, ratio_info, display_width):
     start_x, hour_w = ratio_info
     icon_html = ""
+    # display_width（px）を基準に、各アイコンの絶対位置を計算
     for i in range(3, len(df), 3):
         row = df.iloc[i]
-        pos_left = (start_x + (i * hour_w)) * 100
-        icon_html += f'<div style="position: absolute; left: {pos_left}%; transform: translateX(-50%); width: 80px; text-align: center; font-size: 32px;">{row["weather_icon"]}</div>'
+        # (開始位置 + 時間経過幅) * 全体幅 = アイコンの左端からのpx位置
+        pos_left_px = (start_x + (i * hour_w)) * display_width
+        icon_html += f'''
+            <div style="
+                position: absolute; 
+                left: {pos_left_px}px; 
+                transform: translateX(-50%); 
+                width: 80px; 
+                text-align: center; 
+                font-size: 32px;
+                z-index: 10;">
+                {row["weather_icon"]}
+            </div>'''
     
-    return f'<div style="position: relative; width: {graph_width_px}px; height: 40px; margin-bottom: -15px;">{icon_html}</div>'
+    return f'<div style="position: relative; width: {display_width}px; height: 45px; margin-bottom: -15px;">{icon_html}</div>'
 
 #==========================================================================================
 # 14. 地図UIを表示し地点を選択するサブルーチン
@@ -425,16 +437,21 @@ def main():
             [data-testid="stVerticalBlock"] {{ gap: 0.8rem !important; }}
             div.stButton > button p {{ text-align: left !important; width: 100% !important; }}
             div.stButton > button {{ justify-content: flex-start !important; }}
+            /* 横スクロールエリアの調整 */
+            .scroll-container {{
+                overflow-x: auto; 
+                background: white; 
+                border: 1px solid #ddd;
+                width: 100%;
+            }}
         </style>
     """, unsafe_allow_html=True)
 
     st.markdown(f'<h1 style="font-size:{CONFIG["TITLE_SIZE"]}px;">⛵ Wind_Checker! </h1>', unsafe_allow_html=True)
     
     master = CONFIG["LOCATION_MASTER"].copy()
-    display_options = {}
-    for name, coords in master.items():
-        display_options[f"{name} ({coords[0]:.4f}, {coords[1]:.4f})"] = name
-
+    display_options = {{f"{name} ({coords[0]:.4f}, {coords[1]:.4f})": name for name, coords in master.items()}}
+    
     current_loc_label = f"📍 現在地 ({st.session_state.lat:.4f}, {st.session_state.lon:.4f})"
     display_options[current_loc_label] = "現在地"
     display_options["🗺️ 地図で指定"] = "地図で指定"
@@ -443,16 +460,9 @@ def main():
     current_display_val = reverse_display.get(st.session_state.last_basho, current_loc_label)
     
     options_list = list(display_options.keys())
-    try:
-        default_idx = options_list.index(current_display_val)
-    except:
-        default_idx = 0
+    default_idx = options_list.index(current_display_val) if current_display_val in options_list else 0
 
-    selected_display = st.selectbox(
-        "地点を選択してください", 
-        options_list, 
-        index=default_idx
-    )
+    selected_display = st.selectbox("地点を選択してください", options_list, index=default_idx)
     basho = display_options[selected_display]
 
     if basho != st.session_state.last_basho:
@@ -469,12 +479,13 @@ def main():
     if show_map:
         show_location_map()
 
-    col1, col2 = st.columns([0.7, 0.7]) 
+    col1, col2 = st.columns([1, 1]) 
     with col1:
         handle_current_location_update()
     with col2:
         render_header_info(basho) 
     
+    # グラフ生成
     img_b64, ratio_info = generate_high_res_graph(
         st.session_state.lat, 
         st.session_state.lon, 
@@ -486,18 +497,24 @@ def main():
     if img_b64:
         df_for_icons = fetch_weather_data(st.session_state.lat, st.session_state.lon, 8)
         if df_for_icons is not None:
+            # インチ数に基づいて表示ピクセル幅を計算 (例: 40inch * 200 = 8000px)
+            display_width = int(design_params["width"] * 200)
+            
             padding_df = pd.DataFrame({'time': [df_for_icons['time'].iloc[0] - timedelta(hours=i) for i in range(1, 4)][::-1]})
             df_full = pd.concat([padding_df, df_for_icons], ignore_index=True)
             
-            icons_html = generate_weather_icons_html(df_full, ratio_info, 8000)
-            graph_html = f'<img src="data:image/png;base64,{img_b64}" style="width: 100%; min-width: 8000px; display: block;">'
+            # アイコンとグラフの幅を display_width で統一
+            icons_html = generate_weather_icons_html(df_full, ratio_info, display_width)
+            graph_html = f'<img src="data:image/png;base64,{img_b64}" style="width: {display_width}px; display: block;">'
             
+            # HTML出力。内側のdivに固定幅を持たせることで、外側のdivがスクロールを提供
             st.markdown(
-                f'<div style="overflow-x: auto; background: white; white-space: nowrap; border: 1px solid #ddd;">'
-                f'{icons_html}{graph_html}</div>', 
+                f'<div class="scroll-container">'
+                f'<div style="width: {display_width}px;">'
+                f'{icons_html}{graph_html}'
+                f'</div></div>', 
                 unsafe_allow_html=True
             )
-
 
 #==========================================================================================
 # アプリケーション起動
