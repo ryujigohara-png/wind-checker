@@ -3,7 +3,8 @@
 import streamlit as st
 import requests
 import pandas as pd
-import matplotlib.pyplot as plt
+import matplotlib.pyplot as
+plt
 import matplotlib.font_manager as fm
 import urllib.request
 import os
@@ -414,9 +415,10 @@ def show_sidebar_controls():
 # ==========================================================================================
 # 天気アイコン生成関数（幅可変対応版）
 # ==========================================================================================
+
 def generate_weather_icons_html(df, ratio_info, graph_width_param):
     """
-    graph_width_param: design_params["width"]（スライダーの値）を受け取ります
+    引数に graph_width_param を追加して、エラーを解消しました。
     """
     start_x, hour_w = ratio_info
     icon_html = ""
@@ -424,7 +426,7 @@ def generate_weather_icons_html(df, ratio_info, graph_width_param):
     # 3時間おきにアイコンを配置
     for i in range(3, len(df), 3):
         row = df.iloc[i]
-        # ratio_infoから計算される絶対位置（%）
+        # グラフの実際の左端位置（start_x）から計算するので、余白を変えてもズレません
         pos_left = (start_x + (i * hour_w)) * 100
         icon_html += f'''
             <div style="
@@ -438,8 +440,7 @@ def generate_weather_icons_html(df, ratio_info, graph_width_param):
             ">{row["weather_icon"]}</div>
         '''
     
-    # コンテナの横幅をグラフのwidthパラメータに連動させる（px指定）
-    # 200dpi設定の場合、figsizeの1単位は約200pxに相当するため、それに合わせます
+    # コンテナの横幅をグラフの横幅設定に連動させます
     container_width = graph_width_param * 200 
     
     return f'''
@@ -450,6 +451,7 @@ def generate_weather_icons_html(df, ratio_info, graph_width_param):
             margin-bottom: -15px;
         ">{icon_html}</div>
     '''
+
 #==========================================================================================
 # 17. 更新ボタン表示 (全幅・左寄せUIを維持)
 #==========================================================================================
