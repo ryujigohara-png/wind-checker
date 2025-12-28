@@ -26,6 +26,8 @@ CONFIG = {
     "TITLE_SIZE": 24,
     "SUBTITLE_SIZE": 18,
     "GRAPH_FONT_SIZE": 10,
+    "GRAPH_WIDTH": 40,
+    "GRAPH_HIGHT": 5.5,
     "LABEL_SIZE": 9,
     "ANNOT_SIZE": 10,
     "DPI": 200,
@@ -196,7 +198,7 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple):
     
     # 【修正点】figsizeの第2引数（高さ）を 7.5 -> 5.5 に変更
     # これにより、文字の鮮明さを保ったまま、グラフの縦方向のサイズが小さくなります。
-    fig, axes = plt.subplots(3, 1, figsize=(40, 5.5), dpi=CONFIG["DPI"], gridspec_kw={'height_ratios': CONFIG["HEIGHT_RATIOS"]})
+    fig, axes = plt.subplots(3, 1, figsize=(CONFIG["GRAPH_WIDTH"], CONFIG["GRAPH_HIGHT"]), dpi=CONFIG["DPI"], gridspec_kw={'height_ratios': CONFIG["HEIGHT_RATIOS"]})
     plt.subplots_adjust(hspace=0.6)
     
     formatter = get_x_axis_formatter()
