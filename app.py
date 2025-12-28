@@ -25,8 +25,8 @@ from streamlit_js_eval import streamlit_js_eval, get_geolocation
 CONFIG = {
     "TITLE_SIZE": 24,
     "SUBTITLE_SIZE": 18,
-    "GRAPH_FONT_SIZE": 10,  # 文字を小さく調整
-    "GRAPH_WIDTH": 40,      # 新規追加
+    "GRAPH_FONT_SIZE": 9,   # 文字を小さく調整
+    "GRAPH_WIDTH": 30,      # 新規追加
     "GRAPH_HIGHT": 5.5,     # 新規追加（Y=0まで見える高さ）
     "LABEL_SIZE": 9,        # 軸ラベルサイズ調整
     "ANNOT_SIZE": 10,       # グラフ内文字サイズ調整
@@ -140,9 +140,9 @@ def get_x_axis_formatter():
     def formatter(x, p):
         dt = mdates.num2date(x)
         if dt.hour == 0:
-            return dt.strftime('%H:%M') + f'\n({jp_weeks[dt.weekday()]})\n' + dt.strftime('%m/%d')
+            return dt.strftime('%H:%M') + f'\n({dt.strftime('%m/%d')})\n'  + jp_weeks[dt.weekday()]})
         elif dt.hour in [3, 9, 15, 21]:
-            return f"\n{dt.strftime('%H:%M')}"
+            returndt.strftime('%H:%M')       # f"\n{dt.strftime('%H:%M')}"
         else:
             return dt.strftime('%H:%M')
     return formatter
