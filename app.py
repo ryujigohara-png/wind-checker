@@ -410,6 +410,46 @@ def show_sidebar_controls():
             st.sidebar.code(f'"GRAPH_WIDTH": {design_params["width"]},\n"GRAPH_HIGHT": {design_params["height"]},\n"GRAPH_FONT_SIZE": {design_params["font_size"]},\n"LABEL_SIZE": {design_params["label_size"]},\n"ANNOT_SIZE": {design_params["annot_size"]}')
 
     return dv, sel_dirs, design_params
+
+# ==========================================================================================
+# 天気アイコン生成関数（幅可変対応版）
+# ==========================================================================================
+def generate_weather_icons_html(df, ratio_info, graph_width_param):
+    """
+    graph_width_param: design_params["width"]（スライダーの値）を受け取ります
+    """
+    start_x, hour_w = ratio_info
+    icon_html = ""
+    
+    # 3時間おきにアイコンを配置
+    for i in range(3, len(df), 3):
+        row = df.iloc[i]
+        # ratio_infoから計算される絶対位置（%）
+        pos_left = (start_x + (i * hour_w)) * 100
+        icon_html += f'''
+            <div style="
+                position: absolute; 
+                left: {pos_left}%; 
+                transform: translateX(-50%); 
+                width: 80px; 
+                text-align: center; 
+                font-size: 32px;
+                z-index: 10;
+            ">{row["weather_icon"]}</div>
+        '''
+    
+    # コンテナの横幅をグラフのwidthパラメータに連動させる（px指定）
+    # 200dpi設定の場合、figsizeの1単位は約200pxに相当するため、それに合わせます
+    container_width = graph_width_param * 200 
+    
+    return f'''
+        <div style="
+            position: relative; 
+            width: {container_width}px; 
+            height: 40px; 
+            margin-bottom: -15px;
+        ">{icon_html}</div>
+    '''
 #==========================================================================================
 # 17. 更新ボタン表示 (全幅・左寄せUIを維持)
 #==========================================================================================
