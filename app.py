@@ -405,29 +405,38 @@ def sync_all_settings():
 # 18. メインフロー (UI完全復元 ＆ デザイン調整機能 統合版)
 #==========================================================================================
 def main():
-    # 1. 非常に重要なサブルーチン：ブラウザ保存値の同期
-    # URLが違うベータ版では、最初は値が空になりますが、止まらないように処理されます
+    # 1. ブラウザ保存値の同期（最優先）
     sync_all_settings()
 
-    # 2. サイドバー制御の呼び出し
-    # ここで危険風速、色付風向、デザインパラメータを一括取得します
+    # 2. サイドバー制御（設定値の取得）
     danger_v, sel_dirs, design_params = show_sidebar_controls()
 
     # 3. フォント設定
-    # サイドバーのスライダー（base_font_size）の値を優先して適用します
     setup_font(design_params.get("base_font_size", CONFIG.get("BASE_FONT_SIZE", 10)))
     
-    # --- CSS注入：UIの左寄せと余白調整 ---
+    # --- CSS注入：重なりを解消し、正規版に近い余白を確保 ---
     st.markdown(f"""
         <style>
-            .block-container {{ padding-top: 3.5rem !important; padding-bottom: 0rem !important; }}
-            h1 {{ margin-top: 0px !important; margin-bottom: -15px !important; line-height: 1.0 !important; }}
-            [data-testid="stVerticalBlock"] {{ gap: 0.3rem !important; }}
+            /* 全体の余白設定 */
+            .block-container {{ 
+                padding-top: 2rem !important; 
+                padding-bottom: 0rem !important; 
+            }}
+            /* タイトルの重なり防止 */
+            h1 {{ 
+                margin-top: 10px !important; 
+                margin-bottom: 20px !important; /* 下に余白を作って重なりを解消 */
+                line-height: 1.2 !important; 
+            }}
+            /* ウィジェット間の隙間 */
+            [data-testid="stVerticalBlock"] {{ gap: 0.8rem !important; }}
+            /* ボタン内のテキスト左寄せ */
             div.stButton > button p {{ text-align: left !important; width: 100% !important; }}
             div.stButton > button {{ justify-content: flex-start !important; }}
         </style>
     """, unsafe_allow_html=True)
 
+    # タイトル表示
     st.markdown(f'<h1 style="font-size:{CONFIG["TITLE_SIZE"]}px;">⛵ Wind_Checker! </h1>', unsafe_allow_html=True)
     
     # セッション状態の初期化
@@ -435,12 +444,8 @@ def main():
     if 'lon' not in st.session_state: st.session_state.lon = CONFIG["DEFAULT_LON"]
     if 'last_basho' not in st.session_state: st.session_state.last_basho = CONFIG["DEFAULT_BASHO"]
     
-    # --- 修正の要：無限ループ（フリーズ）の回避ガード ---
-    # ベータ版（初訪問時）で "initialized" フラグがなくても、
-    # st.stop() で止めずに強制的に処理を続行させます。
+    # 無限ループ回避ガード
     if "initialized" not in st.session_state:
-        # 最初の1回だけ、同期中である旨を小さく表示
-        st.caption("⚙️ ブラウザ設定を同期中...（データがない場合はデフォルトで起動します）")
         st.session_state["initialized"] = True 
 
     # --- 地点選択コンボボックス ---
@@ -453,14 +458,10 @@ def main():
     display_options[current_loc_label] = "現在地"
     display_options["🗺️ 地図で指定"] = "地図で指定"
 
-    # 逆引き辞書で、現在の場所名から表示用ラベルを特定
     reverse_display = {v: k for k, v in display_options.items()}
-    
-    # sync_all_settings で読み込んだ場所があればそれを優先、なければ前回の場所
     target_basho = st.session_state.get("sel_basho", st.session_state.last_basho)
     current_display_val = reverse_display.get(target_basho, current_loc_label)
     
-    # コンボボックスの初期位置を決定
     options_list = list(display_options.keys())
     try:
         default_index = options_list.index(current_display_val)
@@ -471,43 +472,36 @@ def main():
         "地点を選択してください", 
         options_list, 
         index=default_index,
-        key="main_basho_selectbox"
+        key="main_basho_selectbox_beta"
     )
     basho = display_options[selected_display]
 
-    # 地点変更時の連動処理
+    # 地点変更時の処理
     if basho != st.session_state.last_basho:
         st.session_state.last_basho = basho
         if basho not in ["地図で指定", "現在地"]:
             st.session_state.lat, st.session_state.lon = master[basho]
         if basho == "地図で指定":
             st.session_state.show_map_state = True
-        st.cache_data.clear() # データを新しく取得し直す
+        st.cache_data.clear()
         st.rerun()
 
-    # 地図の表示制御（関数自体は既存のものを使用）
-    show_map = st.checkbox("地図表示", value=st.session_state.get('show_map_state', False), key="map_checkbox")
+    # 地図の表示制御
+    show_map = st.checkbox("地図表示", value=st.session_state.get('show_map_state', False), key="map_checkbox_beta")
     st.session_state.show_map_state = show_map
     if show_map:
-        # 注意: show_location_map() 関数が定義されている必要があります
-        try:
-            show_location_map()
-        except NameError:
-            st.warning("地図描画関数を準備中です。")
+        show_location_map()
 
-    # --- ボタン配置（カラムを維持） ---
-    col1, col2 = st.columns([0.7, 0.7]) 
+    # --- ボタン配置（カラムを維持し、確実に両方のボタンを表示） ---
+    col1, col2 = st.columns([1, 1]) # 比率を 1:1 にして押しやすくします
     with col1:
-        # 注意: handle_current_location_update() 関数が定義されている必要があります
-        try:
-            handle_current_location_update()
-        except NameError:
-            pass
+        # 現在地取得ボタンのサブルーチン
+        handle_current_location_update()
     with col2:
+        # グラフ更新ボタンのサブルーチン
         render_header_info(basho) 
     
     # --- グラフ描画実行 ---
-    # デザインパラメータ（スライダーの値）を引数として渡し、高解像度グラフを生成
     img_b64, ratio_info = generate_high_res_graph(
         st.session_state.lat, 
         st.session_state.lon, 
@@ -517,28 +511,23 @@ def main():
     )
     
     if img_b64:
-        # 天気アイコン用の最新データを取得
         df_for_icons = fetch_weather_data(st.session_state.lat, st.session_state.lon, 8)
         if df_for_icons is not None:
-            # グラフ左端の余白に合わせたダミーデータの追加
             padding_df = pd.DataFrame({'time': [df_for_icons['time'].iloc[0] - timedelta(hours=i) for i in range(1, 4)][::-1]})
             df_full = pd.concat([padding_df, df_for_icons], ignore_index=True)
             
-            # HTML生成（アイコン＋グラフ画像）
-            # ratio_info を使い、グラフ内の棒グラフの位置とアイコンを同期させます
+            # アイコンHTML（デザイン調整値 width を反映）
             icons_html = generate_weather_icons_html(df_full, ratio_info, design_params["width"])
             
-            # グラフ本体（横スクロール可能にするため min-width を設定）
+            # グラフ本体（100%幅表示）
             graph_html = f'<img src="data:image/png;base64,{img_b64}" style="width: 100%; min-width: 8000px; display: block;">'
             
             st.markdown(
-                f'<div style="overflow-x: auto; background: white; white-space: nowrap;">'
+                f'<div style="overflow-x: auto; background: white; white-space: nowrap; border: 1px solid #ddd;">'
                 f'{icons_html}{graph_html}</div>', 
                 unsafe_allow_html=True
             )
-        else:
-            st.error("気象データの取得に失敗しました。時間をおいて再度お試しください。")
-
+            
 #==========================================================================================
 # アプリケーション起動
 #==========================================================================================
