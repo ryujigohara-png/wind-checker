@@ -25,10 +25,10 @@ from streamlit_js_eval import streamlit_js_eval, get_geolocation
 CONFIG = {
     "TITLE_SIZE": 24,
     "SUBTITLE_SIZE": 18,
-    "GRAPH_FONT_SIZE": 10,
-    "GRAPH_WIDTH": 20,           # 40から20に変更
+    "GRAPH_FONT_SIZE": 10,       # 風向文字等の基準サイズ
+    "GRAPH_WIDTH": 20,           # 既定値を20に設定
     "GRAPH_HIGHT": 5.5,
-    "LABEL_SIZE": 9,
+    "LABEL_SIZE": 9,             # X軸ラベルの基準サイズ
     "ANNOT_SIZE": 10,
     "DPI": 200,
     "MAP_HEIGHT": 350,
@@ -41,8 +41,8 @@ CONFIG = {
     "ANNOT_Y_STEP": 1.5,
     "ANNOT_BASE_Y": 0.5,
     "STORAGE_KEY": "wind_checker_settings",
-    "TEMP_COLOR": "darkorange",  # 気温グラフの色（太陽イメージ）
-    "PX_PER_INCH": 200,          # インチからピクセルへの変換係数
+    "TEMP_COLOR": "darkorange",
+    "PX_PER_INCH": 200,
     "LOCATION_MASTER": {
         "高須沖(鹿児島県)": (31.337, 130.795), 
         "柏原沖(鹿児島県)": (31.380, 131.020), 
@@ -153,11 +153,11 @@ def get_x_axis_formatter():
     def formatter(x, p):
         dt = mdates.num2date(x)
         if dt.hour == 0:
-            # 日付の下に曜日を表示
+            # 0時の場合：時刻を表示せず、日付の下に曜日を表示
             return dt.strftime('%m/%d') + f'\n({jp_weeks[dt.weekday()]})'
         else:
-            # 他の時刻と高さを合わせるための空行調整
-            return dt.strftime('%H:%M') + '\n '
+            # 時刻から :00 を排除（時のみ表示）し、高さを合わせる空行を追加
+            return dt.strftime('%H') + '\n '
     return formatter
     
 #==========================================================================================
@@ -187,7 +187,8 @@ def render_wind_bar_chart(ax, df, danger_v, wind_step, design_params=None):
     ax.set_ylim(0, y_limit)
     ax.set_ylabel('風速 (m/s)', fontsize=CONFIG["LABEL_SIZE"])
     
-    fs = design_params.get("annot_size", CONFIG["ANNOT_SIZE"]) if design_params else CONFIG["ANNOT_SIZE"]
+    # 風向文字などのサイズにサイドバーの設定を反映
+    fs = design_params.get("base_font_size", CONFIG["GRAPH_FONT_SIZE"]) if design_params else CONFIG["GRAPH_FONT_SIZE"]
     step, base = CONFIG["ANNOT_Y_STEP"], CONFIG["ANNOT_BASE_Y"]
     
     for i, bar in enumerate(bars):
@@ -384,10 +385,8 @@ def show_sidebar_controls():
     st.session_state.danger_v = danger_v
     
     st.sidebar.markdown("---")
-    # 開発者モードのチェックボックス
     is_dev = st.sidebar.checkbox("🔧 デザイン微調整(開発者用)", value=False)
     
-    # 基本パラメータの初期化（CONFIGから取得）
     design_params = {
         "width": CONFIG["GRAPH_WIDTH"],
         "height": CONFIG["GRAPH_HIGHT"],
@@ -397,12 +396,12 @@ def show_sidebar_controls():
         "annot_size": CONFIG["ANNOT_SIZE"]
     }
 
-    # 開発者モードがONの場合のみスライダーを表示
     if is_dev:
-        design_params["width"] = st.sidebar.slider("グラフ横幅 (inch)", 10, 80, CONFIG["GRAPH_WIDTH"])
-        design_params["height"] = st.sidebar.slider("グラフ縦幅 (inch)", 3.0, 10.0, CONFIG["GRAPH_HIGHT"])
-        design_params["base_font_size"] = st.sidebar.slider("基本フォントサイズ", 6, 20, CONFIG["GRAPH_FONT_SIZE"])
-        design_params["label_font_size"] = st.sidebar.slider("X軸・ラベルサイズ", 5, 15, CONFIG["LABEL_SIZE"])
+        # スライダー等の値をセッションに保持（これだけでは rerun しない）
+        design_params["width"] = st.sidebar.slider("グラフ横幅 (inch)", 10, 80, design_params["width"])
+        design_params["height"] = st.sidebar.slider("グラフ縦幅 (inch)", 3.0, 10.0, design_params["height"])
+        design_params["base_font_size"] = st.sidebar.slider("グラフ内文字サイズ", 6, 20, design_params["base_font_size"])
+        design_params["label_font_size"] = st.sidebar.slider("X軸ラベルサイズ", 5, 20, design_params["label_font_size"])
         design_params["bar_width"] = st.sidebar.slider("棒グラフ余白 (width)", 0.01, 0.1, 0.035, step=0.005)
     
     st.sidebar.markdown("---")
@@ -480,7 +479,7 @@ def main():
             st.session_state.lat, st.session_state.lon = master[basho]
         if basho == "地図で指定":
             st.session_state.show_map_state = True
-        st.cache_data.clear()
+        st.cache_data.clear() # 地点変更時は即座にクリア
         st.rerun()
 
     show_map = st.checkbox("地図表示", value=st.session_state.get('show_map_state', False))
@@ -494,6 +493,8 @@ def main():
     with col2:
         render_header_info(basho) 
     
+    # generate_high_res_graph が design_params を引数に取っているため、
+    # design_params の中身が変わらない限り（＝キャッシュがある限り）再描画されません。
     img_b64, ratio_info = generate_high_res_graph(
         st.session_state.lat, 
         st.session_state.lon, 
@@ -505,7 +506,6 @@ def main():
     if img_b64:
         df_for_icons = fetch_weather_data(st.session_state.lat, st.session_state.lon, 8)
         if df_for_icons is not None:
-            # CONFIG["PX_PER_INCH"] を使用して表示幅を計算
             display_width = int(design_params["width"] * CONFIG["PX_PER_INCH"])
             
             padding_df = pd.DataFrame({'time': [df_for_icons['time'].iloc[0] - timedelta(hours=i) for i in range(1, 4)][::-1]})
