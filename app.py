@@ -195,46 +195,44 @@ def render_tide_curve_chart(ax, df):
 #==========================================================================================
 # 11. 高解像度グラフ生成 (デザイン調整値反映版)
 #==========================================================================================
-@st.cache_data(show_spinner="グラフを生成中...")
+@st.cache_data(show_spinner="グラフを調整中...")
 def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_params):
-    # --- 1. データ取得と前処理 ---
+    # --- データ取得 ---
     df = fetch_weather_data(lat, lon, 8)
     if df is None: return None, (0, 0)
     
-    # グラフ左端に余白（3時間分）を作るためのダミーデータ
     padding_df = pd.DataFrame({'time': [df['time'].iloc[0] - timedelta(hours=i) for i in range(1, 4)][::-1]})
     df = pd.concat([padding_df, df], ignore_index=True)
     df = process_wind_data(df, list(selected_dirs_tuple))
     
-    # --- 2. デザインパラメータの取得（スライダーの値） ---
+    # --- スライダー値の取得 ---
     w = design_params.get("width", CONFIG["GRAPH_WIDTH"])
     h = design_params.get("height", CONFIG["GRAPH_HIGHT"])
     ls = design_params.get("label_size", CONFIG["LABEL_SIZE"])
     ans = design_params.get("annot_size", CONFIG["ANNOT_SIZE"])
-    
-    # 追加した余白調整パラメータ（スライダーがない場合のデフォルト値も設定）
     l_mar = design_params.get("left_margin", 0.05)
     r_mar = design_params.get("right_margin", 0.98)
 
-    # --- 3. グラフ本体の生成 ---
-    # figsizeにスライダーの w, h を反映
-    fig, axes = plt.subplots(3, 1, figsize=(w, h), dpi=CONFIG["DPI"], 
-                             gridspec_kw={'height_ratios': CONFIG["HEIGHT_RATIOS"]})
+    # --- グラフ生成（自動レイアウト機能を一切使わない設定） ---
+    fig, axes = plt.subplots(3, 1, figsize=(w, h), dpi=CONFIG["DPI"])
     
-    # 【重要】tight_layoutを使わず、subplots_adjustで余白をスライダー制御
-    plt.subplots_adjust(left=l_mar, right=r_mar, hspace=0.6, top=0.95, bottom=0.15)
-    
+    # 物理的な位置（左, 下, 幅, 高さ）を計算して各軸に強制適用
+    # これにより、Widthを絞っても「右下基準」にならず左側に固定されます
+    graph_w = r_mar - l_mar
+    axes[0].set_position([l_mar, 0.68, graph_w, 0.28]) # 風速
+    axes[1].set_position([l_mar, 0.43, graph_w, 0.15]) # 気温
+    axes[2].set_position([l_mar, 0.20, graph_w, 0.12]) # 潮位
+
+    # --- 描画ロジック ---
     formatter = get_x_axis_formatter()
     now_jst = datetime.now(timezone(timedelta(hours=9))).replace(tzinfo=None)
     
-    # 各チャートの描画
-    # 風速棒グラフ
+    # 風速グラフ
     bars = axes[0].bar(df['time'], df['wind_speed_10m'], color=df['color'], alpha=0.9, width=0.035)
     axes[0].axhline(y=danger_v, color='red', linestyle='--', linewidth=2, alpha=0.8)
     axes[0].set_ylim(0, max(df['wind_speed_10m'].max(), danger_v, 12) + 7)
     axes[0].set_ylabel('風速 (m/s)', fontsize=ls)
     
-    # 棒グラフ上の注釈（風向・数値・天気）
     step, base = CONFIG["ANNOT_Y_STEP"], CONFIG["ANNOT_BASE_Y"]
     for i, bar in enumerate(bars):
         if i % 3 == 0:
@@ -247,34 +245,28 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
             axes[0].text(xp, by + base + step*2, row['dir_name'], ha='center', va='bottom', fontsize=ans-2)
             axes[0].text(xp, by + base + step*3, row['w_text'], ha='center', va='bottom', color=row['w_color'], fontweight='bold', fontsize=ans-1)
 
-    # 気温と潮位の描画
     render_temp_line_chart(axes[1], df)
-    axes[1].set_ylabel('気温 (℃)', fontsize=ls)
+    axes[1].set_ylabel('気温', fontsize=ls)
     render_tide_curve_chart(axes[2], df)
     axes[2].set_ylabel('潮位', fontsize=ls)
 
-    # 共通軸設定
     for ax in axes:
         ax.axvline(now_jst, color='blue', linestyle='-', alpha=0.6, linewidth=2.5)
         ax.xaxis.set_major_locator(mdates.HourLocator(byhour=range(0, 24, 3)))
         ax.xaxis.set_major_formatter(plt.FuncFormatter(formatter))
         ax.set_xlim(df['time'].iloc[0], df['time'].iloc[-1])
         ax.grid(True, which='major', linestyle=':', alpha=0.6, color='#000000')
-        ax.tick_params(axis='x', which='major', labelsize=ls, pad=10)
+        ax.tick_params(axis='x', labelsize=ls, pad=10)
         ax.tick_params(axis='y', labelsize=ls)
 
-    # --- 4. 画像化とアイコン位置情報の計算 ---
-    # アイコン同期用の座標計算
-    pos = axes[0].get_position() 
-    ratio_info = (pos.x0, pos.width / (len(df) - 1))
+    # --- アイコン位置の計算 ---
+    # すべてのグラフで横幅(graph_w)と開始位置(l_mar)を統一したため、ここも正確になります
+    ratio_info = (l_mar, graph_w / (len(df) - 1))
     
-    # メモリ上の画像として保存
     buf = io.BytesIO()
-    fig.savefig(buf, format="png", bbox_inches=None, pad_inches=0)
+    fig.savefig(buf, format="png") # 余計なpad設定も削除
     plt.close(fig) 
-    
     return base64.b64encode(buf.getvalue()).decode(), ratio_info
-
 #==========================================================================================
 # 12. 【最新統合】お天気アイコンHTML生成 (ズレ防止・コンパクト版)
 #==========================================================================================
