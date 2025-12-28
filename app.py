@@ -314,9 +314,9 @@ def render_header_info(current_basho_name):
         st.cache_data.clear()
         st.rerun()
 
-#==========================================================================================
-# 18. サイドバー
-#==========================================================================================
+# ==========================================================================================
+# サイドバー制御（重複を避けるため、ここで1回だけ描画するようにします）
+# ==========================================================================================
 def show_sidebar_controls():
     st.sidebar.header("表示設定")
     
@@ -324,8 +324,9 @@ def show_sidebar_controls():
     danger_v = st.sidebar.number_input(
         "危険風速ライン(m/s)", 
         min_value=0.0, max_value=30.0, 
-        value=float(CONFIG.get("DANGER_WIND_SPEED", 12.0)), 
-        step=0.5
+        value=float(CONFIG.get("DANGER_WIND_SPEED", 10.0)), # 初期値10.0
+        step=0.5,
+        key="sb_danger_v" # 重複回避のためのユニークなキー
     )
 
     # 色付風向
@@ -344,30 +345,20 @@ def show_sidebar_controls():
     st.sidebar.markdown("---")
     
     design_params = {}
-    if st.sidebar.checkbox("🛠 開発者デザイン調整モード", value=True):
+    # デザイン調整モード（初期状態：オン）
+    if st.sidebar.checkbox("🛠 開発者デザイン調整モード", value=True, key="sb_dev_mode"):
         st.sidebar.subheader("外観微調整スライダー")
         
-        # 数値はすべて CONFIG から取得
-        design_params["width"] = st.sidebar.slider("グラフの横幅(3h幅)", 10, 100, int(CONFIG.get("GRAPH_WIDTH", 40)))
-        design_params["left_margin"] = st.sidebar.slider("左余白(0.02-0.2)", 0.02, 0.20, float(CONFIG.get("DEFAULT_LEFT_MARGIN", 0.02)), step=0.01)
-        design_params["right_margin"] = st.sidebar.slider("右余白(0.8-0.99)", 0.80, 0.99, float(CONFIG.get("DEFAULT_RIGHT_MARGIN", 0.98)), step=0.01)
-        design_params["height"] = st.sidebar.slider("グラフの高さ", 3.0, 15.0, float(CONFIG.get("GRAPH_HIGHT", 5.5)), step=0.5)
+        design_params["width"] = st.sidebar.slider("グラフの横幅(3h幅)", 10, 100, int(CONFIG.get("GRAPH_WIDTH", 40)), key="sl_width")
+        design_params["left_margin"] = st.sidebar.slider("左余白(0.02-0.2)", 0.02, 0.20, float(CONFIG.get("DEFAULT_LEFT_MARGIN", 0.02)), step=0.01, key="sl_l_mar")
+        design_params["right_margin"] = st.sidebar.slider("右余白(0.8-0.99)", 0.80, 0.99, float(CONFIG.get("DEFAULT_RIGHT_MARGIN", 0.98)), step=0.01, key="sl_r_mar")
+        design_params["height"] = st.sidebar.slider("グラフの高さ", 3.0, 15.0, float(CONFIG.get("GRAPH_HIGHT", 5.5)), step=0.5, key="sl_height")
         
-        # キー名を base_font_size に統一
-        design_params["base_font_size"] = st.sidebar.slider("基本フォント", 5, 20, int(CONFIG.get("BASE_FONT_SIZE", 10)))
-        design_params["label_size"] = st.sidebar.slider("軸ラベル", 5, 20, int(CONFIG.get("LABEL_SIZE", 9)))
-        design_params["annot_size"] = st.sidebar.slider("グラフ内文字", 5, 20, int(CONFIG.get("ANNOT_SIZE", 10)))
-        
-        if st.sidebar.button("この値をCONFIGに固定(表示のみ)"):
-            st.sidebar.code(f"""
-"DEFAULT_LEFT_MARGIN": {design_params['left_margin']},
-"DEFAULT_RIGHT_MARGIN": {design_params['right_margin']},
-"GRAPH_WIDTH": {design_params['width']},
-"GRAPH_HIGHT": {design_params['height']},
-"BASE_FONT_SIZE": {design_params['base_font_size']},
-            """)
+        design_params["base_font_size"] = st.sidebar.slider("基本フォント", 5, 20, int(CONFIG.get("BASE_FONT_SIZE", 10)), key="sl_base_f")
+        design_params["label_size"] = st.sidebar.slider("軸ラベル", 5, 20, int(CONFIG.get("LABEL_SIZE", 9)), key="sl_label_f")
+        design_params["annot_size"] = st.sidebar.slider("グラフ内文字", 5, 20, int(CONFIG.get("ANNOT_SIZE", 10)), key="sl_annot_f")
     else:
-        # チェックオフ時のデフォルト
+        # チェックオフ時は CONFIG のデフォルト値を使用
         design_params = {
             "width": CONFIG.get("GRAPH_WIDTH", 40),
             "height": CONFIG.get("GRAPH_HIGHT", 5.5),
@@ -379,6 +370,8 @@ def show_sidebar_controls():
         }
 
     return danger_v, sel_dirs, design_params
+
+
 
 #==========================================================================================
 #  ブラウザの記録読み取り
@@ -406,19 +399,13 @@ def sync_all_settings():
 # 18. メインフロー (UI完全復元 ＆ デザイン調整機能 統合版)
 #==========================================================================================
 def main():
-    # 1. 最初にブラウザ保存値を同期する（これがウインドサーファーの利便性に直結）
+# 1. 非常に重要なサブルーチン：ブラウザ保存値の同期
     sync_all_settings()
 
-    # 2. サイドバーを表示し、設定を取得
+    # 2. サイドバー制御の呼び出し（ここだけで実行する）
     danger_v, sel_dirs, design_params = show_sidebar_controls()
 
-    # 3. フォント設定（KeyErrorが出ないよう .get を使用）
-    setup_font(design_params.get("base_font_size", CONFIG.get("BASE_FONT_SIZE", 10)))
-    
-    # サイドバーからパラメータを取得（デザイン調整用の辞書 design_params を受け取る）
-    danger_v, sel_dirs, design_params = show_sidebar_controls()
-    
-    # スライダーで選ばれた基本フォントサイズを反映
+    # 3. フォント設定
     setup_font(design_params.get("base_font_size", CONFIG.get("BASE_FONT_SIZE", 10)))
     
     # --- CSS注入：UIの左寄せと余白調整 ---
