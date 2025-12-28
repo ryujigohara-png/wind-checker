@@ -32,7 +32,8 @@ CONFIG = {
     "ANNOT_SIZE": 10,
     "DPI": 200,
     "MAP_HEIGHT": 350,
-    "HEIGHT_RATIOS": [4.4, 1.2, 0.8],
+    "DEFAULT_LEFT_MARGIN": 0.05,  # 初期状態で左端に寄せるための値
+    "HEIGHT_RATIOS": [4.4, 1.2, 0.8], # 縦比率を厳守
     "LOC_INFO_FONT_SIZE": "16px",
     "LOC_INFO_COLOR": "#1e88e5",
     "LOC_INFO_MARGIN_TOP": "-10px",
@@ -197,37 +198,41 @@ def render_tide_curve_chart(ax, df):
 #==========================================================================================
 @st.cache_data(show_spinner="グラフを調整中...")
 def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_params):
-    # --- データ取得 ---
+    # --- データ準備 ---
     df = fetch_weather_data(lat, lon, 8)
     if df is None: return None, (0, 0)
-    
     padding_df = pd.DataFrame({'time': [df['time'].iloc[0] - timedelta(hours=i) for i in range(1, 4)][::-1]})
     df = pd.concat([padding_df, df], ignore_index=True)
     df = process_wind_data(df, list(selected_dirs_tuple))
     
-    # --- スライダー値の取得 ---
+    # --- パラメータ取得 ---
     w = design_params.get("width", CONFIG["GRAPH_WIDTH"])
     h = design_params.get("height", CONFIG["GRAPH_HIGHT"])
+    l_mar = design_params.get("left_margin", CONFIG.get("DEFAULT_LEFT_MARGIN", 0.05))
+    r_mar = design_params.get("right_margin", 0.98)
     ls = design_params.get("label_size", CONFIG["LABEL_SIZE"])
     ans = design_params.get("annot_size", CONFIG["ANNOT_SIZE"])
-    l_mar = design_params.get("left_margin", 0.05)
-    r_mar = design_params.get("right_margin", 0.98)
 
-    # --- グラフ生成（自動レイアウト機能を一切使わない設定） ---
+    # --- 縦比率の計算 ---
+    ratios = CONFIG["HEIGHT_RATIOS"]
+    total_r = sum(ratios)
+    # 各グラフの高さ（%）を算出（余白分を考慮して調整）
+    h_unit = 0.75 / total_r 
+    h0, h1, h2 = ratios[0]*h_unit, ratios[1]*h_unit, ratios[2]*h_unit
+    
     fig, axes = plt.subplots(3, 1, figsize=(w, h), dpi=CONFIG["DPI"])
     
-    # 物理的な位置（左, 下, 幅, 高さ）を計算して各軸に強制適用
-    # これにより、Widthを絞っても「右下基準」にならず左側に固定されます
+    # 物理的な位置の固定（縦比率を適用）
     graph_w = r_mar - l_mar
-    axes[0].set_position([l_mar, 0.68, graph_w, 0.28]) # 風速
-    axes[1].set_position([l_mar, 0.43, graph_w, 0.15]) # 気温
-    axes[2].set_position([l_mar, 0.20, graph_w, 0.12]) # 潮位
+    axes[0].set_position([l_mar, 0.95 - h0, graph_w, h0])      # 風速 (上)
+    axes[1].set_position([l_mar, 0.90 - h0 - h1, graph_w, h1]) # 気温 (中)
+    axes[2].set_position([l_mar, 0.85 - h0 - h1 - h2, graph_w, h2]) # 潮位 (下)
 
     # --- 描画ロジック ---
     formatter = get_x_axis_formatter()
     now_jst = datetime.now(timezone(timedelta(hours=9))).replace(tzinfo=None)
     
-    # 風速グラフ
+    # 風速
     bars = axes[0].bar(df['time'], df['wind_speed_10m'], color=df['color'], alpha=0.9, width=0.035)
     axes[0].axhline(y=danger_v, color='red', linestyle='--', linewidth=2, alpha=0.8)
     axes[0].set_ylim(0, max(df['wind_speed_10m'].max(), danger_v, 12) + 7)
@@ -259,14 +264,16 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
         ax.tick_params(axis='x', labelsize=ls, pad=10)
         ax.tick_params(axis='y', labelsize=ls)
 
-    # --- アイコン位置の計算 ---
-    # すべてのグラフで横幅(graph_w)と開始位置(l_mar)を統一したため、ここも正確になります
-    ratio_info = (l_mar, graph_w / (len(df) - 1))
+    # --- アイコン位置の計算（ズレ防止の核心部） ---
+    # 描画された axes[0] の「実際の座標」を直接取得して比率を出す
+    final_pos = axes[0].get_position()
+    ratio_info = (final_pos.x0, final_pos.width / (len(df) - 1))
     
     buf = io.BytesIO()
-    fig.savefig(buf, format="png") # 余計なpad設定も削除
+    fig.savefig(buf, format="png")
     plt.close(fig) 
     return base64.b64encode(buf.getvalue()).decode(), ratio_info
+    
 #==========================================================================================
 # 12. 【最新統合】お天気アイコンHTML生成 (ズレ防止・コンパクト版)
 #==========================================================================================
