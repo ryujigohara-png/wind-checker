@@ -185,7 +185,7 @@ def render_tide_curve_chart(ax, df):
     ax.set_yticks([])
 
 #==========================================================================================
-# 11. 高解像度グラフ生成 (サイズをさらに縮小: Y=0まで見えるように調整)
+# 11. 高解像度グラフ生成 (CONFIG定数参照版)
 #==========================================================================================
 @st.cache_data(show_spinner="グラフを生成中...")
 def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple):
@@ -196,9 +196,13 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple):
     df = pd.concat([padding_df, df], ignore_index=True)
     df = process_wind_data(df, list(selected_dirs_tuple))
     
-    # 【修正点】figsizeの第2引数（高さ）を 7.5 -> 5.5 に変更
-    # これにより、文字の鮮明さを保ったまま、グラフの縦方向のサイズが小さくなります。
-    fig, axes = plt.subplots(3, 1, figsize=(CONFIG["GRAPH_WIDTH"], CONFIG["GRAPH_HIGHT"]), dpi=CONFIG["DPI"], gridspec_kw={'height_ratios': CONFIG["HEIGHT_RATIOS"]})
+    # ユーザー様が定義されたCONFIG値を参照してグラフを生成
+    fig, axes = plt.subplots(
+        3, 1, 
+        figsize=(CONFIG["GRAPH_WIDTH"], CONFIG["GRAPH_HIGHT"]), 
+        dpi=CONFIG["DPI"], 
+        gridspec_kw={'height_ratios': CONFIG["HEIGHT_RATIOS"]}
+    )
     plt.subplots_adjust(hspace=0.6)
     
     formatter = get_x_axis_formatter()
