@@ -381,9 +381,40 @@ def show_sidebar_controls():
     return danger_v, sel_dirs, design_params
 
 #==========================================================================================
+#  ブラウザの記録読み取り
+#==========================================================================================
+def sync_all_settings():
+    """
+    ブラウザに保存されている wind_checker_basho や wind_checker_lat を
+    session_state に書き写し、現在の表示を同期させる重要な関数
+    """
+    # ブラウザ保存値（JavaScript経由で取得したもの）を Streamlit の状態に同期
+    if "wind_checker_basho" in st.session_state:
+        st.session_state["sel_basho"] = st.session_state["wind_checker_basho"]
+    
+    if "wind_checker_lat" in st.session_state:
+        st.session_state["lat_input"] = st.session_state["wind_checker_lat"]
+        
+    if "wind_checker_lon" in st.session_state:
+        st.session_state["lon_input"] = st.session_state["wind_checker_lon"]
+
+    # グラフのパラメータなども保存されている場合はここで復元
+    if "wind_checker_danger_v" in st.session_state:
+        st.session_state["danger_v"] = st.session_state["wind_checker_danger_v"]
+
+#==========================================================================================
 # 18. メインフロー (UI完全復元 ＆ デザイン調整機能 統合版)
 #==========================================================================================
 def main():
+    # 1. 最初にブラウザ保存値を同期する（これがウインドサーファーの利便性に直結）
+    sync_all_settings()
+
+    # 2. サイドバーを表示し、設定を取得
+    danger_v, sel_dirs, design_params = show_sidebar_controls()
+
+    # 3. フォント設定（KeyErrorが出ないよう .get を使用）
+    setup_font(design_params.get("base_font_size", CONFIG.get("BASE_FONT_SIZE", 10)))
+    
     # サイドバーからパラメータを取得（デザイン調整用の辞書 design_params を受け取る）
     danger_v, sel_dirs, design_params = show_sidebar_controls()
     
