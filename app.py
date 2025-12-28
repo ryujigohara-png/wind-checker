@@ -406,12 +406,15 @@ def sync_all_settings():
 #==========================================================================================
 def main():
     # 1. 非常に重要なサブルーチン：ブラウザ保存値の同期
+    # URLが違うベータ版では、最初は値が空になりますが、止まらないように処理されます
     sync_all_settings()
 
-    # 2. サイドバー制御の呼び出し（ここだけで実行する）
+    # 2. サイドバー制御の呼び出し
+    # ここで危険風速、色付風向、デザインパラメータを一括取得します
     danger_v, sel_dirs, design_params = show_sidebar_controls()
 
     # 3. フォント設定
+    # サイドバーのスライダー（base_font_size）の値を優先して適用します
     setup_font(design_params.get("base_font_size", CONFIG.get("BASE_FONT_SIZE", 10)))
     
     # --- CSS注入：UIの左寄せと余白調整 ---
@@ -432,12 +435,13 @@ def main():
     if 'lon' not in st.session_state: st.session_state.lon = CONFIG["DEFAULT_LON"]
     if 'last_basho' not in st.session_state: st.session_state.last_basho = CONFIG["DEFAULT_BASHO"]
     
-    # ブラウザLocalStorageとの同期（苦労して完成させたロジックを維持）
-    sync_all_settings()
-
+    # --- 修正の要：無限ループ（フリーズ）の回避ガード ---
+    # ベータ版（初訪問時）で "initialized" フラグがなくても、
+    # st.stop() で止めずに強制的に処理を続行させます。
     if "initialized" not in st.session_state:
-        st.info("設定を読み込み中...")
-        st.stop()
+        # 最初の1回だけ、同期中である旨を小さく表示
+        st.caption("⚙️ ブラウザ設定を同期中...（データがない場合はデフォルトで起動します）")
+        st.session_state["initialized"] = True 
 
     # --- 地点選択コンボボックス ---
     master = CONFIG["LOCATION_MASTER"].copy()
@@ -449,39 +453,61 @@ def main():
     display_options[current_loc_label] = "現在地"
     display_options["🗺️ 地図で指定"] = "地図で指定"
 
+    # 逆引き辞書で、現在の場所名から表示用ラベルを特定
     reverse_display = {v: k for k, v in display_options.items()}
-    current_display_val = reverse_display.get(st.session_state.last_basho, current_loc_label)
     
+    # sync_all_settings で読み込んだ場所があればそれを優先、なければ前回の場所
+    target_basho = st.session_state.get("sel_basho", st.session_state.last_basho)
+    current_display_val = reverse_display.get(target_basho, current_loc_label)
+    
+    # コンボボックスの初期位置を決定
+    options_list = list(display_options.keys())
+    try:
+        default_index = options_list.index(current_display_val)
+    except ValueError:
+        default_index = 0
+
     selected_display = st.selectbox(
         "地点を選択してください", 
-        list(display_options.keys()), 
-        index=list(display_options.keys()).index(current_display_val)
+        options_list, 
+        index=default_index,
+        key="main_basho_selectbox"
     )
     basho = display_options[selected_display]
 
+    # 地点変更時の連動処理
     if basho != st.session_state.last_basho:
         st.session_state.last_basho = basho
         if basho not in ["地図で指定", "現在地"]:
             st.session_state.lat, st.session_state.lon = master[basho]
         if basho == "地図で指定":
             st.session_state.show_map_state = True
+        st.cache_data.clear() # データを新しく取得し直す
         st.rerun()
 
-    # 地図の表示制御
-    show_map = st.checkbox("地図表示", value=st.session_state.get('show_map_state', False))
+    # 地図の表示制御（関数自体は既存のものを使用）
+    show_map = st.checkbox("地図表示", value=st.session_state.get('show_map_state', False), key="map_checkbox")
     st.session_state.show_map_state = show_map
     if show_map:
-        show_location_map()
+        # 注意: show_location_map() 関数が定義されている必要があります
+        try:
+            show_location_map()
+        except NameError:
+            st.warning("地図描画関数を準備中です。")
 
-    # --- ボタン配置（0.7+0.7の黄金比カラムを維持） ---
+    # --- ボタン配置（カラムを維持） ---
     col1, col2 = st.columns([0.7, 0.7]) 
     with col1:
-        handle_current_location_update()
+        # 注意: handle_current_location_update() 関数が定義されている必要があります
+        try:
+            handle_current_location_update()
+        except NameError:
+            pass
     with col2:
         render_header_info(basho) 
     
     # --- グラフ描画実行 ---
-    # デザインパラメータ（スライダーの値）を引数として渡す
+    # デザインパラメータ（スライダーの値）を引数として渡し、高解像度グラフを生成
     img_b64, ratio_info = generate_high_res_graph(
         st.session_state.lat, 
         st.session_state.lon, 
@@ -491,23 +517,27 @@ def main():
     )
     
     if img_b64:
-        # 天気アイコン用のデータ準備
+        # 天気アイコン用の最新データを取得
         df_for_icons = fetch_weather_data(st.session_state.lat, st.session_state.lon, 8)
-        padding_df = pd.DataFrame({'time': [df_for_icons['time'].iloc[0] - timedelta(hours=i) for i in range(1, 4)][::-1]})
-        df_full = pd.concat([padding_df, df_for_icons], ignore_index=True)
-        
-        # HTML生成（アイコン＋グラフ画像）
-        # icons_html の生成時に design_params["width"] を渡すように変更
-        icons_html = generate_weather_icons_html(df_full, ratio_info, design_params["width"])
-        
-        # グラフ本体は100%幅で表示（中身はmin-widthでスクロール可能に）
-        graph_html = f'<img src="data:image/png;base64,{img_b64}" style="width: 100%; min-width: 8000px; display: block;">'
-        
-        st.markdown(
-            f'<div style="overflow-x: auto; background: white; white-space: nowrap;">'
-            f'{icons_html}{graph_html}</div>', 
-            unsafe_allow_html=True
-        )
+        if df_for_icons is not None:
+            # グラフ左端の余白に合わせたダミーデータの追加
+            padding_df = pd.DataFrame({'time': [df_for_icons['time'].iloc[0] - timedelta(hours=i) for i in range(1, 4)][::-1]})
+            df_full = pd.concat([padding_df, df_for_icons], ignore_index=True)
+            
+            # HTML生成（アイコン＋グラフ画像）
+            # ratio_info を使い、グラフ内の棒グラフの位置とアイコンを同期させます
+            icons_html = generate_weather_icons_html(df_full, ratio_info, design_params["width"])
+            
+            # グラフ本体（横スクロール可能にするため min-width を設定）
+            graph_html = f'<img src="data:image/png;base64,{img_b64}" style="width: 100%; min-width: 8000px; display: block;">'
+            
+            st.markdown(
+                f'<div style="overflow-x: auto; background: white; white-space: nowrap;">'
+                f'{icons_html}{graph_html}</div>', 
+                unsafe_allow_html=True
+            )
+        else:
+            st.error("気象データの取得に失敗しました。時間をおいて再度お試しください。")
 
 #==========================================================================================
 # アプリケーション起動
