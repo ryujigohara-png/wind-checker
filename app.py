@@ -197,39 +197,82 @@ def render_tide_curve_chart(ax, df):
 #==========================================================================================
 @st.cache_data(show_spinner="グラフを生成中...")
 def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_params):
+    # --- 1. データ取得と前処理 ---
     df = fetch_weather_data(lat, lon, 8)
     if df is None: return None, (0, 0)
     
+    # グラフ左端に余白（3時間分）を作るためのダミーデータ
     padding_df = pd.DataFrame({'time': [df['time'].iloc[0] - timedelta(hours=i) for i in range(1, 4)][::-1]})
     df = pd.concat([padding_df, df], ignore_index=True)
     df = process_wind_data(df, list(selected_dirs_tuple))
     
-    # スライダーからの値を反映
+    # --- 2. デザインパラメータの取得（スライダーの値） ---
     w = design_params.get("width", CONFIG["GRAPH_WIDTH"])
     h = design_params.get("height", CONFIG["GRAPH_HIGHT"])
     ls = design_params.get("label_size", CONFIG["LABEL_SIZE"])
     ans = design_params.get("annot_size", CONFIG["ANNOT_SIZE"])
-
-    # figsizeの第1引数に w を適用
-    fig, axes = plt.subplots(3, 1, figsize=(w, h), dpi=CONFIG["DPI"], gridspec_kw={'height_ratios': CONFIG["HEIGHT_RATIOS"]})
-    plt.subplots_adjust(hspace=0.6)
     
-    # (以下、描画ロジックは以前と同じ)
+    # 追加した余白調整パラメータ（スライダーがない場合のデフォルト値も設定）
+    l_mar = design_params.get("left_margin", 0.05)
+    r_mar = design_params.get("right_margin", 0.98)
+
+    # --- 3. グラフ本体の生成 ---
+    # figsizeにスライダーの w, h を反映
+    fig, axes = plt.subplots(3, 1, figsize=(w, h), dpi=CONFIG["DPI"], 
+                             gridspec_kw={'height_ratios': CONFIG["HEIGHT_RATIOS"]})
+    
+    # 【重要】tight_layoutを使わず、subplots_adjustで余白をスライダー制御
+    plt.subplots_adjust(left=l_mar, right=r_mar, hspace=0.6, top=0.95, bottom=0.15)
+    
     formatter = get_x_axis_formatter()
     now_jst = datetime.now(timezone(timedelta(hours=9))).replace(tzinfo=None)
-    render_wind_bar_chart(axes[0], df, danger_v, 3)
-    render_temp_line_chart(axes[1], df)
-    render_tide_curve_chart(axes[2], df)
-    for ax in axes:
-        apply_common_axis_settings(ax, df, formatter, now_jst)
+    
+    # 各チャートの描画
+    # 風速棒グラフ
+    bars = axes[0].bar(df['time'], df['wind_speed_10m'], color=df['color'], alpha=0.9, width=0.035)
+    axes[0].axhline(y=danger_v, color='red', linestyle='--', linewidth=2, alpha=0.8)
+    axes[0].set_ylim(0, max(df['wind_speed_10m'].max(), danger_v, 12) + 7)
+    axes[0].set_ylabel('風速 (m/s)', fontsize=ls)
+    
+    # 棒グラフ上の注釈（風向・数値・天気）
+    step, base = CONFIG["ANNOT_Y_STEP"], CONFIG["ANNOT_BASE_Y"]
+    for i, bar in enumerate(bars):
+        if i % 3 == 0:
+            row = df.iloc[i]
+            if pd.isna(row['wind_speed_10m']): continue
+            by = bar.get_height()
+            xp = bar.get_x() + bar.get_width()/2.
+            axes[0].text(xp, by + base, f"{row['wind_speed_10m']:.0f}", ha='center', va='bottom', fontsize=ans-2)
+            axes[0].text(xp, by + base + step, row['arrow'], ha='center', va='bottom', fontsize=ans+2, fontweight='bold')
+            axes[0].text(xp, by + base + step*2, row['dir_name'], ha='center', va='bottom', fontsize=ans-2)
+            axes[0].text(xp, by + base + step*3, row['w_text'], ha='center', va='bottom', color=row['w_color'], fontweight='bold', fontsize=ans-1)
 
-    fig.tight_layout() 
+    # 気温と潮位の描画
+    render_temp_line_chart(axes[1], df)
+    axes[1].set_ylabel('気温 (℃)', fontsize=ls)
+    render_tide_curve_chart(axes[2], df)
+    axes[2].set_ylabel('潮位', fontsize=ls)
+
+    # 共通軸設定
+    for ax in axes:
+        ax.axvline(now_jst, color='blue', linestyle='-', alpha=0.6, linewidth=2.5)
+        ax.xaxis.set_major_locator(mdates.HourLocator(byhour=range(0, 24, 3)))
+        ax.xaxis.set_major_formatter(plt.FuncFormatter(formatter))
+        ax.set_xlim(df['time'].iloc[0], df['time'].iloc[-1])
+        ax.grid(True, which='major', linestyle=':', alpha=0.6, color='#000000')
+        ax.tick_params(axis='x', which='major', labelsize=ls, pad=10)
+        ax.tick_params(axis='y', labelsize=ls)
+
+    # --- 4. 画像化とアイコン位置情報の計算 ---
+    # アイコン同期用の座標計算
     pos = axes[0].get_position() 
     ratio_info = (pos.x0, pos.width / (len(df) - 1))
     
+    # メモリ上の画像として保存
     buf = io.BytesIO()
     fig.savefig(buf, format="png", bbox_inches=None, pad_inches=0)
     plt.close(fig) 
+    
     return base64.b64encode(buf.getvalue()).decode(), ratio_info
 
 #==========================================================================================
@@ -371,6 +414,10 @@ def show_sidebar_controls():
         st.sidebar.subheader("外観微調整スライダー")
         # 横幅のスライダーを追加（20〜60の範囲で調整可能）
         design_params["width"] = st.sidebar.slider("グラフの横幅(3h幅)", 10, 80, CONFIG["GRAPH_WIDTH"], 1)
+        # --- 余白調整用のスライダーを追加 ---
+        design_params["left_margin"] = st.sidebar.slider("左余白(0.02-0.2)", 0.02, 0.20, 0.05, 0.01)
+        design_params["right_margin"] = st.sidebar.slider("右余白(0.8-0.99)", 0.80, 0.99, 0.98, 0.01)
+        # -----------------------------------
         design_params["height"] = st.sidebar.slider("グラフの高さ", 3.0, 10.0, float(CONFIG["GRAPH_HIGHT"]), 0.1)
         design_params["font_size"] = st.sidebar.slider("基本フォント", 5, 20, CONFIG["GRAPH_FONT_SIZE"], 1)
         design_params["label_size"] = st.sidebar.slider("軸ラベル", 5, 20, CONFIG["LABEL_SIZE"], 1)
