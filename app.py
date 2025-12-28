@@ -313,6 +313,99 @@ def render_header_info(current_basho_name):
     if st.button(update_label, use_container_width=True):
         st.cache_data.clear()
         st.rerun()
+def show_sidebar_controls():
+    st.sidebar.header("表示設定")
+    
+    # 危険風速ラインの設定
+    danger_v = st.sidebar.number_input(
+        "危険風速ライン(m/s)", 
+        min_value=0.0, max_value=30.0, 
+        value=float(CONFIG.get("DANGER_WIND_SPEED", 12.0)), 
+        step=0.5
+    )
+
+    # 色付風向の選択
+    st.sidebar.subheader("色付風向")
+    cols = st.sidebar.columns(2)
+    sel_dirs = []
+    all_dirs = ["北", "北北東", "北東", "東北東", "東", "東南東", "南東", "南南東", 
+                "南", "南南西", "南西", "西南西", "西", "西北西", "北西", "北北西"]
+    
+    # 初期選択状態（CONFIGに定義がある場合はそれを使う）
+    default_sel = CONFIG.get("DEFAULT_SELECTED_DIRS", ["南", "南南西", "南西", "西南西", "西", "西北西", "北西", "北北西"])
+    
+    for i, d in enumerate(all_dirs):
+        with cols[i % 2]:
+            if st.checkbox(d, value=(d in default_sel), key=f"dir_{d}"):
+                sel_dirs.append(d)
+
+    st.sidebar.markdown("---")
+    
+    # 開発者デザイン調整モード
+    design_params = {}
+    if st.sidebar.checkbox("🛠 開発者デザイン調整モード", value=True):
+        st.sidebar.subheader("外観微調整スライダー")
+        
+        # 横幅
+        design_params["width"] = st.sidebar.slider(
+            "グラフの横幅(3h幅)", 10, 100, 
+            int(CONFIG.get("GRAPH_WIDTH", 40))
+        )
+        
+        # 左余白（CONFIG.DEFAULT_LEFT_MARGIN = 0.02 を初期値に）
+        design_params["left_margin"] = st.sidebar.slider(
+            "左余白(0.02-0.2)", 0.02, 0.20, 
+            float(CONFIG.get("DEFAULT_LEFT_MARGIN", 0.02)), 
+            step=0.01
+        )
+        
+        # 右余白（CONFIG.DEFAULT_RIGHT_MARGIN = 0.98 を初期値に）
+        design_params["right_margin"] = st.sidebar.slider(
+            "右余白(0.8-0.99)", 0.80, 0.99, 
+            float(CONFIG.get("DEFAULT_RIGHT_MARGIN", 0.98)), 
+            step=0.01
+        )
+        
+        # 高さ
+        design_params["height"] = st.sidebar.slider(
+            "グラフの高さ", 3.0, 15.0, 
+            float(CONFIG.get("GRAPH_HIGHT", 5.5)), 
+            step=0.5
+        )
+        
+        # フォントサイズ系
+        design_params["base_font_size"] = st.sidebar.slider(
+            "基本フォント", 5, 20, 
+            int(CONFIG.get("BASE_FONT_SIZE", 10))
+        )
+        design_params["label_size"] = st.sidebar.slider(
+            "軸ラベル", 5, 20, 
+            int(CONFIG.get("LABEL_SIZE", 9))
+        )
+        design_params["annot_size"] = st.sidebar.slider(
+            "グラフ内文字", 5, 20, 
+            int(CONFIG.get("ANNOT_SIZE", 10))
+        )
+        
+        if st.sidebar.button("この値をCONFIGに固定(表示のみ)"):
+            st.sidebar.code(f"""
+"DEFAULT_LEFT_MARGIN": {design_params['left_margin']},
+"DEFAULT_RIGHT_MARGIN": {design_params['right_margin']},
+"GRAPH_WIDTH": {design_params['width']},
+"GRAPH_HIGHT": {design_params['height']},
+            """)
+    else:
+        # チェックボックスがオフの場合のデフォルト値
+        design_params = {
+            "width": CONFIG.get("GRAPH_WIDTH", 40),
+            "height": CONFIG.get("GRAPH_HIGHT", 5.5),
+            "left_margin": CONFIG.get("DEFAULT_LEFT_MARGIN", 0.02),
+            "right_margin": CONFIG.get("DEFAULT_RIGHT_MARGIN", 0.98),
+            "label_size": CONFIG.get("LABEL_SIZE", 9),
+            "annot_size": CONFIG.get("ANNOT_SIZE", 10)
+        }
+
+    return danger_v, sel_dirs, design_params
 
 #==========================================================================================
 # 18. メインフロー (UI完全復元 ＆ デザイン調整機能 統合版)
