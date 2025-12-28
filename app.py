@@ -204,48 +204,24 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
     df = pd.concat([padding_df, df], ignore_index=True)
     df = process_wind_data(df, list(selected_dirs_tuple))
     
-    # デザインパラメータの適用
+    # スライダーからの値を反映
+    w = design_params.get("width", CONFIG["GRAPH_WIDTH"])
     h = design_params.get("height", CONFIG["GRAPH_HIGHT"])
     ls = design_params.get("label_size", CONFIG["LABEL_SIZE"])
     ans = design_params.get("annot_size", CONFIG["ANNOT_SIZE"])
 
-    fig, axes = plt.subplots(3, 1, figsize=(CONFIG["GRAPH_WIDTH"], h), dpi=CONFIG["DPI"], gridspec_kw={'height_ratios': CONFIG["HEIGHT_RATIOS"]})
+    # figsizeの第1引数に w を適用
+    fig, axes = plt.subplots(3, 1, figsize=(w, h), dpi=CONFIG["DPI"], gridspec_kw={'height_ratios': CONFIG["HEIGHT_RATIOS"]})
     plt.subplots_adjust(hspace=0.6)
     
+    # (以下、描画ロジックは以前と同じ)
     formatter = get_x_axis_formatter()
     now_jst = datetime.now(timezone(timedelta(hours=9))).replace(tzinfo=None)
-    
-    # 棒グラフ描画（注釈サイズを反映）
-    bars = axes[0].bar(df['time'], df['wind_speed_10m'], color=df['color'], alpha=0.9, width=0.035)
-    axes[0].axhline(y=danger_v, color='red', linestyle='--', linewidth=2, alpha=0.8)
-    axes[0].set_ylim(0, max(df['wind_speed_10m'].max(), danger_v, 12) + 7)
-    axes[0].set_ylabel('風速 (m/s)', fontsize=ls)
-    
-    step, base = CONFIG["ANNOT_Y_STEP"], CONFIG["ANNOT_BASE_Y"]
-    for i, bar in enumerate(bars):
-        if i % 3 == 0:
-            row = df.iloc[i]
-            if pd.isna(row['wind_speed_10m']): continue
-            by = bar.get_height()
-            xp = bar.get_x() + bar.get_width()/2.
-            axes[0].text(xp, by + base, f"{row['wind_speed_10m']:.0f}", ha='center', va='bottom', fontsize=ans-2)
-            axes[0].text(xp, by + base + step, row['arrow'], ha='center', va='bottom', fontsize=ans+2, fontweight='bold')
-            axes[0].text(xp, by + base + step*2, row['dir_name'], ha='center', va='bottom', fontsize=ans-2)
-            axes[0].text(xp, by + base + step*3, row['w_text'], ha='center', va='bottom', color=row['w_color'], fontweight='bold', fontsize=ans-1)
-
+    render_wind_bar_chart(axes[0], df, danger_v, 3)
     render_temp_line_chart(axes[1], df)
-    axes[1].set_ylabel('気温 (℃)', fontsize=ls)
     render_tide_curve_chart(axes[2], df)
-    axes[2].set_ylabel('潮位', fontsize=ls)
-
     for ax in axes:
-        ax.axvline(now_jst, color='blue', linestyle='-', alpha=0.6, linewidth=2.5)
-        ax.xaxis.set_major_locator(mdates.HourLocator(byhour=range(0, 24, 3)))
-        ax.xaxis.set_major_formatter(plt.FuncFormatter(formatter))
-        ax.set_xlim(df['time'].iloc[0], df['time'].iloc[-1])
-        ax.grid(True, which='major', linestyle=':', alpha=0.6, color='#000000')
-        ax.tick_params(axis='x', which='major', labelsize=ls, pad=10)
-        ax.tick_params(axis='y', labelsize=ls)
+        apply_common_axis_settings(ax, df, formatter, now_jst)
 
     fig.tight_layout() 
     pos = axes[0].get_position() 
@@ -259,7 +235,7 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
 #==========================================================================================
 # 12. 【最新統合】お天気アイコンHTML生成 (ズレ防止・コンパクト版)
 #==========================================================================================
-def generate_weather_icons_html(df, ratio_info):
+def generate_weather_icons_html(df, ratio_info, graph_width_param):
     start_x, hour_w = ratio_info
     icon_html = ""
     for i in range(3, len(df), 3):
@@ -267,8 +243,12 @@ def generate_weather_icons_html(df, ratio_info):
         pos_left = (start_x + (i * hour_w)) * 100
         icon_html += f'<div style="position: absolute; left: {pos_left}%; transform: translateX(-50%); width: 80px; text-align: center; font-size: 32px;">{row["weather_icon"]}</div>'
     
-    return f'<div style="position: relative; width: 8000px; height: 40px; margin-bottom: -15px;">{icon_html}</div>'
-
+    # graph_width_param（例: 40）に応じて、全体の横幅（px）を計算
+    # 200dpi設定の場合、figsizeの1単位は約200pxに相当しますが、
+    # ここでは十分な広さを確保するために係数（例: 200）を掛けます。
+    container_width = graph_width_param * 200 
+    return f'<div style="position: relative; width: {container_width}px; height: 40px; margin-bottom: -15px;">{icon_html}</div>'
+    
 #==========================================================================================
 # 13. 地図UI表示サブルーチン (既存維持)
 #==========================================================================================
@@ -381,6 +361,7 @@ def show_sidebar_controls():
     # --- 開発者用デザイン調整モード ---
     st.sidebar.markdown("---")
     design_params = {
+        "width": CONFIG["GRAPH_WIDTH"], # 追加
         "height": CONFIG["GRAPH_HIGHT"],
         "font_size": CONFIG["GRAPH_FONT_SIZE"],
         "label_size": CONFIG["LABEL_SIZE"],
@@ -388,15 +369,17 @@ def show_sidebar_controls():
     }
     if st.sidebar.checkbox("🛠 開発者デザイン調整モード"):
         st.sidebar.subheader("外観微調整スライダー")
+        # 横幅のスライダーを追加（20〜60の範囲で調整可能）
+        design_params["width"] = st.sidebar.slider("グラフの横幅(3h幅)", 10, 80, CONFIG["GRAPH_WIDTH"], 1)
         design_params["height"] = st.sidebar.slider("グラフの高さ", 3.0, 10.0, float(CONFIG["GRAPH_HIGHT"]), 0.1)
         design_params["font_size"] = st.sidebar.slider("基本フォント", 5, 20, CONFIG["GRAPH_FONT_SIZE"], 1)
         design_params["label_size"] = st.sidebar.slider("軸ラベル", 5, 20, CONFIG["LABEL_SIZE"], 1)
         design_params["annot_size"] = st.sidebar.slider("グラフ内文字", 5, 20, CONFIG["ANNOT_SIZE"], 1)
+        
         if st.sidebar.button("この値をCONFIGに固定(表示のみ)"):
-            st.sidebar.code(f'"GRAPH_HIGHT": {design_params["height"]},\n"GRAPH_FONT_SIZE": {design_params["font_size"]},\n"LABEL_SIZE": {design_params["label_size"]},\n"ANNOT_SIZE": {design_params["annot_size"]}')
+            st.sidebar.code(f'"GRAPH_WIDTH": {design_params["width"]},\n"GRAPH_HIGHT": {design_params["height"]},\n"GRAPH_FONT_SIZE": {design_params["font_size"]},\n"LABEL_SIZE": {design_params["label_size"]},\n"ANNOT_SIZE": {design_params["annot_size"]}')
 
     return dv, sel_dirs, design_params
-
 #==========================================================================================
 # 17. 更新ボタン表示 (全幅・左寄せUIを維持)
 #==========================================================================================
@@ -501,7 +484,9 @@ def main():
         df_full = pd.concat([padding_df, df_for_icons], ignore_index=True)
         
         # HTML生成（アイコン＋グラフ画像）
-        icons_html = generate_weather_icons_html(df_full, ratio_info)
+        # icons_html の生成時に design_params["width"] を渡すように変更
+        icons_html = generate_weather_icons_html(df_full, ratio_info, design_params["width"])
+        
         # グラフ本体は100%幅で表示（中身はmin-widthでスクロール可能に）
         graph_html = f'<img src="data:image/png;base64,{img_b64}" style="width: 100%; min-width: 8000px; display: block;">'
         
