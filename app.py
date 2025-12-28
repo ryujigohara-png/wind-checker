@@ -450,7 +450,8 @@ def main():
     st.markdown(f'<h1 style="font-size:{CONFIG["TITLE_SIZE"]}px;">⛵ Wind_Checker! </h1>', unsafe_allow_html=True)
     
     master = CONFIG["LOCATION_MASTER"].copy()
-    display_options = {{f"{name} ({coords[0]:.4f}, {coords[1]:.4f})": name for name, coords in master.items()}}
+    # 修正箇所: {{ }} を { } に修正しました
+    display_options = {f"{name} ({coords[0]:.4f}, {coords[1]:.4f})": name for name, coords in master.items()}
     
     current_loc_label = f"📍 現在地 ({st.session_state.lat:.4f}, {st.session_state.lon:.4f})"
     display_options[current_loc_label] = "現在地"
@@ -497,7 +498,7 @@ def main():
     if img_b64:
         df_for_icons = fetch_weather_data(st.session_state.lat, st.session_state.lon, 8)
         if df_for_icons is not None:
-            # インチ数に基づいて表示ピクセル幅を計算 (例: 40inch * 200 = 8000px)
+            # インチ数に基づいて表示ピクセル幅を計算
             display_width = int(design_params["width"] * 200)
             
             padding_df = pd.DataFrame({'time': [df_for_icons['time'].iloc[0] - timedelta(hours=i) for i in range(1, 4)][::-1]})
@@ -507,7 +508,6 @@ def main():
             icons_html = generate_weather_icons_html(df_full, ratio_info, display_width)
             graph_html = f'<img src="data:image/png;base64,{img_b64}" style="width: {display_width}px; display: block;">'
             
-            # HTML出力。内側のdivに固定幅を持たせることで、外側のdivがスクロールを提供
             st.markdown(
                 f'<div class="scroll-container">'
                 f'<div style="width: {display_width}px;">'
