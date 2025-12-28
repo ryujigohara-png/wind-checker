@@ -25,9 +25,9 @@ from streamlit_js_eval import streamlit_js_eval, get_geolocation
 CONFIG = {
     "TITLE_SIZE": 24,
     "SUBTITLE_SIZE": 18,
-    "GRAPH_FONT_SIZE": 13,
-    "LABEL_SIZE": 12,
-    "ANNOT_SIZE": 15,
+    "GRAPH_FONT_SIZE": 10,
+    "LABEL_SIZE": 9,
+    "ANNOT_SIZE": 10,
     "DPI": 200,
     "MAP_HEIGHT": 350,
     "HEIGHT_RATIOS": [4.4, 1.2, 0.8],
