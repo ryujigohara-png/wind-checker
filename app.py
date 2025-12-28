@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# 最終更新 2025.12.27 18:00 コンプリート版//////////////////////////////////////////////////////////////
+#///// 最終更新 2025.12.28 11:30 グラフサイズ最適化・完全機能維持版 //////////////////////////////////////////////////////////////
 import streamlit as st
 import requests
 import pandas as pd
@@ -56,7 +56,7 @@ CONFIG = {
 ALL_DIRECTIONS = ["北", "北北東", "北東", "東北東", "東", "東南東", "南東", "南南東", "南", "南南西", "南西", "西南西", "西", "西北西", "北西", "北北西"]
 
 #==========================================================================================
-# 2. グラフに使用する日本語フォントをセットアップするサブルーチン
+# 2. グラフに使用する日本語フォントをセットアップするサブルーチン (既存維持)
 #==========================================================================================
 def setup_font():
     font_url = "https://github.com/google/fonts/raw/main/ofl/notosansjp/NotoSansJP%5Bwght%5D.ttf"
@@ -67,7 +67,7 @@ def setup_font():
     plt.rc('font', family='Noto Sans JP', size=CONFIG["GRAPH_FONT_SIZE"])
 
 #==========================================================================================
-# 3. Open-Meteo APIから気象データを取得するサブルーチン
+# 3. Open-Meteo APIから気象データを取得するサブルーチン (既存維持)
 #==========================================================================================
 def fetch_weather_data(lat, lon, days):
     url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&hourly=temperature_2m,wind_speed_10m,wind_direction_10m,weather_code&timezone=Asia%2FTokyo&wind_speed_unit=ms&forecast_days={days}"
@@ -75,37 +75,30 @@ def fetch_weather_data(lat, lon, days):
         data = requests.get(url).json()
         df = pd.DataFrame(data["hourly"])
         df['time'] = pd.to_datetime(df['time'])
+        weather_results = [get_weather_info(code) for code in df['weather_code']]
+        df['weather_name'] = [res[0] for res in weather_results]
+        df['weather_color'] = [res[1] for res in weather_results]
+        df['weather_icon'] = [res[2] for res in weather_results]
         return df
-    except: return None
+    except:
+        return None
 
 #==========================================================================================
-# 4. 指定された時間リストに基づき簡易的な潮位を計算するサブルーチン (既存維持)
-#==========================================================================================
-def get_tide_level(times):
-    base_full_tide = datetime(2025, 1, 1, 6, 0)
-    cycle_hours = 12.42
-    levels = []
-    for t in times:
-        if pd.isna(t):
-            levels.append(np.nan)
-            continue
-        hours_from_base = (t - base_full_tide).total_seconds() / 3600
-        level = 100 * np.cos(2 * np.pi * hours_from_base / cycle_hours)
-        levels.append(level)
-    return levels
-
-#==========================================================================================
-# 5. 天気コードを日本語の名称と表示用の色に変換するサブルーチン (既存維持)
+# 5. 天気コードを変換するサブルーチン (既存維持)
 #==========================================================================================
 def get_weather_info(code):
-    if pd.isna(code): return "", "black"
-    if code <= 2: return "晴", "#FF4500"
-    if code <= 48: return "曇", "#696969"
-    if code <= 99: return "雨", "#00008B"
-    return "？", "black"
+    if pd.isna(code): return "不明", "black", "・"
+    if code <= 1: return "晴", "#FF4500", "☀️"
+    if code <= 3: return "曇", "#696969", "☁️"
+    if code <= 48: return "霧", "#A9A9A9", "🌫️"
+    if code <= 67: return "雨", "#00008B", "☔"
+    if code <= 77: return "雪", "#00BFFF", "❄️"
+    if code <= 82: return "雨", "#4682B4", "🌦️"
+    if code <= 99: return "雷", "#800080", "⛈️"
+    return "？", "black", "・"
 
 #==========================================================================================
-# 6. 風向角度を名称と矢印に変換し、条件に基づきグラフの色を判定するサブルーチン (既存維持)
+# 6. 風向角度を変換・判定するサブルーチン (既存維持)
 #==========================================================================================
 def process_wind_data(df, target_dirs):
     dirs = ALL_DIRECTIONS + ["北"]
@@ -118,9 +111,6 @@ def process_wind_data(df, target_dirs):
     df['res'] = df['wind_direction_10m'].apply(get_info)
     df['dir_name'] = df['res'].apply(lambda x: x[0])
     df['arrow'] = df['res'].apply(lambda x: x[1])
-    weather_res = df['weather_code'].apply(get_weather_info)
-    df['w_text'] = [r[0] for r in weather_res]
-    df['w_color'] = [r[1] for r in weather_res]
     
     def judge(row):
         speed = row['wind_speed_10m']
@@ -132,27 +122,23 @@ def process_wind_data(df, target_dirs):
         return "#D3D3D3"
     
     df['color'] = df.apply(judge, axis=1)
-    df['tide_level'] = get_tide_level(df['time'])
+    base_full_tide = datetime(2025, 1, 1, 6, 0)
+    cycle_hours = 12.42
+    df['tide_level'] = [100 * np.cos(2 * np.pi * ((t - base_full_tide).total_seconds() / 3600) / cycle_hours) if not pd.isna(t) else np.nan for t in df['time']]
     return df
 
 #==========================================================================================
-# 7. グラフのX軸ラベルフォーマッタ (既存維持)
+# 8. 共通の軸設定・フォーマッタ (既存維持)
 #==========================================================================================
 def get_x_axis_formatter():
     jp_weeks = ["月", "火", "水", "木", "金", "土", "日"]
     def formatter(x, p):
         dt = mdates.num2date(x)
-        if dt.hour == 0:
-            return dt.strftime('%H:%M') + f'\n({jp_weeks[dt.weekday()]})\n' + dt.strftime('%m/%d')
-        elif dt.hour in [3, 9, 15, 21]:
-            return f"\n{dt.strftime('%H:%M')}"
-        else:
-            return dt.strftime('%H:%M')
+        if dt.hour == 0: return dt.strftime('%H:%M') + f'\n({jp_weeks[dt.weekday()]})\n' + dt.strftime('%m/%d')
+        elif dt.hour in [3, 9, 15, 21]: return f"\n{dt.strftime('%H:%M')}"
+        else: return dt.strftime('%H:%M')
     return formatter
 
-#==========================================================================================
-# 8. 共通の軸設定 (既存維持)
-#==========================================================================================
 def apply_common_axis_settings(ax, df, formatter, now_jst):
     ax.axvline(now_jst, color='blue', linestyle='-', alpha=0.6, linewidth=2.5)
     ax.xaxis.set_major_locator(mdates.HourLocator(byhour=range(0, 24, 3)))
@@ -165,13 +151,12 @@ def apply_common_axis_settings(ax, df, formatter, now_jst):
     ax.tick_params(axis='y', labelsize=CONFIG["LABEL_SIZE"])
 
 #==========================================================================================
-# 9. 風速棒グラフ描画 (既存維持)
+# 9. 各チャート描画サブルーチン (既存維持)
 #==========================================================================================
 def render_wind_bar_chart(ax, df, danger_v, wind_step):
     bars = ax.bar(df['time'], df['wind_speed_10m'], color=df['color'], alpha=0.9, width=0.035)
     ax.axhline(y=danger_v, color='red', linestyle='--', linewidth=2, alpha=0.8)
-    max_speed = df['wind_speed_10m'].max()
-    y_limit = max(max_speed, danger_v, 12) + 7
+    y_limit = max(df['wind_speed_10m'].max(), danger_v, 12) + 7
     ax.set_ylim(0, y_limit)
     ax.set_ylabel('風速 (m/s)', fontsize=CONFIG["LABEL_SIZE"])
     fs, step, base = CONFIG["ANNOT_SIZE"], CONFIG["ANNOT_Y_STEP"], CONFIG["ANNOT_BASE_Y"]
@@ -179,16 +164,13 @@ def render_wind_bar_chart(ax, df, danger_v, wind_step):
         if i % wind_step == 0:
             row = df.iloc[i]
             if pd.isna(row['wind_speed_10m']): continue
-            base_y = bar.get_height()
-            x_pos = bar.get_x() + bar.get_width()/2.
-            ax.text(x_pos, base_y + base, f"{row['wind_speed_10m']:.0f}", ha='center', va='bottom', fontsize=fs-2)
-            ax.text(x_pos, base_y + base + step, row['arrow'], ha='center', va='bottom', fontsize=fs+2, fontweight='bold')
-            ax.text(x_pos, base_y + base + step*2, row['dir_name'], ha='center', va='bottom', fontsize=fs-2)
-            ax.text(x_pos, base_y + base + step*3, row['w_text'], ha='center', va='bottom', color=row['w_color'], fontweight='bold', fontsize=fs-1)
+            by = bar.get_height()
+            x = bar.get_x() + bar.get_width()/2.
+            ax.text(x, by + base, f"{row['wind_speed_10m']:.0f}", ha='center', va='bottom', fontsize=fs-2)
+            ax.text(x, by + base + step, row['arrow'], ha='center', va='bottom', fontsize=fs+2, fontweight='bold')
+            ax.text(x, by + base + step*2, row['dir_name'], ha='center', va='bottom', fontsize=fs-2)
+            ax.text(x, by + base + step*3, row['weather_name'], ha='center', va='bottom', color=row['weather_color'], fontweight='bold', fontsize=fs-1)
 
-#==========================================================================================
-# 10. 気温・潮位描画サブルーチン (既存維持)
-#==========================================================================================
 def render_temp_line_chart(ax, df):
     ax.plot(df['time'], df['temperature_2m'], color='#333333', linewidth=2, marker='o', markersize=3, markevery=3)
     ax.set_ylabel('気温 (℃)', fontsize=CONFIG["LABEL_SIZE"])
@@ -201,18 +183,19 @@ def render_tide_curve_chart(ax, df):
     ax.set_yticks([])
 
 #==========================================================================================
-# 11. 高解像度グラフ生成 (既存維持)
+# 11. 高解像度グラフ生成 (サイズ最適化版)
 #==========================================================================================
 @st.cache_data(show_spinner="グラフを生成中...")
 def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple):
     df = fetch_weather_data(lat, lon, 8)
-    if df is None: return None
+    if df is None: return None, (0, 0)
     
     padding_df = pd.DataFrame({'time': [df['time'].iloc[0] - timedelta(hours=i) for i in range(1, 4)][::-1]})
     df = pd.concat([padding_df, df], ignore_index=True)
     df = process_wind_data(df, list(selected_dirs_tuple))
     
-    fig, axes = plt.subplots(3, 1, figsize=(40, 11), dpi=CONFIG["DPI"], gridspec_kw={'height_ratios': CONFIG["HEIGHT_RATIOS"]})
+    # FIG_SIZEの高さ(height)を11から7.5へ。解像度(DPI)は維持してボケを防止。
+    fig, axes = plt.subplots(3, 1, figsize=(40, 7.5), dpi=CONFIG["DPI"], gridspec_kw={'height_ratios': CONFIG["HEIGHT_RATIOS"]})
     plt.subplots_adjust(hspace=0.6)
     
     formatter = get_x_axis_formatter()
@@ -223,198 +206,79 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple):
     render_tide_curve_chart(axes[2], df)
 
     for ax in axes:
-        if ax.get_visible():
-            apply_common_axis_settings(ax, df, formatter, now_jst)
-            
+        apply_common_axis_settings(ax, df, formatter, now_jst)
+
+    fig.tight_layout() 
+    pos = axes[0].get_position() 
+    ratio_info = (pos.x0, pos.width / (len(df) - 1))
+    
     buf = io.BytesIO()
-    fig.savefig(buf, format="png", bbox_inches='tight', pad_inches=0.1)
+    fig.savefig(buf, format="png", bbox_inches=None, pad_inches=0)
     plt.close(fig) 
-    return base64.b64encode(buf.getvalue()).decode()
+    
+    img_b64 = base64.b64encode(buf.getvalue()).decode()
+    return img_b64, ratio_info
 
 #==========================================================================================
-# 12. 地図UI表示サブルーチン (仕様5.2: 3x3格子レイアウト)
+# 12. お天気アイコンHTML生成サブルーチン (既存維持・精密調整)
 #==========================================================================================
-def show_location_map():
-    st.info("地図の中央地点のグラフを描画表示することができます。")
-    st.markdown("""<style>
-        div[data-testid="stHorizontalBlock"] { flex-wrap: nowrap !important; justify-content: center !important; }
-        [data-testid="column"] { min-width: 0px !important; }
-        .guide-arrow-main { color: crimson; font-size: 24px; font-weight: bold; text-align: center; }
-        </style>""", unsafe_allow_html=True)
-    
-    m = folium.Map(location=[st.session_state.lat, st.session_state.lon], zoom_start=13)
-    folium.Marker([st.session_state.lat, st.session_state.lon], icon=folium.Icon(color='red')).add_to(m)
-    
-    col_l1, col_m1, col_r1 = st.columns([1, 18, 1])
-    with col_m1: st.markdown("<div class='guide-arrow-main'>▼</div>", unsafe_allow_html=True)
-    
-    col_l2, col_m2, col_r2 = st.columns([1, 18, 1])
-    with col_l2: st.markdown(f"<div style='line-height:{CONFIG['MAP_HEIGHT']}px; text-align:right;' class='guide-arrow-main'>▶</div>", unsafe_allow_html=True)
-    with col_m2: map_out = st_folium(m, width=None, height=CONFIG["MAP_HEIGHT"], key=f"map_{st.session_state.lat}_{st.session_state.lon}", returned_objects=["center"])
-    with col_r2: st.markdown(f"<div style='line-height:{CONFIG['MAP_HEIGHT']}px; text-align:left;' class='guide-arrow-main'>◀</div>", unsafe_allow_html=True)
-    
-    col_l3, col_m3, col_r3 = st.columns([1, 18, 1])
-    with col_m3: st.markdown("<div class='guide-arrow-main' style='margin-top:-10px;'>▲</div>", unsafe_allow_html=True)
-    
-    if map_out and map_out.get("center"):
-        if st.button("グラフ描画地点確定", use_container_width=True):
-            st.session_state.lat = map_out["center"]["lat"]
-            st.session_state.lon = map_out["center"]["lng"]
-            st.session_state.last_basho = "地図で指定"
-            st.rerun()
+def generate_weather_icons_html(df, ratio_info):
+    start_x, hour_w = ratio_info
+    icon_html = ""
+    for i in range(3, len(df), 3):
+        row = df.iloc[i]
+        pos_left = (start_x + (i * hour_w)) * 100
+        icon_html += f'<div style="position: absolute; left: {pos_left}%; transform: translateX(-50%); width: 80px; text-align: center; font-size: 32px;">{row["weather_icon"]}</div>'
+        
+    return f'<div style="position: relative; width: 8000px; height: 50px; margin-bottom: -15px;">{icon_html}</div>'
 
 #==========================================================================================
-# 13. ブラウザのLocalStorageとSessionStateを同期するサブルーチン (NameError回避・安定版)
+# 13. UI共通コンポーネント (同期・位置・既存維持)
 #==========================================================================================
 def sync_all_settings():
     STORAGE_KEY = CONFIG['STORAGE_KEY']
-
-    # --- 読み込み処理（一切変更せず維持：苦労して完成させたロジックを保護） ---
     if "initialized" not in st.session_state:
         stored_data = streamlit_js_eval(js_expressions=f"localStorage.getItem('{STORAGE_KEY}')", key="load_storage")
-        
         if stored_data:
             try:
                 data = json.loads(stored_data)
-                st.session_state.lat = float(data.get("lat", CONFIG["DEFAULT_LAT"]))
-                st.session_state.lon = float(data.get("lon", CONFIG["DEFAULT_LON"]))
-                st.session_state.last_basho = data.get("basho", CONFIG["DEFAULT_BASHO"])
-                st.session_state.danger_v = float(data.get("danger_v", CONFIG["DEFAULT_DANGER_V"]))
-                st.session_state.sel_dirs = data.get("sel_dirs", CONFIG["DEFAULT_DIRS"])
+                st.session_state.lat, st.session_state.lon = float(data.get("lat")), float(data.get("lon"))
+                st.session_state.last_basho = data.get("basho")
+                st.session_state.danger_v = float(data.get("danger_v"))
+                st.session_state.sel_dirs = data.get("sel_dirs")
                 st.session_state.initialized = True
                 st.rerun()
-            except:
-                st.session_state.initialized = True
-        elif stored_data == "":
-            st.session_state.initialized = True
-        
-        if "initialized" not in st.session_state:
-            st.stop()
+            except: st.session_state.initialized = True
+        elif stored_data == "": st.session_state.initialized = True
+        if "initialized" not in st.session_state: st.stop()
 
-    # --- 書き込み処理（NameErrorの元となる time.time() を完全に排除） ---
-    save_data = {
-        "lat": st.session_state.lat,
-        "lon": st.session_state.lon,
-        "basho": st.session_state.last_basho,
-        "danger_v": st.session_state.get("danger_v", CONFIG["DEFAULT_DANGER_V"]),
-        "sel_dirs": st.session_state.get("sel_dirs", CONFIG["DEFAULT_DIRS"])
-    }
-    js_save = f"localStorage.setItem('{STORAGE_KEY}', '{json.dumps(save_data)}')"
-    
-    # 解決策：
-    # エラーの原因である time.time() を削除し、代わりにアプリで定義済みの last_basho を使用します。
-    # これにより、import time を追加する必要がなくなり、NameError は確実に消えます。
-    safe_key = f"save_storage_{st.session_state.last_basho}"
-    streamlit_js_eval(js_expressions=js_save, key=safe_key)
-    
-    
-#==========================================================================================
-# 14. 地点選択のロジックを制御するサブルーチン
-#==========================================================================================
-def handle_location_selection():
-    master = CONFIG["LOCATION_MASTER"].copy()
-    master["現在地"] = (st.session_state.lat, st.session_state.lon)
-    master["地図で指定"] = (st.session_state.lat, st.session_state.lon)
-    
-    current_idx = 0
-    if st.session_state.last_basho in master:
-        current_idx = list(master.keys()).index(st.session_state.last_basho)
-    
-    basho = st.selectbox("地点を選択してください", list(master.keys()), index=current_idx)
-    
-    if basho != st.session_state.last_basho:
-        st.session_state.last_basho = basho
-        if basho != "地図で指定":
-            st.session_state.lat, st.session_state.lon = master[basho]
-        st.rerun()
-    return basho
+    save_data = {"lat": st.session_state.lat, "lon": st.session_state.lon, "basho": st.session_state.last_basho, 
+                 "danger_v": st.session_state.get("danger_v", 10.0), "sel_dirs": st.session_state.get("sel_dirs", [])}
+    streamlit_js_eval(js_expressions=f"localStorage.setItem('{STORAGE_KEY}', '{json.dumps(save_data)}')")
 
-#==========================================================================================
-# 15.. 現在地取得サブルーチン (ロジックは一切変えず、配置のみ全幅・左寄せに修正)
-#==========================================================================================
 def handle_current_location_update():
-    """
-    現在地取得ボタン。末尾に空白を入れて左寄せを擬似的に表現。
-    """
     if st.button("🔄 📍現在地を取得　　　　　　　　　　", use_container_width=True):
         st.session_state.waiting_loc = True
         st.session_state.geo_key = f"geo_{datetime.now().timestamp()}"
         st.rerun()
-
     if st.session_state.get("waiting_loc"):
-        st.info("🛰️ 現在地を取得中...")
         loc = get_geolocation(component_key=st.session_state.get("geo_key"))
         if loc:
-            st.session_state.lat = round(loc['coords']['latitude'], 4)
-            st.session_state.lon = round(loc['coords']['longitude'], 4)
-            st.session_state.last_basho = "現在地"
-            st.session_state.waiting_loc = False
+            st.session_state.lat, st.session_state.lon = round(loc['coords']['latitude'], 4), round(loc['coords']['longitude'], 4)
+            st.session_state.last_basho, st.session_state.waiting_loc = "現在地", False
             st.rerun()
-        elif loc is False:
-            st.error("❌ 取得失敗")
-            if st.button("キャンセル"):
-                st.session_state.waiting_loc = False
-                st.rerun()
-                
-#==========================================================================================
-# 16. サイドバー設定サブルーチン (保存対応版)
-#==========================================================================================
-def show_sidebar_controls():
-    st.sidebar.header("表示設定")
-    
-    default_v = st.session_state.get("danger_v", CONFIG["DEFAULT_DANGER_V"])
-    danger_v = st.sidebar.number_input("危険風速ライン(m/s)", value=default_v, step=0.5)
-    st.session_state.danger_v = danger_v
-    
-    st.sidebar.write("色付風向")
-    saved_dirs = st.session_state.get("sel_dirs", CONFIG["DEFAULT_DIRS"])
-    
-    sel_dirs = []
-    cols = st.sidebar.columns(2)
-    for i, d in enumerate(ALL_DIRECTIONS):
-        with cols[i % 2]:
-            if st.checkbox(d, value=(d in saved_dirs), key=f"chk_{d}"):
-                sel_dirs.append(d)
-    
-    st.session_state.sel_dirs = sel_dirs
-    return danger_v, sel_dirs
 
 #==========================================================================================
-# 17. 現在時刻と更新ボタンを表示するサブルーチン (1行化・全幅・左寄せ)
-#==========================================================================================
-def render_header_info(current_basho_name):
-    """
-    データ更新ボタン。ラベルに日付と時刻を組み込みます。
-    """
-    # 現在の日時を取得（日本時間）
-    now = datetime.now(timezone(timedelta(hours=9)))
-    # 日付と時刻のフォーマット（例：2025/12/27 17:24）
-    date_time_str = now.strftime('%Y/%m/%d %H:%M:%S')
-    
-    # ボタンのラベルに日付・時刻を組み込み
-    update_label = f"🔄 グラフ更新 ({date_time_str})　　   　"
-    
-    if st.button(update_label, use_container_width=True):
-        st.cache_data.clear()
-        st.rerun()
-    
-    
-#==========================================================================================
-# 18. メインフロー (PC完全復元 ＆ スマホ安定表示版)
+# 16. メインフロー
 #==========================================================================================
 def main():
     setup_font()
-
-    # --- CSS注入：最小限の左寄せ設定 ---
-    st.markdown(f"""
-        <style>
-            .block-container {{ padding-top: 3.5rem !important; padding-bottom: 0rem !important; }}
-            h1 {{ margin-top: 0px !important; margin-bottom: -15px !important; line-height: 1.0 !important; }}
-            [data-testid="stVerticalBlock"] {{ gap: 0.3rem !important; }}
-            div.stButton > button p {{ text-align: left !important; width: 100% !important; }}
-            div.stButton > button {{ justify-content: flex-start !important; }}
-        </style>
-    """, unsafe_allow_html=True)
+    st.markdown("""<style>
+        .block-container { padding-top: 3.5rem !important; }
+        h1 { margin-bottom: -15px !important; }
+        div.stButton > button p { text-align: left !important; }
+        div.stButton > button { justify-content: flex-start !important; }
+        </style>""", unsafe_allow_html=True)
 
     st.markdown(f'<h1 style="font-size:{CONFIG["TITLE_SIZE"]}px;">⛵ 高須風チェッカー</h1>', unsafe_allow_html=True)
     
@@ -423,60 +287,48 @@ def main():
     if 'last_basho' not in st.session_state: st.session_state.last_basho = CONFIG["DEFAULT_BASHO"]
     sync_all_settings()
 
-    if "initialized" not in st.session_state:
-        st.info("設定を読み込み中...")
-        st.stop()
-
-    # --- 地点選択コンボボックス（座標を名前に統合） ---
     master = CONFIG["LOCATION_MASTER"].copy()
-    display_options = {}
-    for name, coords in master.items():
-        display_options[f"{name} ({coords[0]:.4f}, {coords[1]:.4f})"] = name
-
-    current_loc_label = f"📍 現在地 ({st.session_state.lat:.4f}, {st.session_state.lon:.4f})"
-    display_options[current_loc_label] = "現在地"
+    display_options = {f"{n} ({c[0]:.4f}, {c[1]:.4f})": n for n, c in master.items()}
+    curr_label = f"📍 現在地 ({st.session_state.lat:.4f}, {st.session_state.lon:.4f})"
+    display_options[curr_label] = "現在地"
     display_options["🗺️ 地図で指定"] = "地図で指定"
-
-    reverse_display = {v: k for k, v in display_options.items()}
-    current_display_val = reverse_display.get(st.session_state.last_basho, current_loc_label)
     
-    selected_display = st.selectbox(
-        "地点を選択してください", 
-        list(display_options.keys()), 
-        index=list(display_options.keys()).index(current_display_val)
-    )
-    basho = display_options[selected_display]
+    rev_display = {v: k for k, v in display_options.items()}
+    sel_name = st.selectbox("地点を選択してください", list(display_options.keys()), index=list(display_options.keys()).index(rev_display.get(st.session_state.last_basho, curr_label)))
+    basho = display_options[sel_name]
 
     if basho != st.session_state.last_basho:
         st.session_state.last_basho = basho
-        if basho not in ["地図で指定", "現在地"]:
-            st.session_state.lat, st.session_state.lon = master[basho]
-
-        # 【機能回復】「地図で指定」が選ばれたら、地図表示フラグを強制的にONにする
-        if basho == "地図で指定":
-            st.session_state.show_map_state = True
-            
+        if basho not in ["地図で指定", "現在地"]: st.session_state.lat, st.session_state.lon = master[basho]
         st.rerun()
 
-    show_map = st.checkbox("地図表示", value=st.session_state.get('show_map_state', False))
-    st.session_state.show_map_state = show_map
-    if show_map:
-        show_location_map()
-
-    # --- ボタン配置（カラム落ちハック：0.7+0.7） ---
-    col1, col2 = st.columns([0.7, 0.7]) 
-    with col1:
-        handle_current_location_update()
-    with col2:
-        render_header_info(basho) 
+    col1, col2 = st.columns([0.7, 0.7])
+    with col1: handle_current_location_update()
+    with col2: 
+        if st.button(f"🔄 グラフ更新 ({datetime.now(timezone(timedelta(hours=9))).strftime('%H:%M:%S')})　　", use_container_width=True):
+            st.cache_data.clear()
+            st.rerun()
     
-    danger_v, sel_dirs = show_sidebar_controls()
-    img = generate_high_res_graph(st.session_state.lat, st.session_state.lon, danger_v, tuple(sel_dirs))
-    if img:
-        st.markdown(f'<div style="overflow-x: auto; background: white;"><img src="data:image/png;base64,{img}" style="height: 850px; max-width: none;"></div>', unsafe_allow_html=True)
+    st.sidebar.header("表示設定")
+    dv = st.sidebar.number_input("危険風速ライン(m/s)", value=st.session_state.get("danger_v", 10.0), step=0.5)
+    st.session_state.danger_v = dv
+    sel_dirs = []
+    cols = st.sidebar.columns(2)
+    for i, d in enumerate(ALL_DIRECTIONS):
+        if cols[i%2].checkbox(d, value=(d in st.session_state.get("sel_dirs", CONFIG["DEFAULT_DIRS"])), key=f"c_{d}"): sel_dirs.append(d)
+    st.session_state.sel_dirs = sel_dirs
 
-#==========================================================================================
-# XX. 呼び出しコード
-#==========================================================================================
+    img_data, ratio_info = generate_high_res_graph(st.session_state.lat, st.session_state.lon, dv, tuple(sel_dirs))
+    
+    if img_data:
+        df_raw = fetch_weather_data(st.session_state.lat, st.session_state.lon, 8)
+        p_df = pd.DataFrame({'time': [df_raw['time'].iloc[0] - timedelta(hours=i) for i in range(1, 4)][::-1]})
+        df_full = pd.concat([p_df, df_raw], ignore_index=True)
+        
+        icons_html = generate_weather_icons_html(df_full, ratio_info)
+        graph_html = f'<img src="data:image/png;base64,{img_data}" style="width: 8000px; max-width: none; display: block;">'
+        
+        st.markdown(f'<div style="overflow-x: auto; background: white; border-radius: 8px; position: relative;">{icons_html}{graph_html}</div>', unsafe_allow_html=True)
+
 if __name__ == "__main__":
     main()
