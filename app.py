@@ -43,8 +43,8 @@ CONFIG = {
     "DEFAULT_BASHO": "高須沖(鹿児島県)",
     "DEFAULT_DANGER_V": 10.0,
     "DEFAULT_DIRS": ["南","南南西","南西","西南西","西","西北西","北西","北北西"],
-    "ANNOT_Y_STEP": 1.5,
-    "ANNOT_BASE_Y": 0.5,
+    "ANNOT_Y_STEP": 1.8,
+    "ANNOT_BASE_Y": 1.2,
     "STORAGE_KEY": "wind_checker_settings",
     "LOCATION_MASTER": {
         "高須沖(鹿児島県)": (31.337, 130.795), 
@@ -199,49 +199,55 @@ def render_tide_curve_chart(ax, df):
 #==========================================================================================
 @st.cache_data(show_spinner="グラフを調整中...")
 def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_params):
-    # --- 1. データ準備 ---
+    # --- 1. データ取得と前処理 ---
     df = fetch_weather_data(lat, lon, 8)
     if df is None: return None, (0, 0)
+    
+    # グラフ左端にダミーの余白（3時間分）を追加
     padding_df = pd.DataFrame({'time': [df['time'].iloc[0] - timedelta(hours=i) for i in range(1, 4)][::-1]})
     df = pd.concat([padding_df, df], ignore_index=True)
     df = process_wind_data(df, list(selected_dirs_tuple))
     
-    # --- 2. パラメータ取得 ---
-    w = design_params.get("width", 40)
-    h = design_params.get("height", 5.5)
-    l_mar = design_params.get("left_margin", 0.05)
-    r_mar = design_params.get("right_margin", 0.98)
-    ls = design_params.get("label_size", 9)
-    ans = design_params.get("annot_size", 10)
-
-    # --- 3. グラフ枠の生成と位置の確定（描画より先に実行！） ---
-    fig, axes = plt.subplots(3, 1, figsize=(w, h), dpi=200)
+    # --- 2. パラメータ取得 (CONFIG からの初期値読み込みを徹底) ---
+    w = design_params.get("width", CONFIG.get("GRAPH_WIDTH", 40))
+    h = design_params.get("height", CONFIG.get("GRAPH_HIGHT", 5.5))
     
-    ratios = CONFIG["HEIGHT_RATIOS"] # [4.4, 1.2, 0.8]
+    # 左余白・右余白を CONFIG から取得（指定がない場合は 0.02 / 0.98）
+    l_mar = design_params.get("left_margin", CONFIG.get("DEFAULT_LEFT_MARGIN", 0.02))
+    r_mar = design_params.get("right_margin", CONFIG.get("DEFAULT_RIGHT_MARGIN", 0.98))
+    
+    ls = design_params.get("label_size", CONFIG.get("LABEL_SIZE", 9))
+    ans = design_params.get("annot_size", CONFIG.get("ANNOT_SIZE", 10))
+
+    # --- 3. グラフ枠の生成と位置確定 ---
+    fig, axes = plt.subplots(3, 1, figsize=(w, h), dpi=CONFIG.get("DPI", 200))
+    
+    # CONFIGの縦比率 [4.4, 1.2, 0.8] を反映
+    ratios = CONFIG.get("HEIGHT_RATIOS", [4.4, 1.2, 0.8])
     total_r = sum(ratios)
     available_h = 0.75 
-    y_gap = 0.10 # ここを調整してラベルの重なりを回避
+    y_gap = 0.12  # 日付ラベル表示のための隙間を確保
     h_unit = (available_h - (y_gap * 2)) / total_r
     h0, h1, h2 = ratios[0]*h_unit, ratios[1]*h_unit, ratios[2]*h_unit
     
     graph_w = r_mar - l_mar
-    # 位置を先に確定させる
-    axes[0].set_position([l_mar, 0.95 - h0, graph_w, h0])
-    axes[1].set_position([l_mar, 0.90 - h0 - h1, graph_w, h1])
-    axes[2].set_position([l_mar, 0.85 - h0 - h1 - h2, graph_w, h2])
+    # 物理的な位置（左, 下, 幅, 高さ）を先に確定
+    axes[0].set_position([l_mar, 0.95 - h0, graph_w, h0])      # 風速
+    axes[1].set_position([l_mar, 0.90 - h0 - h1, graph_w, h1]) # 気温
+    axes[2].set_position([l_mar, 0.85 - h0 - h1 - h2, graph_w, h2]) # 潮位
 
-    # --- 4. 確定した位置（axes）に対してデータを描画 ---
+    # --- 4. 描画ロジック (確定した axes に対して描画) ---
     formatter = get_x_axis_formatter()
     now_jst = datetime.now(timezone(timedelta(hours=9))).replace(tzinfo=None)
     
-    # 風速グラフ
+    # 風速棒グラフ
     bars = axes[0].bar(df['time'], df['wind_speed_10m'], color=df['color'], alpha=0.9, width=0.035)
     axes[0].axhline(y=danger_v, color='red', linestyle='--', linewidth=2, alpha=0.8)
     axes[0].set_ylim(0, max(df['wind_speed_10m'].max(), danger_v, 12) + 7)
     axes[0].set_ylabel('風速 (m/s)', fontsize=ls)
     
-    # 棒グラフ上のテキスト注釈
-    step, base = CONFIG["ANNOT_Y_STEP"], CONFIG["ANNOT_BASE_Y"]
+    # 棒グラフ上の風向・数値・天気テキスト
+    step, base = CONFIG.get("ANNOT_Y_STEP", 1.8), CONFIG.get("ANNOT_BASE_Y", 1.2)
     for i, bar in enumerate(bars):
         if i % 3 == 0:
             row = df.iloc[i]
@@ -253,23 +259,26 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
             axes[0].text(xp, by + base + step*2, row['dir_name'], ha='center', va='bottom', fontsize=ans-2)
             axes[0].text(xp, by + base + step*3, row['w_text'], ha='center', va='bottom', color=row['w_color'], fontweight='bold', fontsize=ans-1)
 
-    # 気温と潮位
+    # 気温と潮位の描画（外部関数呼び出し）
     render_temp_line_chart(axes[1], df)
     axes[1].set_ylabel('気温', fontsize=ls)
     render_tide_curve_chart(axes[2], df)
     axes[2].set_ylabel('潮位', fontsize=ls)
 
-    # 軸の共通設定
-    for ax in axes:
+    # --- 5. 軸の共通設定 (日付・曜日の復活) ---
+    for i, ax in enumerate(axes):
         ax.axvline(now_jst, color='blue', linestyle='-', alpha=0.6, linewidth=2.5)
         ax.xaxis.set_major_locator(mdates.HourLocator(byhour=range(0, 24, 3)))
+        
+        # 重要な日付・曜日フォーマッタを風速(axes[0])と潮位(axes[2])に適用
         ax.xaxis.set_major_formatter(plt.FuncFormatter(formatter))
+        
         ax.set_xlim(df['time'].iloc[0], df['time'].iloc[-1])
         ax.grid(True, which='major', linestyle=':', alpha=0.6, color='#000000')
-        ax.tick_params(axis='x', labelsize=ls, pad=5)
+        ax.tick_params(axis='x', labelsize=ls, pad=8)
         ax.tick_params(axis='y', labelsize=ls)
 
-    # --- 5. アイコン用位置情報の取得 ---
+    # --- 6. アイコン同期情報の取得と画像出力 ---
     final_pos = axes[0].get_position()
     ratio_info = (final_pos.x0, final_pos.width / (len(df) - 1))
     
@@ -277,110 +286,6 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
     fig.savefig(buf, format="png")
     plt.close(fig) 
     return base64.b64encode(buf.getvalue()).decode(), ratio_info
-
-#==========================================================================================
-# 14. ブラウザ同期サブルーチン (コンプリート版ロジックを完全維持)
-#==========================================================================================
-def sync_all_settings():
-    STORAGE_KEY = CONFIG['STORAGE_KEY']
-    if "initialized" not in st.session_state:
-        stored_data = streamlit_js_eval(js_expressions=f"localStorage.getItem('{STORAGE_KEY}')", key="load_storage")
-        if stored_data:
-            try:
-                data = json.loads(stored_data)
-                st.session_state.lat = float(data.get("lat", CONFIG["DEFAULT_LAT"]))
-                st.session_state.lon = float(data.get("lon", CONFIG["DEFAULT_LON"]))
-                st.session_state.last_basho = data.get("basho", CONFIG["DEFAULT_BASHO"])
-                st.session_state.danger_v = float(data.get("danger_v", CONFIG["DEFAULT_DANGER_V"]))
-                st.session_state.sel_dirs = data.get("sel_dirs", CONFIG["DEFAULT_DIRS"])
-                st.session_state.initialized = True
-                st.rerun()
-            except:
-                st.session_state.initialized = True
-        elif stored_data == "":
-            st.session_state.initialized = True
-        
-        if "initialized" not in st.session_state:
-            st.stop()
-
-    save_data = {
-        "lat": st.session_state.lat,
-        "lon": st.session_state.lon,
-        "basho": st.session_state.last_basho,
-        "danger_v": st.session_state.get("danger_v", CONFIG["DEFAULT_DANGER_V"]),
-        "sel_dirs": st.session_state.get("sel_dirs", CONFIG["DEFAULT_DIRS"])
-    }
-    js_save = f"localStorage.setItem('{STORAGE_KEY}', '{json.dumps(save_data)}')"
-    safe_key = f"save_storage_{st.session_state.last_basho}"
-    streamlit_js_eval(js_expressions=js_save, key=safe_key)
-
-#==========================================================================================
-# 15. 現在地取得サブルーチン (全幅・左寄せUIを維持)
-#==========================================================================================
-def handle_current_location_update():
-    if st.button("🔄 📍現在地を取得　　　　　　　　　　", use_container_width=True):
-        st.session_state.waiting_loc = True
-        st.session_state.geo_key = f"geo_{datetime.now().timestamp()}"
-        st.rerun()
-
-    if st.session_state.get("waiting_loc"):
-        st.info("🛰️ 現在地を取得中...")
-        loc = get_geolocation(component_key=st.session_state.get("geo_key"))
-        if loc:
-            st.session_state.lat = round(loc['coords']['latitude'], 4)
-            st.session_state.lon = round(loc['coords']['longitude'], 4)
-            st.session_state.last_basho = "現在地"
-            st.session_state.waiting_loc = False
-            st.rerun()
-        elif loc is False:
-            st.error("❌ 取得失敗")
-            if st.button("キャンセル"):
-                st.session_state.waiting_loc = False
-                st.rerun()
-
-#==========================================================================================
-# 16. サイドバー設定 (デザイン調整パネル搭載)
-#==========================================================================================
-def show_sidebar_controls():
-    st.sidebar.header("表示設定")
-    dv = st.sidebar.number_input("危険風速ライン(m/s)", value=st.session_state.get("danger_v", CONFIG["DEFAULT_DANGER_V"]), step=0.5)
-    st.session_state.danger_v = dv
-    
-    st.sidebar.write("色付風向")
-    saved_dirs = st.session_state.get("sel_dirs", CONFIG["DEFAULT_DIRS"])
-    sel_dirs = []
-    cols = st.sidebar.columns(2)
-    for i, d in enumerate(ALL_DIRECTIONS):
-        with cols[i % 2]:
-            if st.checkbox(d, value=(d in saved_dirs), key=f"chk_{d}"): sel_dirs.append(d)
-    st.session_state.sel_dirs = sel_dirs
-
-    # --- 開発者用デザイン調整モード ---
-    st.sidebar.markdown("---")
-    design_params = {
-        "width": CONFIG["GRAPH_WIDTH"], # 追加
-        "height": CONFIG["GRAPH_HIGHT"],
-        "font_size": CONFIG["GRAPH_FONT_SIZE"],
-        "label_size": CONFIG["LABEL_SIZE"],
-        "annot_size": CONFIG["ANNOT_SIZE"]
-    }
-    if st.sidebar.checkbox("🛠 開発者デザイン調整モード"):
-        st.sidebar.subheader("外観微調整スライダー")
-        # 横幅のスライダーを追加（20〜60の範囲で調整可能）
-        design_params["width"] = st.sidebar.slider("グラフの横幅(3h幅)", 10, 80, CONFIG["GRAPH_WIDTH"], 1)
-        # --- 余白調整用のスライダーを追加 ---
-        design_params["left_margin"] = st.sidebar.slider("左余白(0.02-0.2)", 0.02, 0.20, CONFIG["DEFAULT_LEFT_MARGIN"], 0.01)
-        design_params["right_margin"] = st.sidebar.slider("右余白(0.8-0.99)", 0.80, 0.99, CONFIG["DEFAULT_RIGHT_MARGIN"], 0.01)
-        # -----------------------------------
-        design_params["height"] = st.sidebar.slider("グラフの高さ", 3.0, 10.0, float(CONFIG["GRAPH_HIGHT"]), 0.1)
-        design_params["font_size"] = st.sidebar.slider("基本フォント", 5, 20, CONFIG["GRAPH_FONT_SIZE"], 1)
-        design_params["label_size"] = st.sidebar.slider("軸ラベル", 5, 20, CONFIG["LABEL_SIZE"], 1)
-        design_params["annot_size"] = st.sidebar.slider("グラフ内文字", 5, 20, CONFIG["ANNOT_SIZE"], 1)
-        
-        if st.sidebar.button("この値をCONFIGに固定(表示のみ)"):
-            st.sidebar.code(f'"GRAPH_WIDTH": {design_params["width"]},\n"GRAPH_HIGHT": {design_params["height"]},\n"GRAPH_FONT_SIZE": {design_params["font_size"]},\n"LABEL_SIZE": {design_params["label_size"]},\n"ANNOT_SIZE": {design_params["annot_size"]}')
-
-    return dv, sel_dirs, design_params
 
 # ==========================================================================================
 # 天気アイコン生成関数（幅可変対応版）
