@@ -33,6 +33,7 @@ CONFIG = {
     "DPI": 200,
     "MAP_HEIGHT": 350,
     "DEFAULT_LEFT_MARGIN": 0.02,  # 初期状態で左端に寄せるための値
+    "DEFAULT_RIGHT_MARGIN": 0.98,  # 初期状態で右端に寄せるための値
     "HEIGHT_RATIOS": [4.4, 1.2, 0.8], # 縦比率を厳守
     "LOC_INFO_FONT_SIZE": "16px",
     "LOC_INFO_COLOR": "#1e88e5",
@@ -368,8 +369,8 @@ def show_sidebar_controls():
         # 横幅のスライダーを追加（20〜60の範囲で調整可能）
         design_params["width"] = st.sidebar.slider("グラフの横幅(3h幅)", 10, 80, CONFIG["GRAPH_WIDTH"], 1)
         # --- 余白調整用のスライダーを追加 ---
-        design_params["left_margin"] = st.sidebar.slider("左余白(0.02-0.2)", 0.02, 0.20, 0.05, 0.01)
-        design_params["right_margin"] = st.sidebar.slider("右余白(0.8-0.99)", 0.80, 0.99, 0.98, 0.01)
+        design_params["left_margin"] = st.sidebar.slider("左余白(0.02-0.2)", 0.02, 0.20, CONFIG["DEFAULT_LEFT_MARGIN"], 0.01)
+        design_params["right_margin"] = st.sidebar.slider("右余白(0.8-0.99)", 0.80, 0.99, CONFIG["DEFAULT_RIGHT_MARGIN"], 0.01)
         # -----------------------------------
         design_params["height"] = st.sidebar.slider("グラフの高さ", 3.0, 10.0, float(CONFIG["GRAPH_HIGHT"]), 0.1)
         design_params["font_size"] = st.sidebar.slider("基本フォント", 5, 20, CONFIG["GRAPH_FONT_SIZE"], 1)
