@@ -198,32 +198,67 @@ def render_tide_curve_chart(ax, df):
 #==========================================================================================
 @st.cache_data(show_spinner="グラフを調整中...")
 def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_params):
+    # --- 1. データ準備 ---
     df = fetch_weather_data(lat, lon, 8)
     if df is None: return None, (0, 0)
     padding_df = pd.DataFrame({'time': [df['time'].iloc[0] - timedelta(hours=i) for i in range(1, 4)][::-1]})
     df = pd.concat([padding_df, df], ignore_index=True)
     df = process_wind_data(df, list(selected_dirs_tuple))
     
-    w, h = design_params.get("width", 40), design_params.get("height", 5.5)
+    # --- 2. パラメータ取得 ---
+    w = design_params.get("width", 40)
+    h = design_params.get("height", 5.5)
     l_mar = design_params.get("left_margin", 0.05)
     r_mar = design_params.get("right_margin", 0.98)
-    ls, ans = design_params.get("label_size", 9), design_params.get("annot_size", 10)
+    ls = design_params.get("label_size", 9)
+    ans = design_params.get("annot_size", 10)
 
-    # 縦比率 [4.4, 1.2, 0.8] を維持しつつ隙間(y_gap)を作る
+    # --- 3. グラフ枠の生成と位置の確定（描画より先に実行！） ---
     fig, axes = plt.subplots(3, 1, figsize=(w, h), dpi=200)
-    graph_w = r_mar - l_mar
-    y_gap = 0.10  # 隙間を広げて時刻ラベルを見えるようにしました
     
-    axes[0].set_position([l_mar, 0.65, graph_w, 0.25]) # 風速
-    axes[1].set_position([l_mar, 0.40, graph_w, 0.15]) # 気温
-    axes[2].set_position([l_mar, 0.20, graph_w, 0.10]) # 潮位
+    ratios = CONFIG["HEIGHT_RATIOS"] # [4.4, 1.2, 0.8]
+    total_r = sum(ratios)
+    available_h = 0.75 
+    y_gap = 0.10 # ここを調整してラベルの重なりを回避
+    h_unit = (available_h - (y_gap * 2)) / total_r
+    h0, h1, h2 = ratios[0]*h_unit, ratios[1]*h_unit, ratios[2]*h_unit
+    
+    graph_w = r_mar - l_mar
+    # 位置を先に確定させる
+    axes[0].set_position([l_mar, 0.95 - h0, graph_w, h0])
+    axes[1].set_position([l_mar, 0.90 - h0 - h1, graph_w, h1])
+    axes[2].set_position([l_mar, 0.85 - h0 - h1 - h2, graph_w, h2])
 
+    # --- 4. 確定した位置（axes）に対してデータを描画 ---
     formatter = get_x_axis_formatter()
     now_jst = datetime.now(timezone(timedelta(hours=9))).replace(tzinfo=None)
     
-    # 各グラフの描画（簡略化して記載していますが、既存の描画ロジックを維持してください）
-    # ... (axes[0].bar, axes[1].plot, axes[2].plot などの処理) ...
+    # 風速グラフ
+    bars = axes[0].bar(df['time'], df['wind_speed_10m'], color=df['color'], alpha=0.9, width=0.035)
+    axes[0].axhline(y=danger_v, color='red', linestyle='--', linewidth=2, alpha=0.8)
+    axes[0].set_ylim(0, max(df['wind_speed_10m'].max(), danger_v, 12) + 7)
+    axes[0].set_ylabel('風速 (m/s)', fontsize=ls)
+    
+    # 棒グラフ上のテキスト注釈
+    step, base = CONFIG["ANNOT_Y_STEP"], CONFIG["ANNOT_BASE_Y"]
+    for i, bar in enumerate(bars):
+        if i % 3 == 0:
+            row = df.iloc[i]
+            if pd.isna(row['wind_speed_10m']): continue
+            by = bar.get_height()
+            xp = bar.get_x() + bar.get_width()/2.
+            axes[0].text(xp, by + base, f"{row['wind_speed_10m']:.0f}", ha='center', va='bottom', fontsize=ans-2)
+            axes[0].text(xp, by + base + step, row['arrow'], ha='center', va='bottom', fontsize=ans+2, fontweight='bold')
+            axes[0].text(xp, by + base + step*2, row['dir_name'], ha='center', va='bottom', fontsize=ans-2)
+            axes[0].text(xp, by + base + step*3, row['w_text'], ha='center', va='bottom', color=row['w_color'], fontweight='bold', fontsize=ans-1)
 
+    # 気温と潮位
+    render_temp_line_chart(axes[1], df)
+    axes[1].set_ylabel('気温', fontsize=ls)
+    render_tide_curve_chart(axes[2], df)
+    axes[2].set_ylabel('潮位', fontsize=ls)
+
+    # 軸の共通設定
     for ax in axes:
         ax.axvline(now_jst, color='blue', linestyle='-', alpha=0.6, linewidth=2.5)
         ax.xaxis.set_major_locator(mdates.HourLocator(byhour=range(0, 24, 3)))
@@ -231,46 +266,16 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
         ax.set_xlim(df['time'].iloc[0], df['time'].iloc[-1])
         ax.grid(True, which='major', linestyle=':', alpha=0.6, color='#000000')
         ax.tick_params(axis='x', labelsize=ls, pad=5)
+        ax.tick_params(axis='y', labelsize=ls)
 
+    # --- 5. アイコン用位置情報の取得 ---
     final_pos = axes[0].get_position()
     ratio_info = (final_pos.x0, final_pos.width / (len(df) - 1))
+    
     buf = io.BytesIO()
     fig.savefig(buf, format="png")
     plt.close(fig) 
     return base64.b64encode(buf.getvalue()).decode(), ratio_info
-
-    
-#==========================================================================================
-# 13. 地図UI表示サブルーチン (既存維持)
-#==========================================================================================
-def show_location_map():
-    st.info("地図の中央地点のグラフを描画表示することができます。")
-    st.markdown("""<style>
-        div[data-testid="stHorizontalBlock"] { flex-wrap: nowrap !important; justify-content: center !important; }
-        [data-testid="column"] { min-width: 0px !important; }
-        .guide-arrow-main { color: crimson; font-size: 24px; font-weight: bold; text-align: center; }
-        </style>""", unsafe_allow_html=True)
-    
-    m = folium.Map(location=[st.session_state.lat, st.session_state.lon], zoom_start=13)
-    folium.Marker([st.session_state.lat, st.session_state.lon], icon=folium.Icon(color='red')).add_to(m)
-    
-    col_l1, col_m1, col_r1 = st.columns([1, 18, 1])
-    with col_m1: st.markdown("<div class='guide-arrow-main'>▼</div>", unsafe_allow_html=True)
-    
-    col_l2, col_m2, col_r2 = st.columns([1, 18, 1])
-    with col_l2: st.markdown(f"<div style='line-height:{CONFIG['MAP_HEIGHT']}px; text-align:right;' class='guide-arrow-main'>▶</div>", unsafe_allow_html=True)
-    with col_m2: map_out = st_folium(m, width=None, height=CONFIG["MAP_HEIGHT"], key=f"map_{st.session_state.lat}_{st.session_state.lon}", returned_objects=["center"])
-    with col_r2: st.markdown(f"<div style='line-height:{CONFIG['MAP_HEIGHT']}px; text-align:left;' class='guide-arrow-main'>◀</div>", unsafe_allow_html=True)
-    
-    col_l3, col_m3, col_r3 = st.columns([1, 18, 1])
-    with col_m3: st.markdown("<div class='guide-arrow-main' style='margin-top:-10px;'>▲</div>", unsafe_allow_html=True)
-    
-    if map_out and map_out.get("center"):
-        if st.button("グラフ描画地点確定", use_container_width=True):
-            st.session_state.lat = map_out["center"]["lat"]
-            st.session_state.lon = map_out["center"]["lng"]
-            st.session_state.last_basho = "地図で指定"
-            st.rerun()
 
 #==========================================================================================
 # 14. ブラウザ同期サブルーチン (コンプリート版ロジックを完全維持)
