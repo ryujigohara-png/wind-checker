@@ -26,7 +26,7 @@ CONFIG = {
     "TITLE_SIZE": 24,
     "SUBTITLE_SIZE": 18,
     "GRAPH_FONT_SIZE": 10,
-    "GRAPH_WIDTH": 40,
+    "GRAPH_WIDTH": 20,           # 40から20に変更
     "GRAPH_HIGHT": 5.5,
     "LABEL_SIZE": 9,
     "ANNOT_SIZE": 10,
@@ -41,6 +41,8 @@ CONFIG = {
     "ANNOT_Y_STEP": 1.5,
     "ANNOT_BASE_Y": 0.5,
     "STORAGE_KEY": "wind_checker_settings",
+    "TEMP_COLOR": "darkorange",  # 気温グラフの色（太陽イメージ）
+    "PX_PER_INCH": 200,          # インチからピクセルへの変換係数
     "LOCATION_MASTER": {
         "高須沖(鹿児島県)": (31.337, 130.795), 
         "柏原沖(鹿児島県)": (31.380, 131.020), 
@@ -51,6 +53,7 @@ CONFIG = {
         "錦江湾(鹿児島県)": (31.590, 130.600)
     }
 }
+
 
 ALL_DIRECTIONS = ["北", "北北東", "北東", "東北東", "東", "東南東", "南東", "南南東", "南", "南南西", "南西", "西南西", "西", "西北西", "北西", "北北西"]
 
@@ -150,13 +153,13 @@ def get_x_axis_formatter():
     def formatter(x, p):
         dt = mdates.num2date(x)
         if dt.hour == 0:
-            return dt.strftime('%H:%M') + f'\n({jp_weeks[dt.weekday()]})\n' + dt.strftime('%m/%d')
-        elif dt.hour in [3, 9, 15, 21]:
-            return f"\n{dt.strftime('%H:%M')}"
+            # 日付の下に曜日を表示
+            return dt.strftime('%m/%d') + f'\n({jp_weeks[dt.weekday()]})'
         else:
-            return dt.strftime('%H:%M')
+            # 他の時刻と高さを合わせるための空行調整
+            return dt.strftime('%H:%M') + '\n '
     return formatter
-
+    
 #==========================================================================================
 # 8. グラフの共通軸設定を適用するサブルーチン
 #==========================================================================================
@@ -202,7 +205,7 @@ def render_wind_bar_chart(ax, df, danger_v, wind_step, design_params=None):
 # 10. 気温折れ線グラフを描画するサブルーチン
 #==========================================================================================
 def render_temp_line_chart(ax, df):
-    ax.plot(df['time'], df['temperature_2m'], color='#333333', linewidth=2, marker='o', markersize=3, markevery=3)
+    ax.plot(df['time'], df['temperature_2m'], color=CONFIG["TEMP_COLOR"], linewidth=2, marker='o', markersize=3, markevery=3)
     ax.set_ylabel('気温 (℃)', fontsize=CONFIG["LABEL_SIZE"])
 
 #==========================================================================================
@@ -381,19 +384,26 @@ def show_sidebar_controls():
     st.session_state.danger_v = danger_v
     
     st.sidebar.markdown("---")
-    st.sidebar.subheader("デザイン微調整")
-    d_width = st.sidebar.slider("グラフ横幅 (inch)", 10, 80, CONFIG["GRAPH_WIDTH"])
-    d_height = st.sidebar.slider("グラフ縦幅 (inch)", 3.0, 10.0, CONFIG["GRAPH_HIGHT"])
-    d_font = st.sidebar.slider("基本フォントサイズ", 6, 16, CONFIG["GRAPH_FONT_SIZE"])
-    d_bar_w = st.sidebar.slider("棒グラフ余白 (width)", 0.01, 0.1, 0.035, step=0.005)
+    # 開発者モードのチェックボックス
+    is_dev = st.sidebar.checkbox("🔧 デザイン微調整(開発者用)", value=False)
     
+    # 基本パラメータの初期化（CONFIGから取得）
     design_params = {
-        "width": d_width,
-        "height": d_height,
-        "base_font_size": d_font,
-        "bar_width": d_bar_w,
-        "annot_size": d_font
+        "width": CONFIG["GRAPH_WIDTH"],
+        "height": CONFIG["GRAPH_HIGHT"],
+        "base_font_size": CONFIG["GRAPH_FONT_SIZE"],
+        "label_font_size": CONFIG["LABEL_SIZE"],
+        "bar_width": 0.035,
+        "annot_size": CONFIG["ANNOT_SIZE"]
     }
+
+    # 開発者モードがONの場合のみスライダーを表示
+    if is_dev:
+        design_params["width"] = st.sidebar.slider("グラフ横幅 (inch)", 10, 80, CONFIG["GRAPH_WIDTH"])
+        design_params["height"] = st.sidebar.slider("グラフ縦幅 (inch)", 3.0, 10.0, CONFIG["GRAPH_HIGHT"])
+        design_params["base_font_size"] = st.sidebar.slider("基本フォントサイズ", 6, 20, CONFIG["GRAPH_FONT_SIZE"])
+        design_params["label_font_size"] = st.sidebar.slider("X軸・ラベルサイズ", 5, 15, CONFIG["LABEL_SIZE"])
+        design_params["bar_width"] = st.sidebar.slider("棒グラフ余白 (width)", 0.01, 0.1, 0.035, step=0.005)
     
     st.sidebar.markdown("---")
     st.sidebar.write("色付風向")
@@ -437,7 +447,6 @@ def main():
             [data-testid="stVerticalBlock"] {{ gap: 0.8rem !important; }}
             div.stButton > button p {{ text-align: left !important; width: 100% !important; }}
             div.stButton > button {{ justify-content: flex-start !important; }}
-            /* 横スクロールエリアの調整 */
             .scroll-container {{
                 overflow-x: auto; 
                 background: white; 
@@ -450,7 +459,6 @@ def main():
     st.markdown(f'<h1 style="font-size:{CONFIG["TITLE_SIZE"]}px;">⛵ Wind_Checker! </h1>', unsafe_allow_html=True)
     
     master = CONFIG["LOCATION_MASTER"].copy()
-    # 修正箇所: {{ }} を { } に修正しました
     display_options = {f"{name} ({coords[0]:.4f}, {coords[1]:.4f})": name for name, coords in master.items()}
     
     current_loc_label = f"📍 現在地 ({st.session_state.lat:.4f}, {st.session_state.lon:.4f})"
@@ -486,7 +494,6 @@ def main():
     with col2:
         render_header_info(basho) 
     
-    # グラフ生成
     img_b64, ratio_info = generate_high_res_graph(
         st.session_state.lat, 
         st.session_state.lon, 
@@ -498,13 +505,12 @@ def main():
     if img_b64:
         df_for_icons = fetch_weather_data(st.session_state.lat, st.session_state.lon, 8)
         if df_for_icons is not None:
-            # インチ数に基づいて表示ピクセル幅を計算
-            display_width = int(design_params["width"] * 200)
+            # CONFIG["PX_PER_INCH"] を使用して表示幅を計算
+            display_width = int(design_params["width"] * CONFIG["PX_PER_INCH"])
             
             padding_df = pd.DataFrame({'time': [df_for_icons['time'].iloc[0] - timedelta(hours=i) for i in range(1, 4)][::-1]})
             df_full = pd.concat([padding_df, df_for_icons], ignore_index=True)
             
-            # アイコンとグラフの幅を display_width で統一
             icons_html = generate_weather_icons_html(df_full, ratio_info, display_width)
             graph_html = f'<img src="data:image/png;base64,{img_b64}" style="width: {display_width}px; display: block;">'
             
