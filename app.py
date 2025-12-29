@@ -625,14 +625,20 @@ def main():
     if 'lon' not in st.session_state: st.session_state.lon = CONFIG["DEFAULT_LON"]
     if 'last_basho' not in st.session_state: st.session_state.last_basho = CONFIG["DEFAULT_BASHO"]
     
+    # 1. 保存された設定をブラウザから読み込み（初回のみ）
     sync_all_settings()
+    
+    # 2. サイドバーUIの表示とパラメータ取得
     danger_v, sel_dirs, design_params = show_sidebar_controls()
+    
+    # 3. フォントセットアップ
     setup_font(design_params["base_font_size"])
 
-    # 現在時刻を10分単位で丸めて取得（キャッシュ効率のため）
+    # 4. 現在時刻を10分単位で丸めて取得（キャッシュ効率のため）
     raw_now = datetime.now(timezone(timedelta(hours=9))).replace(tzinfo=None)
     now_jst = raw_now.replace(minute=(raw_now.minute // 10) * 10, second=0, microsecond=0)
 
+    # 5. アプリ全体のスタイル定義
     st.markdown(f"""
         <style>
             .block-container {{ padding-top: 2rem !important; padding-bottom: 0rem !important; }}
@@ -651,9 +657,9 @@ def main():
 
     st.markdown(f'<h1 style="font-size:{CONFIG["TITLE_SIZE"]}px;">⛵ Wind_Checker! </h1>', unsafe_allow_html=True)
     
+    # 6. 地点選択ロジック
     master = CONFIG["LOCATION_MASTER"].copy()
     display_options = {f"{name} ({coords[0]:.4f}, {coords[1]:.4f})": name for name, coords in master.items()}
-    
     current_loc_label = f"📍 現在地 ({st.session_state.lat:.4f}, {st.session_state.lon:.4f})"
     display_options[current_loc_label] = "現在地"
     display_options["🗺️ 地図で指定"] = "地図で指定"
@@ -676,18 +682,20 @@ def main():
         st.cache_data.clear()
         st.rerun()
 
+    # 7. 地図表示
     show_map = st.checkbox("地図表示", value=st.session_state.get('show_map_state', False))
     st.session_state.show_map_state = show_map
     if show_map:
         show_location_map()
 
+    # 8. 操作ボタン
     col1, col2 = st.columns([1, 1]) 
     with col1:
         handle_current_location_update()
     with col2:
         render_header_info(basho) 
     
-    # 引数に now_jst を追加。これにより時刻が変われば新しいキャッシュが作成されます。
+    # 9. グラフ生成
     img_b64, ratio_info = generate_high_res_graph(
         st.session_state.lat, 
         st.session_state.lon, 
@@ -697,20 +705,24 @@ def main():
         now_jst
     )
     
+    # 10. グラフとアイコンの描画（min-widthを4000pxに修正）
     if img_b64:
         df_for_icons = fetch_weather_data(st.session_state.lat, st.session_state.lon, 8)
         if df_for_icons is not None:
+            # 描画サイズ（px）
             display_width = int(design_params["width"] * CONFIG["PX_PER_INCH"])
             
+            # アイコン用のデータ準備
             padding_df = pd.DataFrame({'time': [df_for_icons['time'].iloc[0] - timedelta(hours=i) for i in range(1, 4)][::-1]})
             df_full = pd.concat([padding_df, df_for_icons], ignore_index=True)
             
             icons_html = generate_weather_icons_html(df_full, ratio_info, display_width)
             graph_html = f'<img src="data:image/png;base64,{img_b64}" style="width: {display_width}px; display: block;">'
             
+            # ここで min-width: 4000px を指定。画像がぼやけるのを防ぎつつスクロールを維持。
             st.markdown(
                 f'<div class="scroll-container">'
-                f'<div style="width: {display_width}px;">'
+                f'<div style="width: {display_width}px; min-width: 4000px;">'
                 f'{icons_html}{graph_html}'
                 f'</div></div>', 
                 unsafe_allow_html=True
