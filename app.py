@@ -523,23 +523,23 @@ def render_header_info(basho):
 # 19. アプリのメインフローを制御するメインルーチン
 #==========================================================================================
 def main():
-    # 状態の初期化
+    # --- 1. 状態の初期化とブラウザ同期 ---
     if 'lat' not in st.session_state: st.session_state.lat = CONFIG["DEFAULT_LAT"]
     if 'lon' not in st.session_state: st.session_state.lon = CONFIG["DEFAULT_LON"]
     if 'last_basho' not in st.session_state: st.session_state.last_basho = CONFIG["DEFAULT_BASHO"]
     
-    # ブラウザデータの同期
+    # ブラウザに記憶されている設定をロード
     sync_all_settings()
     
-    # サイドバーコントロールの取得
-    design_params = show_sidebar_controls()
-    danger_v = design_params["danger_v"]
-    sel_dirs = design_params["sel_dirs"]
+    # --- 2. サイドバーコントロール（ユーザーによる初期設定の修正） ---
+    # ここで CONFIG["DEFAULT_DANGER_V"] などを元に、ユーザーが値を変更します
+    # show_sidebar_controls 内で st.sidebar.number_input 等を使っている想定です
+    danger_v, sel_dirs, design_params = show_sidebar_controls()
     
     # フォントセットアップ
-    setup_font(design_params["base_font_size"])
+    setup_font(design_params.get("base_font_size", 14))
 
-    # スタイル定義
+    # スタイル定義（正規版のUIを復元）
     st.markdown(f"""
         <style>
             .block-container {{ padding-top: 2rem !important; padding-bottom: 0rem !important; }}
@@ -559,30 +559,23 @@ def main():
     # タイトル表示
     st.markdown(f'<h1 style="font-size:{CONFIG["TITLE_SIZE"]}px;">⛵ Wind_Checker! </h1>', unsafe_allow_html=True)
     
-    # 地点選択肢の構築
+    # --- 3. 地点選択ロジック ---
     master = CONFIG["LOCATION_MASTER"].copy()
     display_options = {f"{name} ({coords[0]:.4f}, {coords[1]:.4f})": name for name, coords in master.items()}
     
-    # 特別な選択肢の追加
     current_loc_label = f"📍 現在地 ({st.session_state.lat:.4f}, {st.session_state.lon:.4f})"
     display_options[current_loc_label] = "現在地"
     display_options["🗺️ 地図で指定"] = "地図で指定"
 
-    # 逆引き辞書で現在の選択インデックスを特定
     reverse_display = {v: k for k, v in display_options.items()}
     current_display_val = reverse_display.get(st.session_state.last_basho, current_loc_label)
     
     options_list = list(display_options.keys())
-    try:
-        default_idx = options_list.index(current_display_val)
-    except ValueError:
-        default_idx = 0
+    default_idx = options_list.index(current_display_val) if current_display_val in options_list else 0
 
-    # 地点選択コンボボックス
     selected_display = st.selectbox("地点を選択してください", options_list, index=default_idx)
     basho = display_options[selected_display]
 
-    # 地点変更時の処理
     if basho != st.session_state.last_basho:
         st.session_state.last_basho = basho
         if basho not in ["地図で指定", "現在地"]:
@@ -592,39 +585,34 @@ def main():
         st.cache_data.clear() 
         st.rerun()
 
-    # 地図表示切り替え
+    # --- 4. 地図とボタンのレイアウト ---
     show_map = st.checkbox("地図表示", value=st.session_state.get('show_map_state', False))
     st.session_state.show_map_state = show_map
     if show_map:
         show_location_map()
 
-    # 中段ボタンエリア（現在地取得 ＆ 更新情報）
     col1, col2 = st.columns([1, 1]) 
     with col1:
         handle_current_location_update()
     with col2:
         render_header_info(basho) 
     
-    # グラフ用現在時刻
+    # --- 5. グラフ描画（サイドバーで修正された danger_v を使用） ---
     now_jst = datetime.now(timezone(timedelta(hours=9)))
-
-    # グラフ生成
     img_b64, ratio_info = generate_high_res_graph(
         st.session_state.lat, 
         st.session_state.lon, 
-        danger_v, 
-        tuple(sel_dirs), 
-        design_params,
+        danger_v,           # サイドバーからの修正値
+        tuple(sel_dirs),    # サイドバーからの選択風向
+        design_params,      # その他のデザイン設定
         now_jst
     )
     
-    # グラフとアイコンの表示
     if img_b64:
         df_for_icons = fetch_weather_data(st.session_state.lat, st.session_state.lon, 8)
         if df_for_icons is not None:
-            display_width = int(design_params["width"] * CONFIG["PX_PER_INCH"])
+            display_width = int(design_params.get("width", 10) * CONFIG["PX_PER_INCH"])
             
-            # アイコン用のパディングデータ作成
             padding_df = pd.DataFrame({'time': [df_for_icons['time'].iloc[0] - timedelta(hours=i) for i in range(1, 4)][::-1]})
             df_full = pd.concat([padding_df, df_for_icons], ignore_index=True)
             
@@ -639,8 +627,8 @@ def main():
                 unsafe_allow_html=True
             )
 
-    # 最後に設定をブラウザに保存
+    # 最後にブラウザへ現在の設定（修正された危険風速等）を保存
     save_settings_to_browser()
-
+    
 if __name__ == "__main__":
     main()
