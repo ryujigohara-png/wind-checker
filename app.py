@@ -455,87 +455,104 @@ def handle_current_location_update():
 # 17. サイドバーの表示設定とデザイン調整を表示するサブルーチン
 #==========================================================================================
 def show_sidebar_controls():
-    # 簡易的なベータ版判定ロジック
-    # Streamlit Cloudなどの環境変数やURLで判定可能ですが、ここではシンプルにフラグ管理
+    # ベータ版フラグ（本番移行時にFalseにすれば開発者メニューが消えます）
     is_beta = True 
     
     st.sidebar.header("表示設定")
     
-    # --- ユーザー設定項目 (1): 表示するグラフ ---
+    # --- 1. 表示するグラフの選択 ---
     st.sidebar.subheader("表示するグラフ")
-    show_wind = st.sidebar.toggle("風向・風速", value=CONFIG["SHOW_WIND"])
-    show_temp = st.sidebar.toggle("気温", value=CONFIG["SHOW_TEMP"])
-    show_tide = st.sidebar.toggle("潮位", value=CONFIG["SHOW_TIDE"])
+    # セッション状態またはCONFIGから初期値を取得
+    show_wind = st.sidebar.toggle("風向・風速", value=st.session_state.get("show_wind", CONFIG["SHOW_WIND"]))
+    show_temp = st.sidebar.toggle("気温", value=st.session_state.get("show_temp", CONFIG["SHOW_TEMP"]))
+    show_tide = st.sidebar.toggle("潮位", value=st.session_state.get("show_tide", CONFIG["SHOW_TIDE"]))
     
-    # --- ユーザー設定項目 (2): グラフエリアのサイズ ---
+    # --- 2. グラフエリアのサイズ調整 ---
     st.sidebar.subheader("グラフサイズ")
-    w_cfg = CONFIG["SLIDER_WIDTH"]
-    h_cfg = CONFIG["SLIDER_HEIGHT"]
-    width = st.sidebar.slider("横幅 (inch)", w_cfg["min"], w_cfg["max"], float(CONFIG["GRAPH_WIDTH"]), step=w_cfg["step"])
-    # 基準となる縦幅（ここをベースに積み上げ計算を行う）
-    base_height = st.sidebar.slider("基準縦幅 (inch)", h_cfg["min"], h_cfg["max"], float(CONFIG["GRAPH_HIGHT"]), step=h_cfg["step"])
+    w_cfg, h_cfg = CONFIG["SLIDER_WIDTH"], CONFIG["SLIDER_HEIGHT"]
     
-    # --- ユーザー設定項目 (3): 文字サイズ ---
+    # 横幅
+    width = st.sidebar.slider("横幅 (inch)", 
+                             w_cfg["min"], w_cfg["max"], 
+                             float(st.session_state.get("width", CONFIG["GRAPH_WIDTH"])), 
+                             step=w_cfg["step"])
+    
+    # 基準縦幅（風速＋気温がONの時の合計サイズを定義）
+    base_height = st.sidebar.slider("基準縦幅 (inch)", 
+                                   h_cfg["min"], h_cfg["max"], 
+                                   float(st.session_state.get("base_height", CONFIG["GRAPH_HIGHT"])), 
+                                   step=h_cfg["step"])
+    
+    # --- 3. 文字サイズの調整 ---
     st.sidebar.subheader("文字サイズ")
     f_cfg = CONFIG["SLIDER_FONT"]
-    base_font_size = st.sidebar.slider("グラフ内文字", f_cfg["min"], f_cfg["max"], CONFIG["GRAPH_FONT_SIZE"], step=f_cfg["step"])
-    label_font_size = st.sidebar.slider("軸ラベル文字", f_cfg["min"], f_cfg["max"], CONFIG["LABEL_SIZE"], step=f_cfg["step"])
+    base_font_size = st.sidebar.slider("グラフ内文字", 
+                                      f_cfg["min"], f_cfg["max"], 
+                                      st.session_state.get("base_font_size", CONFIG["GRAPH_FONT_SIZE"]), 
+                                      step=f_cfg["step"])
+    
+    label_font_size = st.sidebar.slider("軸ラベル文字", 
+                                       f_cfg["min"], f_cfg["max"], 
+                                       st.session_state.get("label_font_size", CONFIG["LABEL_SIZE"]), 
+                                       step=f_cfg["step"])
 
     st.sidebar.markdown("---")
     
-    # 開発者モード（迷われているとのことですが、ベータ版なら常に表示、本番なら隠す等の制御が可能）
+    # 開発者モードの設定
     is_dev = False
     if is_beta:
         is_dev = st.sidebar.checkbox("🔧 開発者用微調整", value=False)
     
-    # パラメータの初期化
+    # デザインパラメータの構築
     design_params = {
         "width": width,
+        "base_height": base_height,
         "base_font_size": base_font_size,
         "label_font_size": label_font_size,
-        "label_pad": CONFIG["LABEL_PAD"],
-        "bar_width": 0.035,
-        "annot_size": CONFIG["ANNOT_SIZE"],
-        "ratios": list(CONFIG["DEFAULT_RATIOS"]),
-        "hspace": CONFIG["HSPACE"],
+        "label_pad": st.session_state.get("label_pad", CONFIG["LABEL_PAD"]),
+        "hspace": st.session_state.get("hspace", CONFIG["HSPACE"]),
         "show_wind": show_wind,
         "show_temp": show_temp,
         "show_tide": show_tide,
-        "show_w_text": CONFIG["SHOW_W_TEXT"],
-        "show_dir_name": CONFIG["SHOW_DIR_NAME"]
+        "show_w_text": st.session_state.get("show_w_text", CONFIG["SHOW_W_TEXT"]),
+        "show_dir_name": st.session_state.get("show_dir_name", CONFIG["SHOW_DIR_NAME"]),
+        "ratios": list(st.session_state.get("ratios", CONFIG["DEFAULT_RATIOS"]))
     }
 
     if is_dev:
-        st.sidebar.info("開発者専用メニューです。これらは将来的に固定される可能性があります。")
-        design_params["show_w_text"] = st.sidebar.toggle("天気文字を表示", value=design_params["show_w_text"])
+        st.sidebar.info("開発用：表示項目の詳細制御")
+        design_params["show_w_text"] = st.sidebar.toggle("天気詳細文字を表示", value=design_params["show_w_text"])
         design_params["show_dir_name"] = st.sidebar.toggle("風向名を表示", value=design_params["show_dir_name"])
         design_params["hspace"] = st.sidebar.slider("グラフ間余白", -0.1, 0.5, design_params["hspace"], step=0.05)
         design_params["label_pad"] = st.sidebar.slider("ラベル距離", -5, 10, design_params["label_pad"])
         
+        # 比率の直接入力（積み上げの基準もここから計算されます）
         r = design_params["ratios"]
         r[0] = st.sidebar.number_input("比率:風向", 0.5, 10.0, r[0], step=0.1)
         r[1] = st.sidebar.number_input("比率:気温", 0.5, 5.0, r[1], step=0.1)
         r[2] = st.sidebar.number_input("比率:潮位", 0.5, 5.0, r[2], step=0.1)
         design_params["ratios"] = r
 
-    # --- 縦幅の積み上げ計算 (指定された基準縦幅を元に計算) ---
-    base_ratio_sum = CONFIG["DEFAULT_RATIOS"][0] + CONFIG["DEFAULT_RATIOS"][1]
-    unit_h = base_height / base_ratio_sum
+    # --- 縦幅の積み上げ計算ロジック（ここが肝です） ---
+    # 風速と気温の「合計比率」を基準の高さとして、1ポイントあたりの高さを固定
+    base_ratio_total = design_params["ratios"][0] + design_params["ratios"][1] # 4.4 + 1.2 = 5.6
+    fixed_unit_h = base_height / base_ratio_total 
     
     auto_height = 0
-    if design_params["show_wind"]: auto_height += design_params["ratios"][0] * unit_h
-    if design_params["show_temp"]: auto_height += design_params["ratios"][1] * unit_h
-    if design_params["show_tide"]: auto_height += design_params["ratios"][2] * unit_h
+    if show_wind: auto_height += design_params["ratios"][0] * fixed_unit_h
+    if show_temp: auto_height += design_params["ratios"][1] * fixed_unit_h
+    if show_tide: auto_height += design_params["ratios"][2] * fixed_unit_h
     
     design_params["height"] = auto_height
 
     st.sidebar.markdown("---")
-    # 危険風速ライン（これもユーザー設定として残す）
+    
+    # 危険風速設定
     default_v = st.session_state.get("danger_v", CONFIG["DEFAULT_DANGER_V"])
     danger_v = st.sidebar.number_input("危険風速ライン(m/s)", value=default_v, step=0.5)
-    st.session_state.danger_v = danger_v
     
-    st.sidebar.write("色付風向")
+    # 色付き風向設定
+    st.sidebar.write("色付風向選択")
     saved_dirs = st.session_state.get("sel_dirs", CONFIG["DEFAULT_DIRS"])
     sel_dirs = []
     cols = st.sidebar.columns(2)
@@ -543,7 +560,20 @@ def show_sidebar_controls():
         with cols[i % 2]:
             if st.checkbox(d, value=(d in saved_dirs), key=f"chk_{d}"):
                 sel_dirs.append(d)
+
+    # セッション状態への即時反映（読み込み後の安定のため）
+    st.session_state.show_wind = show_wind
+    st.session_state.show_temp = show_temp
+    st.session_state.show_tide = show_tide
+    st.session_state.width = width
+    st.session_state.base_height = base_height
+    st.session_state.base_font_size = base_font_size
+    st.session_state.label_font_size = label_font_size
+    st.session_state.danger_v = danger_v
     st.session_state.sel_dirs = sel_dirs
+
+    # ブラウザへの保存実行（サブルーチン18を呼び出し）
+    save_settings_to_browser(danger_v, sel_dirs, design_params)
     
     return danger_v, sel_dirs, design_params
 
