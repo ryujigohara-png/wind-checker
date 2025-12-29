@@ -29,24 +29,29 @@ CONFIG = {
     "GRAPH_WIDTH": 20,
     "GRAPH_HIGHT": 5.5,
     "LABEL_SIZE": 9,
+    "LABEL_PAD": 2,              # X軸ラベルと目盛の距離
     "ANNOT_SIZE": 10,
     "DPI": 200,
     "MAP_HEIGHT": 350,
-    # 初期値の設定
     "DEFAULT_RATIOS": [4.4, 1.2, 0.8],
-    "SHOW_WIND": True,
-    "SHOW_TEMP": True,
-    "SHOW_TIDE": True,
-    "HSPACE": 0.3,               # グラフ間の余白（ピンク部分の調整用）
+    "SHOW_WIND": True,           # 風向グラフ全体の表示
+    "SHOW_TEMP": True,           # 気温グラフ全体の表示
+    "SHOW_TIDE": True,           # 潮位グラフ全体の表示
+    "SHOW_W_TEXT": True,         # 天気文字の表示
+    "SHOW_DIR_NAME": True,       # 風向文字の表示
+    "HSPACE": 0.1,               # グラフ間の余白（ピンク部分）
     "DEFAULT_LAT": 31.337,
     "DEFAULT_LON": 130.795,
     "DEFAULT_BASHO": "高須沖(鹿児島県)",
     "DEFAULT_DANGER_V": 10.0,
     "DEFAULT_DIRS": ["南","南南西","南西","西南西","西","西北西","北西","北北西"],
-    "ANNOT_Y_STEP": 1.5,
+    "ANNOT_Y_STEP": 1.5,         # 風向・矢印等の垂直間隔
     "ANNOT_BASE_Y": 0.5,
     "STORAGE_KEY": "wind_checker_settings",
     "TEMP_COLOR": "darkorange",
+    "ARROW_COLOR": "blue",       # ① 風向き矢印の色
+    "VLINE_WIDTH": 1.25,         # ② 現在時刻ラインの太さ（2.5の半分）
+    "HLINE_WIDTH": 1.0,          # ③ 危険風速ラインの太さ（2.0の半分）
     "PX_PER_INCH": 200,
     "LOCATION_MASTER": {
         "高須沖(鹿児島県)": (31.337, 130.795), 
