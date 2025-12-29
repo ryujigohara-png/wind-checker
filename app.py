@@ -39,8 +39,9 @@ CONFIG = {
     "LABEL_SIZE": 9,
     "LABEL_PAD": 2,
     "HSPACE": 0.2,
-    "HLINE_WIDTH": 1.5,       # ← ここが漏れていました
-    "BAR_WIDTH": 0.03,        # 棒グラフの幅
+    "HLINE_WIDTH": 1.5,
+    "BAR_WIDTH": 0.03,
+    "ARROW_COLOR": "darkblue", # ← ここが漏れていました
     "DPI": 200,
     "DEFAULT_MIN_CONTAINER_WIDTH": 2500,
     "SHOW_WIND": True,
@@ -155,19 +156,39 @@ def process_wind_data(df, target_dirs):
     return df
 
 #==========================================================================================
-# 7. X軸の時刻フォーマッタを設定するサブルーチン
+# 7. 風速の棒グラフを描画するサブルーチン
 #==========================================================================================
-def get_x_axis_formatter():
-    jp_weeks = ["月", "火", "水", "木", "金", "土", "日"]
-    def formatter(x, p):
-        dt = mdates.num2date(x)
-        if dt.hour == 0:
-            # 0時の場合：時刻を表示せず、日付の下に曜日を表示
-            return dt.strftime('%m/%d') + f'\n({jp_weeks[dt.weekday()]})'
-        else:
-            # 時刻から :00 を排除（時のみ表示）し、高さを合わせる空行を追加
-            return dt.strftime('%H') + '\n '
-    return formatter
+def render_wind_bar_chart(ax, df, danger_v, max_v, design_params):
+    """
+    風速データを棒グラフとして描画し、矢印アイコンと風速値を表示する。
+    """
+    fs = design_params.get("base_font_size", CONFIG["GRAPH_FONT_SIZE"])
+    
+    # 棒グラフの描画
+    ax.bar(df['time'], df['wind_speed'], width=CONFIG["BAR_WIDTH"], 
+           color=df['color'], zorder=2, alpha=0.8)
+    
+    # 危険風速ライン
+    ax.axhline(y=danger_v, color='red', linestyle='--', 
+               linewidth=CONFIG["HLINE_WIDTH"], alpha=0.8, zorder=3)
+    
+    # 風速値と矢印アイコンの描画
+    for _, row in df.iterrows():
+        # 矢印アイコン
+        ax.text(row['time'], row['wind_speed'] + 0.2, row['icon'], 
+                ha='center', va='bottom', fontsize=fs+2, 
+                fontweight='bold', color=CONFIG["ARROW_COLOR"])
+        # 風速値
+        ax.text(row['time'], row['wind_speed'] + 1.2, f"{row['wind_speed']:.1f}", 
+                ha='center', va='bottom', fontsize=fs, color='black')
+        
+        # 風向名の表示（オプション）
+        if design_params.get("show_dir_name", CONFIG["SHOW_DIR_NAME"]):
+            ax.text(row['time'], -0.2, row['wind_dir_name'], 
+                    ha='center', va='top', fontsize=fs-2, rotation=90)
+    
+    ax.set_ylim(0, max(max_v, df['wind_speed'].max() * 1.3))
+    ax.set_ylabel("Wind (m/s)", fontsize=design_params.get("label_font_size", CONFIG["LABEL_SIZE"]))
     
 #==========================================================================================
 # 8. グラフの共通軸設定を適用するサブルーチン
@@ -291,8 +312,6 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
     
     fig_w = design_params.get("width", CONFIG["GRAPH_WIDTH"])
     fig_h = design_params.get("height", CONFIG["GRAPH_HIGHT"])
-    
-    # 動的DPIの適用
     dpi_value = design_params.get("graph_dpi", CONFIG["DPI"])
     
     fig, axes = plt.subplots(len(active_plots), 1, figsize=(fig_w, fig_h), dpi=dpi_value, 
