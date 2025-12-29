@@ -523,23 +523,33 @@ def render_header_info(basho):
 # 19. アプリのメインフローを制御するメインルーチン
 #==========================================================================================
 def main():
-    # --- 1. 状態の初期化とブラウザ同期 ---
+    # 状態の初期化
     if 'lat' not in st.session_state: st.session_state.lat = CONFIG["DEFAULT_LAT"]
     if 'lon' not in st.session_state: st.session_state.lon = CONFIG["DEFAULT_LON"]
     if 'last_basho' not in st.session_state: st.session_state.last_basho = CONFIG["DEFAULT_BASHO"]
     
-    # ブラウザに記憶されている設定をロード
+    # ブラウザデータの同期（記録機能を有効化）
     sync_all_settings()
     
-    # --- 2. サイドバーコントロール（ユーザーによる初期設定の修正） ---
-    # ここで CONFIG["DEFAULT_DANGER_V"] などを元に、ユーザーが値を変更します
-    # show_sidebar_controls 内で st.sidebar.number_input 等を使っている想定です
-    danger_v, sel_dirs, design_params = show_sidebar_controls()
+    # --- サイドバーコントロールの取得 ---
+    # 戻り値の数に依存しないよう、一旦1つの変数で受け取ります
+    sidebar_res = show_sidebar_controls()
+    
+    if isinstance(sidebar_res, tuple) and len(sidebar_res) == 3:
+        # 戻り値が3つの場合（以前の正規版形式）
+        danger_v, sel_dirs, design_params = sidebar_res
+    else:
+        # 戻り値が辞書1つの場合（現在のベータ版形式）
+        design_params = sidebar_res
+        # CONFIG["DEFAULT_DANGER_V"] をサイドバーで修正した値、
+        # もしくは辞書内の値を優先的に取得します
+        danger_v = design_params.get("danger_v", CONFIG.get("DEFAULT_DANGER_V", 10.0))
+        sel_dirs = design_params.get("sel_dirs", [])
     
     # フォントセットアップ
     setup_font(design_params.get("base_font_size", 14))
 
-    # スタイル定義（正規版のUIを復元）
+    # スタイル定義
     st.markdown(f"""
         <style>
             .block-container {{ padding-top: 2rem !important; padding-bottom: 0rem !important; }}
@@ -556,10 +566,9 @@ def main():
         </style>
     """, unsafe_allow_html=True)
 
-    # タイトル表示
     st.markdown(f'<h1 style="font-size:{CONFIG["TITLE_SIZE"]}px;">⛵ Wind_Checker! </h1>', unsafe_allow_html=True)
     
-    # --- 3. 地点選択ロジック ---
+    # 地点選択肢の構築
     master = CONFIG["LOCATION_MASTER"].copy()
     display_options = {f"{name} ({coords[0]:.4f}, {coords[1]:.4f})": name for name, coords in master.items()}
     
@@ -585,26 +594,27 @@ def main():
         st.cache_data.clear() 
         st.rerun()
 
-    # --- 4. 地図とボタンのレイアウト ---
+    # 地図表示
     show_map = st.checkbox("地図表示", value=st.session_state.get('show_map_state', False))
     st.session_state.show_map_state = show_map
     if show_map:
         show_location_map()
 
+    # 中段ボタン
     col1, col2 = st.columns([1, 1]) 
     with col1:
         handle_current_location_update()
     with col2:
         render_header_info(basho) 
     
-    # --- 5. グラフ描画（サイドバーで修正された danger_v を使用） ---
+    # グラフ描画（サイドバーで修正された danger_v を使用）
     now_jst = datetime.now(timezone(timedelta(hours=9)))
     img_b64, ratio_info = generate_high_res_graph(
         st.session_state.lat, 
         st.session_state.lon, 
-        danger_v,           # サイドバーからの修正値
-        tuple(sel_dirs),    # サイドバーからの選択風向
-        design_params,      # その他のデザイン設定
+        danger_v, 
+        tuple(sel_dirs), 
+        design_params,
         now_jst
     )
     
@@ -627,8 +637,9 @@ def main():
                 unsafe_allow_html=True
             )
 
-    # 最後にブラウザへ現在の設定（修正された危険風速等）を保存
+    # 設定の保存
     save_settings_to_browser()
+    
     
 if __name__ == "__main__":
     main()
