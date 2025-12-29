@@ -611,7 +611,7 @@ def main():
     st.markdown(f'<h1 style="font-size:{CONFIG["TITLE_SIZE"]}px;">⛵ Wind_Checker! </h1>', unsafe_allow_html=True)
     
     # (地点選択・地図表示ロジックは既存のものを維持)
-        current_loc_label = f"📍 現在地 ({st.session_state.lat:.4f}, {st.session_state.lon:.4f})"
+    current_loc_label = f"📍 現在地 ({st.session_state.lat:.4f}, {st.session_state.lon:.4f})"
     display_options[current_loc_label] = "現在地"
     display_options["🗺️ 地図で指定"] = "地図で指定"
 
