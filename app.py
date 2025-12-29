@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
-# 最終更新 2025.12.29 2025 ベータ版完全統合・UI復元・デザイン調整・ブラウザ保存対応版
-
+# 最終更新 2025.12.29 22:50 安定版ベース・ブラウザ永続化完全統合版
 import streamlit as st
 import requests
 import pandas as pd
@@ -11,57 +10,47 @@ import os
 import io
 import base64
 import numpy as np
-import time
-import json
 from datetime import datetime, timedelta, timezone
 import matplotlib.dates as mdates
 from streamlit_folium import st_folium
 import folium
 import streamlit.components.v1 as components
+import time
+import json
 from streamlit_js_eval import streamlit_js_eval, get_geolocation
 
-#==========================================================================================
-# 0. アプリ全体で使用する定数定義 (CONFIG)
-#==========================================================================================
+# ======================================================================================
+# 1. 定数・基本設定 (CONFIG)
+# ======================================================================================
 CONFIG = {
-    "STORAGE_KEY": "wind_checker_v2_full_settings",
-    "TITLE_SIZE": 32,
-    "LOC_INFO_FONT_SIZE": "18px",
-    "LOC_INFO_COLOR": "#2c3e50",
+    "TITLE_SIZE": 24,
+    "SUBTITLE_SIZE": 18,
+    "GRAPH_FONT_SIZE": 10,       # 風向文字等の基準サイズ
+    "GRAPH_WIDTH": 20,           # 既定値を20に設定
+    "GRAPH_HIGHT": 5.5,
+    "LABEL_SIZE": 9,             # X軸ラベルの基準サイズ
+    "ANNOT_SIZE": 10,
+    "DPI": 200,
+    "MAP_HEIGHT": 350,
+    "HEIGHT_RATIOS": [4.4, 1.2, 0.8],
     "DEFAULT_LAT": 31.337,
     "DEFAULT_LON": 130.795,
     "DEFAULT_BASHO": "高須沖(鹿児島県)",
-    "DEFAULT_DANGER_V": 8.0,
-    "DEFAULT_DIRS": ["北", "北北西", "北西", "西北西"],
-    "GRAPH_WIDTH": 12.0,
-    "GRAPH_HIGHT": 6.5,
-    "GRAPH_FONT_SIZE": 10,
-    "LABEL_SIZE": 9,
-    "LABEL_PAD": 2,
-    "HSPACE": 0.2,
-    "HLINE_WIDTH": 1.5,
-    "BAR_WIDTH": 0.03,
-    "ARROW_COLOR": "darkblue", # ← ここが漏れていました
-    "DPI": 200,
-    "DEFAULT_MIN_CONTAINER_WIDTH": 2500,
-    "SHOW_WIND": True,
-    "SHOW_TEMP": True,
-    "SHOW_TIDE": True,
-    "SHOW_W_TEXT": True,
-    "SHOW_DIR_NAME": True,
-    "DEFAULT_RATIOS": [4.0, 1.5, 1.5],
-    "SLIDER_WIDTH": {"min": 5.0, "max": 20.0, "step": 0.5},
-    "SLIDER_HEIGHT": {"min": 3.0, "max": 15.0, "step": 0.5},
-    "SLIDER_FONT": {"min": 6, "max": 16, "step": 1},
-    "MASTER_LOCATIONS": {
-        "高須沖(鹿児島県)": (31.337, 130.795),
-        "柏原沖(鹿児島県)": (31.380, 131.020),
-        "垂水港(鹿児島県)": (31.478, 130.668),
-        "海潟(鹿児島県)": (31.539, 130.706),
-        "磯海岸沖(鹿児島県)": (31.614, 130.577),
+    "DEFAULT_DANGER_V": 10.0,
+    "DEFAULT_DIRS": ["南","南南西","南西","西南西","西","西北西","北西","北北西"],
+    "ANNOT_Y_STEP": 1.5,
+    "ANNOT_BASE_Y": 0.5,
+    "STORAGE_KEY": "wind_checker_browser_storage_final",
+    "TEMP_COLOR": "darkorange",
+    "PX_PER_INCH": 200,
+    "LOCATION_MASTER": {
+        "高須沖(鹿児島県)": (31.337, 130.795), 
+        "柏原沖(鹿児島県)": (31.380, 131.020), 
+        "垂水港(鹿児島県)": (31.478, 130.668), 
+        "海潟(鹿児島県)": (31.539, 130.706), 
+        "磯海岸沖(鹿児島県)": (31.614, 130.577), 
         "江口浜沖(鹿児島県)": (31.643, 130.322),
-        "錦江湾(鹿児島県)": (31.590, 130.600),
-        "地図で指定": (None, None)
+        "錦江湾(鹿児島県)": (31.590, 130.600)
     }
 }
 
@@ -156,87 +145,47 @@ def process_wind_data(df, target_dirs):
     return df
 
 #==========================================================================================
-# 7. 風速の棒グラフを描画するサブルーチン
+# 7. X軸の時刻フォーマッタを設定するサブルーチン
 #==========================================================================================
-def render_wind_bar_chart(ax, df, danger_v, max_v, design_params):
-    """
-    風速データを棒グラフとして描画し、矢印アイコンと風速値を表示する。
-    """
-    fs = design_params.get("base_font_size", CONFIG["GRAPH_FONT_SIZE"])
-    
-    # 棒グラフの描画
-    ax.bar(df['time'], df['wind_speed'], width=CONFIG["BAR_WIDTH"], 
-           color=df['color'], zorder=2, alpha=0.8)
-    
-    # 危険風速ライン
-    ax.axhline(y=danger_v, color='red', linestyle='--', 
-               linewidth=CONFIG["HLINE_WIDTH"], alpha=0.8, zorder=3)
-    
-    # 風速値と矢印アイコンの描画
-    for _, row in df.iterrows():
-        # 矢印アイコン
-        ax.text(row['time'], row['wind_speed'] + 0.2, row['icon'], 
-                ha='center', va='bottom', fontsize=fs+2, 
-                fontweight='bold', color=CONFIG["ARROW_COLOR"])
-        # 風速値
-        ax.text(row['time'], row['wind_speed'] + 1.2, f"{row['wind_speed']:.1f}", 
-                ha='center', va='bottom', fontsize=fs, color='black')
-        
-        # 風向名の表示（オプション）
-        if design_params.get("show_dir_name", CONFIG["SHOW_DIR_NAME"]):
-            ax.text(row['time'], -0.2, row['wind_dir_name'], 
-                    ha='center', va='top', fontsize=fs-2, rotation=90)
-    
-    ax.set_ylim(0, max(max_v, df['wind_speed'].max() * 1.3))
-    ax.set_ylabel("Wind (m/s)", fontsize=design_params.get("label_font_size", CONFIG["LABEL_SIZE"]))
+def get_x_axis_formatter():
+    jp_weeks = ["月", "火", "水", "木", "金", "土", "日"]
+    def formatter(x, p):
+        dt = mdates.num2date(x)
+        if dt.hour == 0:
+            return dt.strftime('%m/%d') + f'\n({jp_weeks[dt.weekday()]})'
+        else:
+            return dt.strftime('%H') + '\n '
+    return formatter
     
 #==========================================================================================
 # 8. グラフの共通軸設定を適用するサブルーチン
 #==========================================================================================
-def apply_common_axis_settings(ax, df, formatter, now_jst, design_params):
-    # ② 現在時刻ラインの太さを半分に変更
-    ax.axvline(now_jst, color='blue', linestyle='-', alpha=0.6, linewidth=CONFIG["VLINE_WIDTH"])
+def apply_common_axis_settings(ax, df, formatter, now_jst):
+    ax.axvline(now_jst, color='blue', linestyle='-', alpha=0.6, linewidth=2.5)
     ax.xaxis.set_major_locator(mdates.HourLocator(byhour=range(0, 24, 3)))
     ax.xaxis.set_major_formatter(plt.FuncFormatter(formatter))
     ax.xaxis.set_minor_locator(mdates.HourLocator(interval=1))
     ax.set_xlim(df['time'].iloc[0], df['time'].iloc[-1])
     ax.grid(True, which='major', linestyle=':', alpha=0.6, color='#000000')
     ax.grid(True, which='minor', linestyle=':', alpha=0.2, color='#888888')
-    
-    l_size = design_params.get("label_font_size", CONFIG["LABEL_SIZE"])
-    l_pad = design_params.get("label_pad", CONFIG["LABEL_PAD"])
-    
-    ax.tick_params(axis='x', which='major', labelsize=l_size, pad=l_pad)
-    ax.tick_params(axis='y', labelsize=l_size)
-    
+    ax.tick_params(axis='x', which='major', labelsize=CONFIG["LABEL_SIZE"], pad=10)
+    ax.tick_params(axis='y', labelsize=CONFIG["LABEL_SIZE"])
+
 #==========================================================================================
 # 9. 風速棒グラフを描画するサブルーチン
 #==========================================================================================
 def render_wind_bar_chart(ax, df, danger_v, wind_step, design_params=None):
     bar_width = design_params.get("bar_width", 0.035) if design_params else 0.035
     bars = ax.bar(df['time'], df['wind_speed_10m'], color=df['color'], alpha=0.9, width=bar_width)
-    ax.axhline(y=danger_v, color='red', linestyle='--', linewidth=CONFIG["HLINE_WIDTH"], alpha=0.8)
+    ax.axhline(y=danger_v, color='red', linestyle='--', linewidth=2, alpha=0.8)
     
-    # フォントサイズ取得
-    fs = design_params.get("base_font_size", CONFIG["GRAPH_FONT_SIZE"]) if design_params else CONFIG["GRAPH_FONT_SIZE"]
-    
-    # 矢印・文字の間隔を「文字サイズの20%」に固定（1ポイント≒0.35mmですが、グラフ単位系に換算）
-    # グラフのY軸単位に合わせて 0.12 * fs 程度で調整
-    step = fs * 0.12 
-    base = step * 0.5
-    
-    # 表示フラグ
-    show_w = design_params.get("show_w_text", CONFIG["SHOW_W_TEXT"]) if design_params else CONFIG["SHOW_W_TEXT"]
-    show_d = design_params.get("show_dir_name", CONFIG["SHOW_DIR_NAME"]) if design_params else CONFIG["SHOW_DIR_NAME"]
-    
-    # ２．上部余白の計算：max(最大風速 + 表示要素数に応じた高さ, 危険ライン + 余裕)
     max_speed = df['wind_speed_10m'].max()
-    element_count = 1 + 1 + (1 if show_d else 0) + (1 if show_w else 0) # 数値+矢印+風向+天気
-    required_top_space = element_count * step + 1.0
-    y_limit = max(max_speed + required_top_space, danger_v + 3.0)
-    
+    y_limit = max(max_speed, danger_v, 12) + 7
     ax.set_ylim(0, y_limit)
     ax.set_ylabel('風速 (m/s)', fontsize=CONFIG["LABEL_SIZE"])
+    
+    fs = design_params.get("base_font_size", CONFIG["GRAPH_FONT_SIZE"]) if design_params else CONFIG["GRAPH_FONT_SIZE"]
+    step, base = CONFIG["ANNOT_Y_STEP"], CONFIG["ANNOT_BASE_Y"]
     
     for i, bar in enumerate(bars):
         if i % wind_step == 0:
@@ -244,27 +193,11 @@ def render_wind_bar_chart(ax, df, danger_v, wind_step, design_params=None):
             if pd.isna(row['wind_speed_10m']): continue
             base_y = bar.get_height()
             x_pos = bar.get_x() + bar.get_width()/2.
-            
-            # 1段目：風速数値
-            current_y = base_y + base
-            ax.text(x_pos, current_y, f"{row['wind_speed_10m']:.0f}", ha='center', va='bottom', fontsize=fs-2)
-            
-            # 2段目：矢印
-            current_y += step
-            ax.text(x_pos, current_y, row['arrow'], ha='center', va='bottom', 
-                    fontsize=fs+2, fontweight='bold', color=CONFIG["ARROW_COLOR"])
-            
-            # 3段目：風向名
-            if show_d:
-                current_y += step
-                ax.text(x_pos, current_y, row['dir_name'], ha='center', va='bottom', fontsize=fs-2)
-            
-            # 4段目：天気文字
-            if show_w:
-                current_y += step
-                ax.text(x_pos, current_y, row['w_text'], ha='center', va='bottom', 
-                        color=row['w_color'], fontweight='bold', fontsize=fs-1)
-                
+            ax.text(x_pos, base_y + base, f"{row['wind_speed_10m']:.0f}", ha='center', va='bottom', fontsize=fs-2)
+            ax.text(x_pos, base_y + base + step, row['arrow'], ha='center', va='bottom', fontsize=fs+2, fontweight='bold')
+            ax.text(x_pos, base_y + base + step*2, row['dir_name'], ha='center', va='bottom', fontsize=fs-2)
+            ax.text(x_pos, base_y + base + step*3, row['w_text'], ha='center', va='bottom', color=row['w_color'], fontweight='bold', fontsize=fs-1)
+
 #==========================================================================================
 # 10. 気温折れ線グラフを描画するサブルーチン
 #==========================================================================================
@@ -285,11 +218,8 @@ def render_tide_curve_chart(ax, df):
 #==========================================================================================
 # 12. 高解像度グラフ画像を生成するサブルーチン
 #==========================================================================================
-@st.cache_data(show_spinner="グラフを生成中...", ttl=600)
-def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_params, now_jst):
-    """
-    指定されたパラメータに基づき、高解像度の気象グラフ画像を生成してBase64形式で返す。
-    """
+@st.cache_data(show_spinner="グラフを生成中...")
+def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_params):
     df = fetch_weather_data(lat, lon, 8)
     if df is None: return None, (0, 0)
     
@@ -297,67 +227,41 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
     df = pd.concat([padding_df, df], ignore_index=True)
     df = process_wind_data(df, list(selected_dirs_tuple))
     
-    active_plots = []
-    if design_params.get("show_wind", True): active_plots.append("wind")
-    if design_params.get("show_temp", True): active_plots.append("temp")
-    if design_params.get("show_tide", True): active_plots.append("tide")
-    
-    if not active_plots: return None, (0, 0)
-    
-    ratios = design_params.get("ratios", CONFIG["DEFAULT_RATIOS"])
-    current_ratios = []
-    if "wind" in active_plots: current_ratios.append(ratios[0])
-    if "temp" in active_plots: current_ratios.append(ratios[1])
-    if "tide" in active_plots: current_ratios.append(ratios[2])
-    
     fig_w = design_params.get("width", CONFIG["GRAPH_WIDTH"])
     fig_h = design_params.get("height", CONFIG["GRAPH_HIGHT"])
-    dpi_value = design_params.get("graph_dpi", CONFIG["DPI"])
     
-    fig, axes = plt.subplots(len(active_plots), 1, figsize=(fig_w, fig_h), dpi=dpi_value, 
-                             gridspec_kw={'height_ratios': current_ratios})
-    
-    if len(active_plots) == 1: axes = [axes]
-    
-    plt.subplots_adjust(hspace=design_params.get("hspace", CONFIG["HSPACE"]))
+    fig, axes = plt.subplots(3, 1, figsize=(fig_w, fig_h), dpi=CONFIG["DPI"], gridspec_kw={'height_ratios': CONFIG["HEIGHT_RATIOS"]})
+    plt.subplots_adjust(hspace=0.6)
     
     formatter = get_x_axis_formatter()
+    now_jst = datetime.now(timezone(timedelta(hours=9))).replace(tzinfo=None)
     
-    idx = 0
-    if "wind" in active_plots:
-        render_wind_bar_chart(axes[idx], df, danger_v, 3, design_params)
-        idx += 1
-    if "temp" in active_plots:
-        render_temp_line_chart(axes[idx], df)
-        idx += 1
-    if "tide" in active_plots:
-        render_tide_curve_chart(axes[idx], df)
-        idx += 1
+    render_wind_bar_chart(axes[0], df, danger_v, 3, design_params)
+    render_temp_line_chart(axes[1], df)
+    render_tide_curve_chart(axes[2], df)
 
     for ax in axes:
-        apply_common_axis_settings(ax, df, formatter, now_jst, design_params)
+        apply_common_axis_settings(ax, df, formatter, now_jst)
 
-    fig.tight_layout(pad=1.0) 
+    fig.tight_layout() 
     pos = axes[0].get_position() 
     ratio_info = (pos.x0, pos.width / (len(df) - 1))
     
     buf = io.BytesIO()
-    fig.savefig(buf, format="png", bbox_inches=None, pad_inches=0, dpi=dpi_value)
+    fig.savefig(buf, format="png", bbox_inches=None, pad_inches=0)
     plt.close(fig) 
     
     img_b64 = base64.b64encode(buf.getvalue()).decode()
     return img_b64, ratio_info
-    
+
 #==========================================================================================
 # 13. お天気アイコンのHTMLを生成するサブルーチン
 #==========================================================================================
 def generate_weather_icons_html(df, ratio_info, display_width):
     start_x, hour_w = ratio_info
     icon_html = ""
-    # display_width（px）を基準に、各アイコンの絶対位置を計算
     for i in range(3, len(df), 3):
         row = df.iloc[i]
-        # (開始位置 + 時間経過幅) * 全体幅 = アイコンの左端からのpx位置
         pos_left_px = (start_x + (i * hour_w)) * display_width
         icon_html += f'''
             <div style="
@@ -370,7 +274,6 @@ def generate_weather_icons_html(df, ratio_info, display_width):
                 z-index: 10;">
                 {row["weather_icon"]}
             </div>'''
-    
     return f'<div style="position: relative; width: {display_width}px; height: 45px; margin-bottom: -15px;">{icon_html}</div>'
 
 #==========================================================================================
@@ -403,49 +306,47 @@ def show_location_map():
             st.session_state.lat = map_out["center"]["lat"]
             st.session_state.lon = map_out["center"]["lng"]
             st.session_state.last_basho = "地図で指定"
+            save_settings_to_browser()
             st.rerun()
 
 #==========================================================================================
-# 15. ブラウザのLocalStorageとSessionStateを同期するサブルーチン
+# 15. ブラウザのlocalStorageと設定を同期するサブルーチン
 #==========================================================================================
 def sync_all_settings():
+    """起動時にブラウザのLocalStorageから設定を復元する"""
     STORAGE_KEY = CONFIG['STORAGE_KEY']
-
     if "initialized" not in st.session_state:
         stored_data = streamlit_js_eval(js_expressions=f"localStorage.getItem('{STORAGE_KEY}')", key="load_storage")
-        
         if stored_data:
             try:
                 data = json.loads(stored_data)
-                # 全設定の復元
                 st.session_state.lat = float(data.get("lat", CONFIG["DEFAULT_LAT"]))
                 st.session_state.lon = float(data.get("lon", CONFIG["DEFAULT_LON"]))
                 st.session_state.last_basho = data.get("basho", CONFIG["DEFAULT_BASHO"])
-                st.session_state.show_wind = data.get("show_wind", CONFIG["SHOW_WIND"])
-                st.session_state.show_temp = data.get("show_temp", CONFIG["SHOW_TEMP"])
-                st.session_state.show_tide = data.get("show_tide", CONFIG["SHOW_TIDE"])
-                st.session_state.width = float(data.get("width", CONFIG["GRAPH_WIDTH"]))
-                st.session_state.base_height = float(data.get("base_height", CONFIG["GRAPH_HIGHT"]))
-                st.session_state.base_font_size = data.get("base_font_size", CONFIG["GRAPH_FONT_SIZE"])
-                st.session_state.label_font_size = data.get("label_font_size", CONFIG["LABEL_SIZE"])
                 st.session_state.danger_v = float(data.get("danger_v", CONFIG["DEFAULT_DANGER_V"]))
                 st.session_state.sel_dirs = data.get("sel_dirs", CONFIG["DEFAULT_DIRS"])
-                st.session_state.min_container_width = data.get("min_container_width", CONFIG["DEFAULT_MIN_CONTAINER_WIDTH"])
-                st.session_state.graph_dpi = data.get("graph_dpi", CONFIG["DPI"])
-                st.session_state.hspace = data.get("hspace", CONFIG["HSPACE"])
-                st.session_state.label_pad = data.get("label_pad", CONFIG["LABEL_PAD"])
-                st.session_state.ratios = data.get("ratios", CONFIG["DEFAULT_RATIOS"])
-                
-                st.session_state.initialized = True
-                st.rerun()
             except:
-                st.session_state.initialized = True
-        elif stored_data == "":
-            st.session_state.initialized = True
-        
-        if "initialized" not in st.session_state:
-            st.stop()
-            
+                pass
+        st.session_state.initialized = True
+        st.rerun()
+
+#==========================================================================================
+# 16_x. 設定をブラウザへ保存するサブルーチン
+#==========================================================================================
+def save_settings_to_browser():
+    """現在の設定値をブラウザのLocalStorageに永続保存する"""
+    if "initialized" not in st.session_state:
+        return
+    save_data = {
+        "lat": st.session_state.lat,
+        "lon": st.session_state.lon,
+        "basho": st.session_state.last_basho,
+        "danger_v": st.session_state.get("danger_v", CONFIG["DEFAULT_DANGER_V"]),
+        "sel_dirs": st.session_state.get("sel_dirs", CONFIG["DEFAULT_DIRS"])
+    }
+    js_save = f"localStorage.setItem('{CONFIG['STORAGE_KEY']}', '{json.dumps(save_data)}')"
+    streamlit_js_eval(js_expressions=js_save, key=f"save_storage_{int(time.time())}")
+
 #==========================================================================================
 # 16. 現在地を取得しセッション状態を更新するサブルーチン
 #==========================================================================================
@@ -463,6 +364,7 @@ def handle_current_location_update():
             st.session_state.lon = round(loc['coords']['longitude'], 4)
             st.session_state.last_basho = "現在地"
             st.session_state.waiting_loc = False
+            save_settings_to_browser()
             st.rerun()
         elif loc is False:
             st.error("❌ 取得失敗")
@@ -471,111 +373,38 @@ def handle_current_location_update():
                 st.rerun()
 
 #==========================================================================================
-# 16_x. ブラウザへの保存を実行するサブルーチン
-#==========================================================================================
-def save_settings_to_browser():
-    if "initialized" not in st.session_state:
-        return
-
-    STORAGE_KEY = CONFIG['STORAGE_KEY']
-    
-    save_data = {
-        "lat": st.session_state.lat, "lon": st.session_state.lon, "basho": st.session_state.last_basho,
-        "show_wind": st.session_state.get("show_wind", CONFIG["SHOW_WIND"]),
-        "show_temp": st.session_state.get("show_temp", CONFIG["SHOW_TEMP"]),
-        "show_tide": st.session_state.get("show_tide", CONFIG["SHOW_TIDE"]),
-        "width": st.session_state.get("width", CONFIG["GRAPH_WIDTH"]),
-        "base_height": st.session_state.get("base_height", CONFIG["GRAPH_HIGHT"]),
-        "base_font_size": st.session_state.get("base_font_size", CONFIG["GRAPH_FONT_SIZE"]),
-        "label_font_size": st.session_state.get("label_font_size", CONFIG["LABEL_SIZE"]),
-        "danger_v": st.session_state.get("danger_v", CONFIG["DEFAULT_DANGER_V"]),
-        "sel_dirs": st.session_state.get("sel_dirs", CONFIG["DEFAULT_DIRS"]),
-        "min_container_width": st.session_state.get("min_container_width", CONFIG["DEFAULT_MIN_CONTAINER_WIDTH"]),
-        "graph_dpi": st.session_state.get("graph_dpi", CONFIG["DPI"]),
-        "hspace": st.session_state.get("hspace", CONFIG["HSPACE"]),
-        "label_pad": st.session_state.get("label_pad", CONFIG["LABEL_PAD"]),
-        "ratios": st.session_state.get("ratios", CONFIG["DEFAULT_RATIOS"])
-    }
-    
-    js_save = f"localStorage.setItem('{STORAGE_KEY}', '{json.dumps(save_data)}')"
-    streamlit_js_eval(js_expressions=js_save, key=f"save_trigger_{st.session_state.last_basho}")
-
-#==========================================================================================
 # 17. サイドバーの表示設定とデザイン調整を表示するサブルーチン
 #==========================================================================================
 def show_sidebar_controls():
-    # 隠しパラメータ判定
-    params = st.query_params
-    is_url_dev = params.get("mode") == "dev"
-    current_host = streamlit_js_eval(js_expressions="window.location.hostname", key="get_hostname")
-    is_dev_environment = (current_host == "localhost" or is_url_dev)
-    
     st.sidebar.header("表示設定")
+    default_v = st.session_state.get("danger_v", CONFIG["DEFAULT_DANGER_V"])
+    danger_v = st.sidebar.number_input("危険風速ライン(m/s)", value=default_v, step=0.5)
     
-    show_wind = st.sidebar.toggle("風向・風速", value=st.session_state.get("show_wind", CONFIG["SHOW_WIND"]))
-    show_temp = st.sidebar.toggle("気温", value=st.session_state.get("show_temp", CONFIG["SHOW_TEMP"]))
-    show_tide = st.sidebar.toggle("潮位", value=st.session_state.get("show_tide", CONFIG["SHOW_TIDE"]))
+    if danger_v != st.session_state.get("danger_v"):
+        st.session_state.danger_v = danger_v
+        save_settings_to_browser()
     
-    w_cfg = CONFIG["SLIDER_WIDTH"]
-    h_cfg = CONFIG["SLIDER_HEIGHT"]
-    f_cfg = CONFIG["SLIDER_FONT"]
-    
-    width = st.sidebar.slider("横幅 (inch)", w_cfg["min"], w_cfg["max"], float(st.session_state.get("width", CONFIG["GRAPH_WIDTH"])), step=w_cfg["step"])
-    base_height = st.sidebar.slider("基準縦幅 (inch)", h_cfg["min"], h_cfg["max"], float(st.session_state.get("base_height", CONFIG["GRAPH_HIGHT"])), step=h_cfg["step"])
-    base_font_size = st.sidebar.slider("グラフ内文字", f_cfg["min"], f_cfg["max"], st.session_state.get("base_font_size", CONFIG["GRAPH_FONT_SIZE"]), step=f_cfg["step"])
-    label_font_size = st.sidebar.slider("軸ラベル文字", f_cfg["min"], f_cfg["max"], st.session_state.get("label_font_size", CONFIG["LABEL_SIZE"]), step=f_cfg["step"])
-
     st.sidebar.markdown("---")
-
-    if "min_container_width" not in st.session_state: st.session_state.min_container_width = CONFIG["DEFAULT_MIN_CONTAINER_WIDTH"]
-    if "graph_dpi" not in st.session_state: st.session_state.graph_dpi = CONFIG["DPI"]
-
+    is_dev = st.sidebar.checkbox("🔧 デザイン微調整(開発者用)", value=False)
+    
     design_params = {
-        "width": width, "base_height": base_height,
-        "base_font_size": base_font_size, "label_font_size": label_font_size,
-        "label_pad": st.session_state.get("label_pad", CONFIG["LABEL_PAD"]),
-        "hspace": st.session_state.get("hspace", CONFIG["HSPACE"]),
-        "show_wind": show_wind, "show_temp": show_temp, "show_tide": show_tide,
-        "show_w_text": st.session_state.get("show_w_text", CONFIG["SHOW_W_TEXT"]),
-        "show_dir_name": st.session_state.get("show_dir_name", CONFIG["SHOW_DIR_NAME"]),
-        "ratios": list(st.session_state.get("ratios", CONFIG["DEFAULT_RATIOS"])),
-        "min_container_width": st.session_state.min_container_width,
-        "graph_dpi": st.session_state.graph_dpi
+        "width": CONFIG["GRAPH_WIDTH"],
+        "height": CONFIG["GRAPH_HIGHT"],
+        "base_font_size": CONFIG["GRAPH_FONT_SIZE"],
+        "label_font_size": CONFIG["LABEL_SIZE"],
+        "bar_width": 0.035,
+        "annot_size": CONFIG["ANNOT_SIZE"]
     }
 
-    if is_dev_environment:
-        is_dev = st.sidebar.checkbox("🔧 開発者用マイクロ調整", value=st.session_state.get("is_dev_mode", False))
-        st.session_state.is_dev_mode = is_dev
-        if is_dev:
-            st.sidebar.info("開発用詳細設定")
-            design_params["min_container_width"] = st.sidebar.select_slider(
-                "コンテナ最小幅 (px)", options=[500, 1000, 1500, 2000, 2500, 3000], value=design_params["min_container_width"]
-            )
-            design_params["graph_dpi"] = st.sidebar.radio("解像度 (DPI)", options=[200, 300], index=(0 if design_params["graph_dpi"] == 200 else 1), horizontal=True)
-            design_params["show_w_text"] = st.sidebar.toggle("天気詳細文字を表示", value=design_params["show_w_text"])
-            design_params["show_dir_name"] = st.sidebar.toggle("風向名を表示", value=design_params["show_dir_name"])
-            design_params["hspace"] = st.sidebar.slider("グラフ間余白", -0.1, 0.5, design_params["hspace"], step=0.05)
-            design_params["label_pad"] = st.sidebar.slider("ラベル距離", -5, 10, design_params["label_pad"])
-            r = design_params["ratios"]
-            r[0] = st.sidebar.number_input("比率:風向", 0.5, 10.0, r[0], step=0.1)
-            r[1] = st.sidebar.number_input("比率:気温", 0.5, 5.0, r[1], step=0.1)
-            r[2] = st.sidebar.number_input("比率:潮位", 0.5, 5.0, r[2], step=0.1)
-            design_params["ratios"] = r
-
-    # 縦幅の自動計算
-    base_ratio_total = design_params["ratios"][0] + design_params["ratios"][1]
-    fixed_unit_h = base_height / base_ratio_total 
-    icon_margin = 0.45 if show_wind else 0.0
-    auto_height = icon_margin
-    if show_wind: auto_height += design_params["ratios"][0] * fixed_unit_h
-    if show_temp: auto_height += design_params["ratios"][1] * fixed_unit_h
-    if show_tide: auto_height += design_params["ratios"][2] * fixed_unit_h
-    design_params["height"] = auto_height
-
-    st.sidebar.markdown("---")
-    danger_v = st.sidebar.number_input("危険風速ライン(m/s)", value=st.session_state.get("danger_v", CONFIG["DEFAULT_DANGER_V"]), step=0.5)
+    if is_dev:
+        design_params["width"] = st.sidebar.slider("グラフ横幅 (inch)", 10, 80, design_params["width"])
+        design_params["height"] = st.sidebar.slider("グラフ縦幅 (inch)", 3.0, 10.0, design_params["height"])
+        design_params["base_font_size"] = st.sidebar.slider("グラフ内文字サイズ", 6, 20, design_params["base_font_size"])
+        design_params["label_font_size"] = st.sidebar.slider("X軸ラベルサイズ", 5, 20, design_params["label_font_size"])
+        design_params["bar_width"] = st.sidebar.slider("棒グラフ余白 (width)", 0.01, 0.1, 0.035, step=0.005)
     
-    st.sidebar.write("色付風向選択")
+    st.sidebar.markdown("---")
+    st.sidebar.write("色付風向")
     saved_dirs = st.session_state.get("sel_dirs", CONFIG["DEFAULT_DIRS"])
     sel_dirs = []
     cols = st.sidebar.columns(2)
@@ -583,20 +412,13 @@ def show_sidebar_controls():
         with cols[i % 2]:
             if st.checkbox(d, value=(d in saved_dirs), key=f"chk_{d}"):
                 sel_dirs.append(d)
-
-    st.session_state.update({
-        "show_wind": show_wind, "show_temp": show_temp, "show_tide": show_tide,
-        "width": width, "base_height": base_height, "base_font_size": base_font_size,
-        "label_font_size": label_font_size, "danger_v": danger_v, "sel_dirs": sel_dirs,
-        "label_pad": design_params["label_pad"], "hspace": design_params["hspace"],
-        "show_w_text": design_params["show_w_text"], "show_dir_name": design_params["show_dir_name"],
-        "ratios": design_params["ratios"], "min_container_width": design_params["min_container_width"],
-        "graph_dpi": design_params["graph_dpi"]
-    })
-
-    save_settings_to_browser()
-    return danger_v, sel_dirs, design_params
     
+    if set(sel_dirs) != set(st.session_state.get("sel_dirs", [])):
+        st.session_state.sel_dirs = sel_dirs
+        save_settings_to_browser()
+        
+    return danger_v, sel_dirs, design_params
+
 #==========================================================================================
 # 18. グラフ更新ボタンと日時情報を描画するサブルーチン
 #==========================================================================================
@@ -607,7 +429,6 @@ def render_header_info(current_basho_name):
     if st.button(update_label, use_container_width=True):
         st.cache_data.clear()
         st.rerun()
-
 
 #==========================================================================================
 # 19. アプリのメインフローを制御するメインルーチン
@@ -621,54 +442,73 @@ def main():
     danger_v, sel_dirs, design_params = show_sidebar_controls()
     setup_font(design_params["base_font_size"])
 
-    raw_now = datetime.now(timezone(timedelta(hours=9))).replace(tzinfo=None)
-    now_jst = raw_now.replace(minute=(raw_now.minute // 10) * 10, second=0, microsecond=0)
-
     st.markdown(f"""
         <style>
             .block-container {{ padding-top: 2rem !important; padding-bottom: 0rem !important; }}
-            .scroll-container {{ overflow-x: auto; background: white; border: 1px solid #ddd; width: 100%; }}
+            h1 {{ margin-top: 10px !important; margin-bottom: 20px !important; line-height: 1.2 !important; }}
+            [data-testid="stVerticalBlock"] {{ gap: 0.8rem !important; }}
+            div.stButton > button p {{ text-align: left !important; width: 100% !important; }}
+            div.stButton > button {{ justify-content: flex-start !important; }}
+            .scroll-container {{
+                overflow-x: auto; 
+                background: white; 
+                border: 1px solid #ddd;
+                width: 100%;
+            }}
         </style>
     """, unsafe_allow_html=True)
 
     st.markdown(f'<h1 style="font-size:{CONFIG["TITLE_SIZE"]}px;">⛵ Wind_Checker! </h1>', unsafe_allow_html=True)
     
-    master_locations = CONFIG["MASTER_LOCATIONS"]
-    current_idx = 0
-    if st.session_state.last_basho in master_locations:
-        current_idx = list(master_locations.keys()).index(st.session_state.last_basho)
+    master = CONFIG["LOCATION_MASTER"].copy()
+    display_options = {f"{name} ({coords[0]:.4f}, {coords[1]:.4f})": name for name, coords in master.items()}
     
-    selected_basho = st.selectbox("地点を選択してください", list(master_locations.keys()), index=current_idx)
+    current_loc_label = f"📍 現在地 ({st.session_state.lat:.4f}, {st.session_state.lon:.4f})"
+    display_options[current_loc_label] = "現在地"
+    display_options["🗺️ 地図で指定"] = "地図で指定"
+
+    reverse_display = {v: k for k, v in display_options.items()}
+    current_display_val = reverse_display.get(st.session_state.last_basho, current_loc_label)
     
-    if selected_basho != st.session_state.last_basho:
-        st.session_state.last_basho = selected_basho
-        if selected_basho != "地図で指定":
-            st.session_state.lat, st.session_state.lon = master_locations[selected_basho]
-            st.session_state.show_map_state = False
-        else:
+    options_list = list(display_options.keys())
+    default_idx = options_list.index(current_display_val) if current_display_val in options_list else 0
+
+    selected_display = st.selectbox("地点を選択してください", options_list, index=default_idx)
+    basho = display_options[selected_display]
+
+    if basho != st.session_state.last_basho:
+        st.session_state.last_basho = basho
+        if basho not in ["地図で指定", "現在地"]:
+            st.session_state.lat, st.session_state.lon = master[basho]
+        if basho == "地図で指定":
             st.session_state.show_map_state = True
         save_settings_to_browser()
+        st.cache_data.clear()
         st.rerun()
 
     show_map = st.checkbox("地図表示", value=st.session_state.get('show_map_state', False))
     st.session_state.show_map_state = show_map
-    
     if show_map:
         show_location_map()
-        save_settings_to_browser()
 
-    st.markdown(f"<p style='font-size:{CONFIG['LOC_INFO_FONT_SIZE']}; color:{CONFIG['LOC_INFO_COLOR']}; font-weight:bold;'>📍 現在：{st.session_state.last_basho} ({st.session_state.lat:.4f}, {st.session_state.lon:.4f})</p>", unsafe_allow_html=True)
+    col1, col2 = st.columns([1, 1]) 
+    with col1:
+        handle_current_location_update()
+    with col2:
+        render_header_info(basho) 
     
     img_b64, ratio_info = generate_high_res_graph(
-        st.session_state.lat, st.session_state.lon, danger_v, tuple(sel_dirs), design_params, now_jst
+        st.session_state.lat, 
+        st.session_state.lon, 
+        danger_v, 
+        tuple(sel_dirs), 
+        design_params
     )
     
     if img_b64:
         df_for_icons = fetch_weather_data(st.session_state.lat, st.session_state.lon, 8)
         if df_for_icons is not None:
-            dpi = design_params.get("graph_dpi", CONFIG["DPI"])
-            display_width = int(design_params["width"] * dpi)
-            min_w = design_params.get("min_container_width", 2500)
+            display_width = int(design_params["width"] * CONFIG["PX_PER_INCH"])
             
             padding_df = pd.DataFrame({'time': [df_for_icons['time'].iloc[0] - timedelta(hours=i) for i in range(1, 4)][::-1]})
             df_full = pd.concat([padding_df, df_for_icons], ignore_index=True)
@@ -678,12 +518,12 @@ def main():
             
             st.markdown(
                 f'<div class="scroll-container">'
-                f'<div style="width: {display_width}px; min-width: {min_w}px;">'
+                f'<div style="width: {display_width}px;">'
                 f'{icons_html}{graph_html}'
                 f'</div></div>', 
                 unsafe_allow_html=True
             )
-                        
+
 #==========================================================================================
 # アプリケーション起動
 #==========================================================================================
