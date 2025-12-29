@@ -278,18 +278,14 @@ def render_tide_curve_chart(ax, df):
 def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_params, now_jst):
     """
     指定されたパラメータに基づき、高解像度の気象グラフ画像を生成してBase64形式で返す。
-    サイドバーで設定されたDPI（200 or 300）を反映させる。
     """
-    # 気象データの取得
     df = fetch_weather_data(lat, lon, 8)
     if df is None: return None, (0, 0)
     
-    # パディングと風向データの処理
     padding_df = pd.DataFrame({'time': [df['time'].iloc[0] - timedelta(hours=i) for i in range(1, 4)][::-1]})
     df = pd.concat([padding_df, df], ignore_index=True)
     df = process_wind_data(df, list(selected_dirs_tuple))
     
-    # 描画対象の判定
     active_plots = []
     if design_params.get("show_wind", True): active_plots.append("wind")
     if design_params.get("show_temp", True): active_plots.append("temp")
@@ -297,34 +293,27 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
     
     if not active_plots: return None, (0, 0)
     
-    # 比率の計算
     ratios = design_params.get("ratios", CONFIG["DEFAULT_RATIOS"])
     current_ratios = []
     if "wind" in active_plots: current_ratios.append(ratios[0])
     if "temp" in active_plots: current_ratios.append(ratios[1])
     if "tide" in active_plots: current_ratios.append(ratios[2])
     
-    # 描画サイズの取得
     fig_w = design_params.get("width", CONFIG["GRAPH_WIDTH"])
     fig_h = design_params.get("height", CONFIG["GRAPH_HIGHT"])
     
-    # --- 修正ポイント：DPIをdesign_paramsから取得するように変更 ---
-    # 設定がない場合は、CONFIG["DPI"] を使用する
+    # 開発者設定からDPIを取得（デフォルトはCONFIG["DPI"]）
     dpi_value = design_params.get("graph_dpi", CONFIG.get("DPI", 200))
     
-    # グラフ領域の作成（dpi引数に動的な値を適用）
     fig, axes = plt.subplots(len(active_plots), 1, figsize=(fig_w, fig_h), dpi=dpi_value, 
                              gridspec_kw={'height_ratios': current_ratios})
     
     if len(active_plots) == 1: axes = [axes]
     
-    # レイアウト調整
     plt.subplots_adjust(hspace=design_params.get("hspace", CONFIG["HSPACE"]))
     
-    # フォーマッターの取得
     formatter = get_x_axis_formatter()
     
-    # 各チャートのレンダリング
     idx = 0
     if "wind" in active_plots:
         render_wind_bar_chart(axes[idx], df, danger_v, 3, design_params)
@@ -336,22 +325,17 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
         render_tide_curve_chart(axes[idx], df)
         idx += 1
 
-    # 共通軸設定の適用
     for ax in axes:
         apply_common_axis_settings(ax, df, formatter, now_jst, design_params)
 
-    # 最終レイアウト調整
     fig.tight_layout(pad=1.0) 
     pos = axes[0].get_position() 
     ratio_info = (pos.x0, pos.width / (len(df) - 1))
     
-    # 画像のバイナリ化
     buf = io.BytesIO()
-    # 保存時にもdpiを指定して鮮明さを維持
     fig.savefig(buf, format="png", bbox_inches=None, pad_inches=0, dpi=dpi_value)
     plt.close(fig) 
     
-    # Base64エンコード
     img_b64 = base64.b64encode(buf.getvalue()).decode()
     return img_b64, ratio_info
     
@@ -530,17 +514,13 @@ def save_settings_to_browser():
 # 17. サイドバーの表示設定とデザイン調整を表示するサブルーチン
 #==========================================================================================
 def show_sidebar_controls():
-    # ベータ版フラグ
     is_beta = True 
-    
     st.sidebar.header("表示設定")
     
-    # --- 1. 表示項目のスイッチ ---
     show_wind = st.sidebar.toggle("風向・風速", value=st.session_state.get("show_wind", CONFIG["SHOW_WIND"]))
     show_temp = st.sidebar.toggle("気温", value=st.session_state.get("show_temp", CONFIG["SHOW_TEMP"]))
     show_tide = st.sidebar.toggle("潮位", value=st.session_state.get("show_tide", CONFIG["SHOW_TIDE"]))
     
-    # --- 2. スライダーによるサイズ調整 ---
     w_cfg = CONFIG["SLIDER_WIDTH"]
     h_cfg = CONFIG["SLIDER_HEIGHT"]
     f_cfg = CONFIG["SLIDER_FONT"]
@@ -551,11 +531,10 @@ def show_sidebar_controls():
     label_font_size = st.sidebar.slider("軸ラベル文字", f_cfg["min"], f_cfg["max"], st.session_state.get("label_font_size", CONFIG["LABEL_SIZE"]), step=f_cfg["step"])
 
     st.sidebar.markdown("---")
-    
-    # 開発者モード
-    is_dev = st.sidebar.checkbox("🔧 開発者用マイクロ調整", value=False) if is_beta else False
-    
-    # パラメータ初期化
+    is_dev = st.sidebar.checkbox("🔧 開発者用マイクロ調整", value=st.session_state.get("is_dev_mode", False))
+    st.session_state.is_dev_mode = is_dev
+
+    # 初期値セット
     if "min_container_width" not in st.session_state: st.session_state.min_container_width = 2500
     if "graph_dpi" not in st.session_state: st.session_state.graph_dpi = 200
 
@@ -574,15 +553,11 @@ def show_sidebar_controls():
 
     if is_dev:
         st.sidebar.info("開発用詳細設定")
-        # コンテナ最小幅の調整 (500px ~ 3000px, 500刻み)
+        # ユーザーによる修正を反映 (500~3000)
         design_params["min_container_width"] = st.sidebar.select_slider(
             "コンテナ最小幅 (px)", options=[500, 1000, 1500, 2000, 2500, 3000], value=design_params["min_container_width"]
         )
-        # DPIの二択 (200 or 300)
-        design_params["graph_dpi"] = st.sidebar.radio(
-            "解像度 (DPI)", options=[200, 300], index=(0 if design_params["graph_dpi"] == 200 else 1), horizontal=True
-        )
-        
+        design_params["graph_dpi"] = st.sidebar.radio("解像度 (DPI)", options=[200, 300], index=(0 if design_params["graph_dpi"] == 200 else 1), horizontal=True)
         design_params["show_w_text"] = st.sidebar.toggle("天気詳細文字を表示", value=design_params["show_w_text"])
         design_params["show_dir_name"] = st.sidebar.toggle("風向名を表示", value=design_params["show_dir_name"])
         design_params["hspace"] = st.sidebar.slider("グラフ間余白", -0.1, 0.5, design_params["hspace"], step=0.05)
@@ -593,7 +568,7 @@ def show_sidebar_controls():
         r[2] = st.sidebar.number_input("比率:潮位", 0.5, 5.0, r[2], step=0.1)
         design_params["ratios"] = r
 
-    # --- 縦幅計算 ---
+    # 縦幅計算
     base_ratio_total = design_params["ratios"][0] + design_params["ratios"][1]
     fixed_unit_h = base_height / base_ratio_total 
     icon_margin = 0.45 if show_wind else 0.0
@@ -615,15 +590,13 @@ def show_sidebar_controls():
             if st.checkbox(d, value=(d in saved_dirs), key=f"chk_{d}"):
                 sel_dirs.append(d)
 
-    # セッション更新
     st.session_state.update({
         "show_wind": show_wind, "show_temp": show_temp, "show_tide": show_tide,
         "width": width, "base_height": base_height, "base_font_size": base_font_size,
         "label_font_size": label_font_size, "danger_v": danger_v, "sel_dirs": sel_dirs,
         "label_pad": design_params["label_pad"], "hspace": design_params["hspace"],
         "show_w_text": design_params["show_w_text"], "show_dir_name": design_params["show_dir_name"],
-        "ratios": design_params["ratios"],
-        "min_container_width": design_params["min_container_width"],
+        "ratios": design_params["ratios"], "min_container_width": design_params["min_container_width"],
         "graph_dpi": design_params["graph_dpi"]
     })
 
@@ -666,10 +639,9 @@ def main():
 
     st.markdown(f'<h1 style="font-size:{CONFIG["TITLE_SIZE"]}px;">⛵ Wind_Checker! </h1>', unsafe_allow_html=True)
     
-    # --- 地点選択・地図表示 ---
-    # (中略: 既存の地点選択ロジックをそのまま使用)
-    
-    # グラフ生成 (design_paramsを渡してDPIを反映)
+    # (地点選択・地図表示ロジックは既存のものを維持)
+    # ... 
+
     img_b64, ratio_info = generate_high_res_graph(
         st.session_state.lat, st.session_state.lon, danger_v, tuple(sel_dirs), design_params, now_jst
     )
@@ -677,7 +649,6 @@ def main():
     if img_b64:
         df_for_icons = fetch_weather_data(st.session_state.lat, st.session_state.lon, 8)
         if df_for_icons is not None:
-            # 描画サイズ計算（選択されたDPIを基準にする）
             dpi = design_params["graph_dpi"]
             display_width = int(design_params["width"] * dpi)
             min_w = design_params["min_container_width"]
@@ -688,7 +659,6 @@ def main():
             icons_html = generate_weather_icons_html(df_full, ratio_info, display_width)
             graph_html = f'<img src="data:image/png;base64,{img_b64}" style="width: {display_width}px; display: block;">'
             
-            # HTML出力 (min-widthを動的に変更)
             st.markdown(
                 f'<div class="scroll-container">'
                 f'<div style="width: {display_width}px; min-width: {min_w}px;">'
