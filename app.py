@@ -39,6 +39,8 @@ CONFIG = {
     "LABEL_SIZE": 9,
     "LABEL_PAD": 2,
     "HSPACE": 0.2,
+    "HLINE_WIDTH": 1.5,       # ← ここが漏れていました
+    "BAR_WIDTH": 0.03,        # 棒グラフの幅
     "DPI": 200,
     "DEFAULT_MIN_CONTAINER_WIDTH": 2500,
     "SHOW_WIND": True,
