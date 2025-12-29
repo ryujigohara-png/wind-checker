@@ -574,9 +574,9 @@ def show_sidebar_controls():
 
     if is_dev:
         st.sidebar.info("開発用詳細設定")
-        # コンテナ最小幅の調整 (2000px ~ 3000px, 500刻み)
+        # コンテナ最小幅の調整 (500px ~ 3000px, 500刻み)
         design_params["min_container_width"] = st.sidebar.select_slider(
-            "コンテナ最小幅 (px)", options=[2000, 2500, 3000], value=design_params["min_container_width"]
+            "コンテナ最小幅 (px)", options=[500, 1000, 1500, 2000, 2500, 3000], value=design_params["min_container_width"]
         )
         # DPIの二択 (200 or 300)
         design_params["graph_dpi"] = st.sidebar.radio(
