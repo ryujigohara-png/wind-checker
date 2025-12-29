@@ -41,6 +41,7 @@ CONFIG = {
     "SHOW_W_TEXT": False,        # デフォルトOFF
     "SHOW_DIR_NAME": False,      # デフォルトOFF
     "HSPACE": 0.1,
+    "TIMEZONE_OFFSET": 9,  # 日本なら 9
     "DEFAULT_LAT": 31.337,
     "DEFAULT_LON": 130.795,
     "DEFAULT_BASHO": "高須沖(鹿児島県)",
@@ -628,13 +629,19 @@ def main():
             
             icons_html = generate_weather_icons_html(df_full, ratio_info, display_width)
             graph_html = f'<img src="data:image/png;base64,{img_b64}" style="width: {display_width}px; display: block;">'
-            
-            st.markdown(
-                f'<div class="scroll-container">'
-                f'<div style="width: {display_width}px;">'
-                f'{icons_html}{graph_html}'
-                f'</div></div>', 
-                unsafe_allow_html=True
+
+            # --- 5. グラフ描画（CONFIGに基づいたタイムゾーン設定） ---
+            # UTC時刻を取得し、CONFIGのオフセットを適用
+            tz = timezone(timedelta(hours=CONFIG.get("TIMEZONE_OFFSET", 9)))
+            now_jst = datetime.now(tz)
+        
+            img_b64, ratio_info = generate_high_res_graph(
+                st.session_state.lat, 
+                st.session_state.lon, 
+                danger_v, 
+                tuple(sel_dirs), 
+                design_params,
+                now_jst=now_jst  # 正しい時刻を渡す
             )
 
     # 設定の保存
