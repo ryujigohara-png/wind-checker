@@ -20,57 +20,45 @@ import folium
 import streamlit.components.v1 as components
 from streamlit_js_eval import streamlit_js_eval, get_geolocation
 
-# ======================================================================================
-# 1. 定数・基本設定 (CONFIG)
-# ======================================================================================
-# ...ここに先ほどのCONFIGを配置してください...
-
-# ======================================================================================
-# 1. 定数・基本設定 (CONFIG)
-# ======================================================================================
+#==========================================================================================
+# 0. アプリ全体で使用する定数定義 (CONFIG)
+#==========================================================================================
 CONFIG = {
-    "TITLE_SIZE": 24,
-    "SUBTITLE_SIZE": 18,
-    "GRAPH_FONT_SIZE": 12,
-    "GRAPH_WIDTH": 20,
-    "GRAPH_HIGHT": 3.0,
-    "LABEL_SIZE": 9,
-    "LABEL_PAD": 0,
-    "ANNOT_SIZE": 10,
-    "DPI": 200,
-    "MAP_HEIGHT": 350,
-    "DEFAULT_RATIOS": [4.4, 1.2, 0.8],
-    "SHOW_WIND": True,
-    "SHOW_TEMP": True,
-    "SHOW_TIDE": False,          # デフォルトOFF
-    "SHOW_W_TEXT": False,        # デフォルトOFF
-    "SHOW_DIR_NAME": False,      # デフォルトOFF
-    "HSPACE": 0.1,
+    "STORAGE_KEY": "wind_checker_v2_full_settings",
+    "TITLE_SIZE": 32,
+    "LOC_INFO_FONT_SIZE": "18px",
+    "LOC_INFO_COLOR": "#2c3e50",
     "DEFAULT_LAT": 31.337,
     "DEFAULT_LON": 130.795,
     "DEFAULT_BASHO": "高須沖(鹿児島県)",
-    "DEFAULT_DANGER_V": 10.0,
-    "DEFAULT_DIRS": ["南","南南西","南西","西南西","西","西北西","北西","北北西"],
-    "ANNOT_Y_STEP": 1.5,
-    "ANNOT_BASE_Y": 0.5,
-    "STORAGE_KEY": "wind_checker_settings_v2", # バージョン管理用にキー変更
-    "TEMP_COLOR": "darkorange",
-    "ARROW_COLOR": "blue",
-    "VLINE_WIDTH": 1.25,
-    "HLINE_WIDTH": 1.0,
-    "PX_PER_INCH": 200,
-    # スライダーの範囲設定
-    "SLIDER_WIDTH": {"min": 15.0, "max": 30.0, "step": 1.0},
-    "SLIDER_HEIGHT": {"min": 2.0, "max": 5.0, "step": 0.5},
-    "SLIDER_FONT": {"min": 8, "max": 15, "step": 1},
-    "LOCATION_MASTER": {
-        "高須沖(鹿児島県)": (31.337, 130.795), 
-        "柏原沖(鹿児島県)": (31.380, 131.020), 
-        "垂水港(鹿児島県)": (31.478, 130.668), 
-        "海潟(鹿児島県)": (31.539, 130.706), 
-        "磯海岸沖(鹿児島県)": (31.614, 130.577), 
+    "DEFAULT_DANGER_V": 8.0,
+    "DEFAULT_DIRS": ["北", "北北西", "北西", "西北西"],
+    "GRAPH_WIDTH": 12.0,
+    "GRAPH_HIGHT": 6.5,
+    "GRAPH_FONT_SIZE": 10,
+    "LABEL_SIZE": 9,
+    "LABEL_PAD": 2,
+    "HSPACE": 0.2,
+    "DPI": 200,
+    "DEFAULT_MIN_CONTAINER_WIDTH": 2500,
+    "SHOW_WIND": True,
+    "SHOW_TEMP": True,
+    "SHOW_TIDE": True,
+    "SHOW_W_TEXT": True,
+    "SHOW_DIR_NAME": True,
+    "DEFAULT_RATIOS": [4.0, 1.5, 1.5],
+    "SLIDER_WIDTH": {"min": 5.0, "max": 20.0, "step": 0.5},
+    "SLIDER_HEIGHT": {"min": 3.0, "max": 15.0, "step": 0.5},
+    "SLIDER_FONT": {"min": 6, "max": 16, "step": 1},
+    "MASTER_LOCATIONS": {
+        "高須沖(鹿児島県)": (31.337, 130.795),
+        "柏原沖(鹿児島県)": (31.380, 131.020),
+        "垂水港(鹿児島県)": (31.478, 130.668),
+        "海潟(鹿児島県)": (31.539, 130.706),
+        "磯海岸沖(鹿児島県)": (31.614, 130.577),
         "江口浜沖(鹿児島県)": (31.643, 130.322),
-        "錦江湾(鹿児島県)": (31.590, 130.600)
+        "錦江湾(鹿児島県)": (31.590, 130.600),
+        "地図で指定": (None, None)
     }
 }
 
@@ -302,8 +290,8 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
     fig_w = design_params.get("width", CONFIG["GRAPH_WIDTH"])
     fig_h = design_params.get("height", CONFIG["GRAPH_HIGHT"])
     
-    # 開発者設定からDPIを取得（デフォルトはCONFIG["DPI"]）
-    dpi_value = design_params.get("graph_dpi", CONFIG.get("DPI", 200))
+    # 動的DPIの適用
+    dpi_value = design_params.get("graph_dpi", CONFIG["DPI"])
     
     fig, axes = plt.subplots(len(active_plots), 1, figsize=(fig_w, fig_h), dpi=dpi_value, 
                              gridspec_kw={'height_ratios': current_ratios})
@@ -397,57 +385,45 @@ def show_location_map():
             st.rerun()
 
 #==========================================================================================
-# 15. ブラウザのlocalStorageと設定を同期するサブルーチン
+# 15. ブラウザのLocalStorageとSessionStateを同期するサブルーチン
 #==========================================================================================
 def sync_all_settings():
     STORAGE_KEY = CONFIG['STORAGE_KEY']
-    
-    # すでに初期化済みの場合は、サイドバー操作時の再実行を防ぐために即リターン
-    if st.session_state.get("initialized"):
-        return
 
-    # 初回起動時のみブラウザからデータを読み込む
-    stored_data = streamlit_js_eval(js_expressions=f"localStorage.getItem('{STORAGE_KEY}')", key="init_load_settings")
-    
-    if stored_data:
-        try:
-            data = json.loads(stored_data)
-            # 地点情報の復元
-            st.session_state.lat = float(data.get("lat", CONFIG["DEFAULT_LAT"]))
-            st.session_state.lon = float(data.get("lon", CONFIG["DEFAULT_LON"]))
-            st.session_state.last_basho = data.get("basho", CONFIG["DEFAULT_BASHO"])
-            
-            # 表示スイッチの復元
-            st.session_state.show_wind = data.get("show_wind", CONFIG["SHOW_WIND"])
-            st.session_state.show_temp = data.get("show_temp", CONFIG["SHOW_TEMP"])
-            st.session_state.show_tide = data.get("show_tide", CONFIG["SHOW_TIDE"])
-            
-            # サイズ・文字設定の復元
-            st.session_state.width = float(data.get("width", CONFIG["GRAPH_WIDTH"]))
-            st.session_state.base_height = float(data.get("base_height", CONFIG["GRAPH_HIGHT"]))
-            st.session_state.base_font_size = int(data.get("base_font_size", CONFIG["GRAPH_FONT_SIZE"]))
-            st.session_state.label_font_size = int(data.get("label_font_size", CONFIG["LABEL_SIZE"]))
-            
-            # 危険風速・選択風向の復元
-            st.session_state.danger_v = float(data.get("danger_v", CONFIG["DEFAULT_DANGER_V"]))
-            st.session_state.sel_dirs = data.get("sel_dirs", CONFIG["DEFAULT_DIRS"])
-            
-            # 開発者用パラメータもあれば復元
-            st.session_state.label_pad = data.get("label_pad", CONFIG["LABEL_PAD"])
-            st.session_state.hspace = data.get("hspace", CONFIG["HSPACE"])
-            st.session_state.show_w_text = data.get("show_w_text", CONFIG["SHOW_W_TEXT"])
-            st.session_state.show_dir_name = data.get("show_dir_name", CONFIG["SHOW_DIR_NAME"])
-            st.session_state.ratios = data.get("ratios", CONFIG["DEFAULT_RATIOS"])
-            
-            # フラグを立ててリラン（初回のみ）
+    if "initialized" not in st.session_state:
+        stored_data = streamlit_js_eval(js_expressions=f"localStorage.getItem('{STORAGE_KEY}')", key="load_storage")
+        
+        if stored_data:
+            try:
+                data = json.loads(stored_data)
+                # 全設定の復元
+                st.session_state.lat = float(data.get("lat", CONFIG["DEFAULT_LAT"]))
+                st.session_state.lon = float(data.get("lon", CONFIG["DEFAULT_LON"]))
+                st.session_state.last_basho = data.get("basho", CONFIG["DEFAULT_BASHO"])
+                st.session_state.show_wind = data.get("show_wind", CONFIG["SHOW_WIND"])
+                st.session_state.show_temp = data.get("show_temp", CONFIG["SHOW_TEMP"])
+                st.session_state.show_tide = data.get("show_tide", CONFIG["SHOW_TIDE"])
+                st.session_state.width = float(data.get("width", CONFIG["GRAPH_WIDTH"]))
+                st.session_state.base_height = float(data.get("base_height", CONFIG["GRAPH_HIGHT"]))
+                st.session_state.base_font_size = data.get("base_font_size", CONFIG["GRAPH_FONT_SIZE"])
+                st.session_state.label_font_size = data.get("label_font_size", CONFIG["LABEL_SIZE"])
+                st.session_state.danger_v = float(data.get("danger_v", CONFIG["DEFAULT_DANGER_V"]))
+                st.session_state.sel_dirs = data.get("sel_dirs", CONFIG["DEFAULT_DIRS"])
+                st.session_state.min_container_width = data.get("min_container_width", CONFIG["DEFAULT_MIN_CONTAINER_WIDTH"])
+                st.session_state.graph_dpi = data.get("graph_dpi", CONFIG["DPI"])
+                st.session_state.hspace = data.get("hspace", CONFIG["HSPACE"])
+                st.session_state.label_pad = data.get("label_pad", CONFIG["LABEL_PAD"])
+                st.session_state.ratios = data.get("ratios", CONFIG["DEFAULT_RATIOS"])
+                
+                st.session_state.initialized = True
+                st.rerun()
+            except:
+                st.session_state.initialized = True
+        elif stored_data == "":
             st.session_state.initialized = True
-            st.rerun()
-        except Exception:
-            # パース失敗時はデフォルト値で進む
-            st.session_state.initialized = True
-    elif stored_data == "":
-        # データが存在しない場合も初期化済みとする
-        st.session_state.initialized = True
+        
+        if "initialized" not in st.session_state:
+            st.stop()
             
 #==========================================================================================
 # 16. 現在地を取得しセッション状態を更新するサブルーチン
@@ -474,47 +450,45 @@ def handle_current_location_update():
                 st.rerun()
 
 #==========================================================================================
-# 16_x. ブラウザへの保存を実行するサブルーチン（隠し要素）
+# 16_x. ブラウザへの保存を実行するサブルーチン
 #==========================================================================================
 def save_settings_to_browser():
-    """セッション状態にある現在の全設定をブラウザのlocalStorageに書き込む"""
+    if "initialized" not in st.session_state:
+        return
+
+    STORAGE_KEY = CONFIG['STORAGE_KEY']
+    
     save_data = {
-        "lat": st.session_state.lat,
-        "lon": st.session_state.lon,
-        "basho": st.session_state.last_basho,
-        "show_wind": st.session_state.show_wind,
-        "show_temp": st.session_state.show_temp,
-        "show_tide": st.session_state.show_tide,
-        "width": st.session_state.width,
-        "base_height": st.session_state.base_height,
-        "base_font_size": st.session_state.base_font_size,
-        "label_font_size": st.session_state.label_font_size,
-        "danger_v": st.session_state.danger_v,
-        "sel_dirs": st.session_state.sel_dirs,
-        "label_pad": st.session_state.get("label_pad", CONFIG["LABEL_PAD"]),
+        "lat": st.session_state.lat, "lon": st.session_state.lon, "basho": st.session_state.last_basho,
+        "show_wind": st.session_state.get("show_wind", CONFIG["SHOW_WIND"]),
+        "show_temp": st.session_state.get("show_temp", CONFIG["SHOW_TEMP"]),
+        "show_tide": st.session_state.get("show_tide", CONFIG["SHOW_TIDE"]),
+        "width": st.session_state.get("width", CONFIG["GRAPH_WIDTH"]),
+        "base_height": st.session_state.get("base_height", CONFIG["GRAPH_HIGHT"]),
+        "base_font_size": st.session_state.get("base_font_size", CONFIG["GRAPH_FONT_SIZE"]),
+        "label_font_size": st.session_state.get("label_font_size", CONFIG["LABEL_SIZE"]),
+        "danger_v": st.session_state.get("danger_v", CONFIG["DEFAULT_DANGER_V"]),
+        "sel_dirs": st.session_state.get("sel_dirs", CONFIG["DEFAULT_DIRS"]),
+        "min_container_width": st.session_state.get("min_container_width", CONFIG["DEFAULT_MIN_CONTAINER_WIDTH"]),
+        "graph_dpi": st.session_state.get("graph_dpi", CONFIG["DPI"]),
         "hspace": st.session_state.get("hspace", CONFIG["HSPACE"]),
-        "show_w_text": st.session_state.get("show_w_text", CONFIG["SHOW_W_TEXT"]),
-        "show_dir_name": st.session_state.get("show_dir_name", CONFIG["SHOW_DIR_NAME"]),
+        "label_pad": st.session_state.get("label_pad", CONFIG["LABEL_PAD"]),
         "ratios": st.session_state.get("ratios", CONFIG["DEFAULT_RATIOS"])
     }
     
-    json_data = json.dumps(save_data, ensure_ascii=False)
-    
-    # JavaScriptを実行して保存。height=0でUIには影響を与えません。
-    components.html(
-        f"""
-        <script>
-        localStorage.setItem("{CONFIG['STORAGE_KEY']}", '{json_data}');
-        </script>
-        """,
-        height=0,
-    )
+    js_save = f"localStorage.setItem('{STORAGE_KEY}', '{json.dumps(save_data)}')"
+    streamlit_js_eval(js_expressions=js_save, key=f"save_trigger_{st.session_state.last_basho}")
 
 #==========================================================================================
 # 17. サイドバーの表示設定とデザイン調整を表示するサブルーチン
 #==========================================================================================
 def show_sidebar_controls():
-    is_beta = True 
+    # 隠しパラメータ判定
+    params = st.query_params
+    is_url_dev = params.get("mode") == "dev"
+    current_host = streamlit_js_eval(js_expressions="window.location.hostname", key="get_hostname")
+    is_dev_environment = (current_host == "localhost" or is_url_dev)
+    
     st.sidebar.header("表示設定")
     
     show_wind = st.sidebar.toggle("風向・風速", value=st.session_state.get("show_wind", CONFIG["SHOW_WIND"]))
@@ -531,12 +505,9 @@ def show_sidebar_controls():
     label_font_size = st.sidebar.slider("軸ラベル文字", f_cfg["min"], f_cfg["max"], st.session_state.get("label_font_size", CONFIG["LABEL_SIZE"]), step=f_cfg["step"])
 
     st.sidebar.markdown("---")
-    is_dev = st.sidebar.checkbox("🔧 開発者用マイクロ調整", value=st.session_state.get("is_dev_mode", False))
-    st.session_state.is_dev_mode = is_dev
 
-    # 初期値セット
-    if "min_container_width" not in st.session_state: st.session_state.min_container_width = 2500
-    if "graph_dpi" not in st.session_state: st.session_state.graph_dpi = 200
+    if "min_container_width" not in st.session_state: st.session_state.min_container_width = CONFIG["DEFAULT_MIN_CONTAINER_WIDTH"]
+    if "graph_dpi" not in st.session_state: st.session_state.graph_dpi = CONFIG["DPI"]
 
     design_params = {
         "width": width, "base_height": base_height,
@@ -551,24 +522,26 @@ def show_sidebar_controls():
         "graph_dpi": st.session_state.graph_dpi
     }
 
-    if is_dev:
-        st.sidebar.info("開発用詳細設定")
-        # ユーザーによる修正を反映 (500~3000)
-        design_params["min_container_width"] = st.sidebar.select_slider(
-            "コンテナ最小幅 (px)", options=[500, 1000, 1500, 2000, 2500, 3000], value=design_params["min_container_width"]
-        )
-        design_params["graph_dpi"] = st.sidebar.radio("解像度 (DPI)", options=[200, 300], index=(0 if design_params["graph_dpi"] == 200 else 1), horizontal=True)
-        design_params["show_w_text"] = st.sidebar.toggle("天気詳細文字を表示", value=design_params["show_w_text"])
-        design_params["show_dir_name"] = st.sidebar.toggle("風向名を表示", value=design_params["show_dir_name"])
-        design_params["hspace"] = st.sidebar.slider("グラフ間余白", -0.1, 0.5, design_params["hspace"], step=0.05)
-        design_params["label_pad"] = st.sidebar.slider("ラベル距離", -5, 10, design_params["label_pad"])
-        r = design_params["ratios"]
-        r[0] = st.sidebar.number_input("比率:風向", 0.5, 10.0, r[0], step=0.1)
-        r[1] = st.sidebar.number_input("比率:気温", 0.5, 5.0, r[1], step=0.1)
-        r[2] = st.sidebar.number_input("比率:潮位", 0.5, 5.0, r[2], step=0.1)
-        design_params["ratios"] = r
+    if is_dev_environment:
+        is_dev = st.sidebar.checkbox("🔧 開発者用マイクロ調整", value=st.session_state.get("is_dev_mode", False))
+        st.session_state.is_dev_mode = is_dev
+        if is_dev:
+            st.sidebar.info("開発用詳細設定")
+            design_params["min_container_width"] = st.sidebar.select_slider(
+                "コンテナ最小幅 (px)", options=[500, 1000, 1500, 2000, 2500, 3000], value=design_params["min_container_width"]
+            )
+            design_params["graph_dpi"] = st.sidebar.radio("解像度 (DPI)", options=[200, 300], index=(0 if design_params["graph_dpi"] == 200 else 1), horizontal=True)
+            design_params["show_w_text"] = st.sidebar.toggle("天気詳細文字を表示", value=design_params["show_w_text"])
+            design_params["show_dir_name"] = st.sidebar.toggle("風向名を表示", value=design_params["show_dir_name"])
+            design_params["hspace"] = st.sidebar.slider("グラフ間余白", -0.1, 0.5, design_params["hspace"], step=0.05)
+            design_params["label_pad"] = st.sidebar.slider("ラベル距離", -5, 10, design_params["label_pad"])
+            r = design_params["ratios"]
+            r[0] = st.sidebar.number_input("比率:風向", 0.5, 10.0, r[0], step=0.1)
+            r[1] = st.sidebar.number_input("比率:気温", 0.5, 5.0, r[1], step=0.1)
+            r[2] = st.sidebar.number_input("比率:潮位", 0.5, 5.0, r[2], step=0.1)
+            design_params["ratios"] = r
 
-    # 縦幅計算
+    # 縦幅の自動計算
     base_ratio_total = design_params["ratios"][0] + design_params["ratios"][1]
     fixed_unit_h = base_height / base_ratio_total 
     icon_margin = 0.45 if show_wind else 0.0
@@ -639,9 +612,32 @@ def main():
 
     st.markdown(f'<h1 style="font-size:{CONFIG["TITLE_SIZE"]}px;">⛵ Wind_Checker! </h1>', unsafe_allow_html=True)
     
-    # (地点選択・地図表示ロジックは既存のものを維持)
-    # ... 
+    master_locations = CONFIG["MASTER_LOCATIONS"]
+    current_idx = 0
+    if st.session_state.last_basho in master_locations:
+        current_idx = list(master_locations.keys()).index(st.session_state.last_basho)
+    
+    selected_basho = st.selectbox("地点を選択してください", list(master_locations.keys()), index=current_idx)
+    
+    if selected_basho != st.session_state.last_basho:
+        st.session_state.last_basho = selected_basho
+        if selected_basho != "地図で指定":
+            st.session_state.lat, st.session_state.lon = master_locations[selected_basho]
+            st.session_state.show_map_state = False
+        else:
+            st.session_state.show_map_state = True
+        save_settings_to_browser()
+        st.rerun()
 
+    show_map = st.checkbox("地図表示", value=st.session_state.get('show_map_state', False))
+    st.session_state.show_map_state = show_map
+    
+    if show_map:
+        show_location_map()
+        save_settings_to_browser()
+
+    st.markdown(f"<p style='font-size:{CONFIG['LOC_INFO_FONT_SIZE']}; color:{CONFIG['LOC_INFO_COLOR']}; font-weight:bold;'>📍 現在：{st.session_state.last_basho} ({st.session_state.lat:.4f}, {st.session_state.lon:.4f})</p>", unsafe_allow_html=True)
+    
     img_b64, ratio_info = generate_high_res_graph(
         st.session_state.lat, st.session_state.lon, danger_v, tuple(sel_dirs), design_params, now_jst
     )
@@ -649,9 +645,9 @@ def main():
     if img_b64:
         df_for_icons = fetch_weather_data(st.session_state.lat, st.session_state.lon, 8)
         if df_for_icons is not None:
-            dpi = design_params["graph_dpi"]
+            dpi = design_params.get("graph_dpi", CONFIG["DPI"])
             display_width = int(design_params["width"] * dpi)
-            min_w = design_params["min_container_width"]
+            min_w = design_params.get("min_container_width", 2500)
             
             padding_df = pd.DataFrame({'time': [df_for_icons['time'].iloc[0] - timedelta(hours=i) for i in range(1, 4)][::-1]})
             df_full = pd.concat([padding_df, df_for_icons], ignore_index=True)
@@ -666,7 +662,7 @@ def main():
                 f'</div></div>', 
                 unsafe_allow_html=True
             )
-            
+                        
 #==========================================================================================
 # アプリケーション起動
 #==========================================================================================
