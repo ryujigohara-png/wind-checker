@@ -615,7 +615,7 @@ def main():
         danger_v, 
         tuple(sel_dirs), 
         design_params,
-        now_jst
+        now_jst=now_jst  # ← ここに now_jst を明示的に渡します
     )
     
     if img_b64:
