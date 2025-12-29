@@ -497,7 +497,18 @@ def show_sidebar_controls():
         design_params["bar_width"] = st.sidebar.slider("棒グラフ余白", 0.01, 0.1, 0.035, step=0.005)
     
     st.sidebar.markdown("---")
-    # ...色付風向のコード...（以下略）
+    st.sidebar.write("色付風向")
+    # 以前の回答で省略してしまった箇所を完全に復元しました
+    saved_dirs = st.session_state.get("sel_dirs", CONFIG["DEFAULT_DIRS"])
+    sel_dirs = []
+    cols = st.sidebar.columns(2)
+    # ALL_DIRECTIONS は 2. データ定義 などの外部で定義されている前提です
+    for i, d in enumerate(ALL_DIRECTIONS):
+        with cols[i % 2]:
+            if st.checkbox(d, value=(d in saved_dirs), key=f"chk_{d}"):
+                sel_dirs.append(d)
+    st.session_state.sel_dirs = sel_dirs
+    
     return danger_v, sel_dirs, design_params
 
 #==========================================================================================
