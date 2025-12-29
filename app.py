@@ -511,73 +511,135 @@ def show_sidebar_controls():
     })
     return design_params
 
-# ======================================================================================
-# 19. メインルーチン
-# ======================================================================================
+#==========================================================================================
+# 18_x. ヘッダー情報（更新時刻等）を描画するサブルーチン
+#==========================================================================================
+def render_header_info(basho):
+    """更新時刻を表示するボタン風UIの描画"""
+    now_str = datetime.now().strftime("%Y/%m/%d %H:%M:%S")
+    st.button(f"🔄 グラフ更新 ({now_str})", use_container_width=True)
+
+#==========================================================================================
+# 19. アプリのメインフローを制御するメインルーチン
+#==========================================================================================
 def main():
-    st.set_page_config(page_title="Wind & Tide Checker", layout="wide")
-    setup_font()
+    # 状態の初期化
+    if 'lat' not in st.session_state: st.session_state.lat = CONFIG["DEFAULT_LAT"]
+    if 'lon' not in st.session_state: st.session_state.lon = CONFIG["DEFAULT_LON"]
+    if 'last_basho' not in st.session_state: st.session_state.last_basho = CONFIG["DEFAULT_BASHO"]
     
-    # 状態初期化
-    if "lat" not in st.session_state: st.session_state.lat = CONFIG["DEFAULT_LAT"]
-    if "lon" not in st.session_state: st.session_state.lon = CONFIG["DEFAULT_LON"]
-    if "last_basho" not in st.session_state: st.session_state.last_basho = CONFIG["DEFAULT_BASHO"]
-    
+    # ブラウザデータの同期
     sync_all_settings()
+    
+    # サイドバーコントロールの取得
     design_params = show_sidebar_controls()
+    danger_v = design_params["danger_v"]
+    sel_dirs = design_params["sel_dirs"]
     
-    st.title("🎐 Wind & Tide Checker")
-    
-    # 地点選択UI（辞書の初期化位置を修正）
-    display_options = {name: name for name in CONFIG["LOCATION_MASTER"].keys()}
-    display_options["地図で指定"] = "地図で指定"
-    
-    current_loc_label = st.session_state.get("last_basho", CONFIG["DEFAULT_BASHO"])
-    if current_loc_label not in display_options:
-        display_options[current_loc_label] = current_loc_label
+    # フォントセットアップ
+    setup_font(design_params["base_font_size"])
 
-    selected_basho = st.selectbox("地点選択", options=list(display_options.keys()), 
-                                  index=list(display_options.keys()).index(current_loc_label))
+    # スタイル定義
+    st.markdown(f"""
+        <style>
+            .block-container {{ padding-top: 2rem !important; padding-bottom: 0rem !important; }}
+            h1 {{ margin-top: 10px !important; margin-bottom: 20px !important; line-height: 1.2 !important; }}
+            [data-testid="stVerticalBlock"] {{ gap: 0.8rem !important; }}
+            div.stButton > button p {{ text-align: left !important; width: 100% !important; }}
+            div.stButton > button {{ justify-content: flex-start !important; }}
+            .scroll-container {{
+                overflow-x: auto; 
+                background: white; 
+                border: 1px solid #ddd;
+                width: 100%;
+            }}
+        </style>
+    """, unsafe_allow_html=True)
 
-    if selected_basho != st.session_state.last_basho:
-        if selected_basho in CONFIG["LOCATION_MASTER"]:
-            coords = CONFIG["LOCATION_MASTER"][selected_basho]
-            st.session_state.lat, st.session_state.lon = coords
-        st.session_state.last_basho = selected_basho
+    # タイトル表示
+    st.markdown(f'<h1 style="font-size:{CONFIG["TITLE_SIZE"]}px;">⛵ Wind_Checker! </h1>', unsafe_allow_html=True)
+    
+    # 地点選択肢の構築
+    master = CONFIG["LOCATION_MASTER"].copy()
+    display_options = {f"{name} ({coords[0]:.4f}, {coords[1]:.4f})": name for name, coords in master.items()}
+    
+    # 特別な選択肢の追加
+    current_loc_label = f"📍 現在地 ({st.session_state.lat:.4f}, {st.session_state.lon:.4f})"
+    display_options[current_loc_label] = "現在地"
+    display_options["🗺️ 地図で指定"] = "地図で指定"
+
+    # 逆引き辞書で現在の選択インデックスを特定
+    reverse_display = {v: k for k, v in display_options.items()}
+    current_display_val = reverse_display.get(st.session_state.last_basho, current_loc_label)
+    
+    options_list = list(display_options.keys())
+    try:
+        default_idx = options_list.index(current_display_val)
+    except ValueError:
+        default_idx = 0
+
+    # 地点選択コンボボックス
+    selected_display = st.selectbox("地点を選択してください", options_list, index=default_idx)
+    basho = display_options[selected_display]
+
+    # 地点変更時の処理
+    if basho != st.session_state.last_basho:
+        st.session_state.last_basho = basho
+        if basho not in ["地図で指定", "現在地"]:
+            st.session_state.lat, st.session_state.lon = master[basho]
+        if basho == "地図で指定":
+            st.session_state.show_map_state = True
+        st.cache_data.clear() 
         st.rerun()
 
-    st.markdown(f"#### 📍 現在：{st.session_state.last_basho} ({st.session_state.lat}, {st.session_state.lon})")
-    
-    handle_current_location_update()
-    
-    if st.session_state.last_basho == "地図で指定":
+    # 地図表示切り替え
+    show_map = st.checkbox("地図表示", value=st.session_state.get('show_map_state', False))
+    st.session_state.show_map_state = show_map
+    if show_map:
         show_location_map()
 
-    # グラフ描画
+    # 中段ボタンエリア（現在地取得 ＆ 更新情報）
+    col1, col2 = st.columns([1, 1]) 
+    with col1:
+        handle_current_location_update()
+    with col2:
+        render_header_info(basho) 
+    
+    # グラフ用現在時刻
     now_jst = datetime.now(timezone(timedelta(hours=9)))
+
+    # グラフ生成
     img_b64, ratio_info = generate_high_res_graph(
-        st.session_state.lat, st.session_state.lon, st.session_state.danger_v,
-        tuple(st.session_state.sel_dirs), design_params, now_jst
+        st.session_state.lat, 
+        st.session_state.lon, 
+        danger_v, 
+        tuple(sel_dirs), 
+        design_params,
+        now_jst
     )
     
+    # グラフとアイコンの表示
     if img_b64:
-        display_width = design_params["width"] * CONFIG["PX_PER_INCH"]
         df_for_icons = fetch_weather_data(st.session_state.lat, st.session_state.lon, 8)
-        padding_df = pd.DataFrame({'time': [df_for_icons['time'].iloc[0] - timedelta(hours=i) for i in range(1, 4)][::-1]})
-        df_full = pd.concat([padding_df, df_for_icons], ignore_index=True)
-        
-        icons_html = generate_weather_icons_html(df_full, ratio_info, display_width)
-        
-        scroll_html = f"""
-        <div style="overflow-x: auto; white-space: nowrap; border: 1px solid #ddd; padding: 10px;">
-            <div style="width: {display_width}px; position: relative;">
-                {icons_html}
-                <img src="data:image/png;base64,{img_b64}" style="width: {display_width}px;">
-            </div>
-        </div>
-        """
-        st.components.v1.html(scroll_html, height=int(design_params["height"] * CONFIG["PX_PER_INCH"]) + 100, scrolling=False)
+        if df_for_icons is not None:
+            display_width = int(design_params["width"] * CONFIG["PX_PER_INCH"])
+            
+            # アイコン用のパディングデータ作成
+            padding_df = pd.DataFrame({'time': [df_for_icons['time'].iloc[0] - timedelta(hours=i) for i in range(1, 4)][::-1]})
+            df_full = pd.concat([padding_df, df_for_icons], ignore_index=True)
+            
+            icons_html = generate_weather_icons_html(df_full, ratio_info, display_width)
+            graph_html = f'<img src="data:image/png;base64,{img_b64}" style="width: {display_width}px; display: block;">'
+            
+            st.markdown(
+                f'<div class="scroll-container">'
+                f'<div style="width: {display_width}px;">'
+                f'{icons_html}{graph_html}'
+                f'</div></div>', 
+                unsafe_allow_html=True
+            )
 
+    # 最後に設定をブラウザに保存
     save_settings_to_browser()
 
 if __name__ == "__main__":
