@@ -453,9 +453,9 @@ def show_sidebar_controls():
     st.sidebar.markdown("---")
     is_dev = st.sidebar.checkbox("🔧 デザイン微調整(開発者用)", value=False)
     
+    # 1. 各項目の表示・非表示（開発者以外でも変えられるように外に出すか検討可能ですが、一旦開発者用に配置）
     design_params = {
         "width": CONFIG["GRAPH_WIDTH"],
-        "height": CONFIG["GRAPH_HIGHT"],
         "base_font_size": CONFIG["GRAPH_FONT_SIZE"],
         "label_font_size": CONFIG["LABEL_SIZE"],
         "label_pad": CONFIG["LABEL_PAD"],
@@ -480,29 +480,38 @@ def show_sidebar_controls():
         
         st.sidebar.subheader("サイズ・間隔")
         design_params["width"] = st.sidebar.slider("グラフ横幅 (inch)", 10, 80, design_params["width"])
-        design_params["height"] = st.sidebar.slider("グラフ縦幅 (inch)", 1.0, 15.0, design_params["height"])
+        # 縦幅は自動計算を基本とするため、ここでは「基準高さの倍率」とするか、直接指定を残す
+        design_params["height_manual"] = st.sidebar.slider("縦幅微調整 (inch)", 1.0, 15.0, CONFIG["GRAPH_HIGHT"])
         design_params["hspace"] = st.sidebar.slider("グラフ間余白 (hspace)", -0.1, 1.0, design_params["hspace"], step=0.05)
         design_params["label_pad"] = st.sidebar.slider("X軸ラベル距離", -5, 20, design_params["label_pad"])
         
         st.sidebar.subheader("高さ比率")
         r = design_params["ratios"]
-        r_wind = st.sidebar.slider("比率:風向", 0.5, 10.0, r[0], step=0.1)
-        r_temp = st.sidebar.slider("比率:気温", 0.5, 5.0, r[1], step=0.1)
-        r_tide = st.sidebar.slider("比率:潮位", 0.5, 5.0, r[2], step=0.1)
-        design_params["ratios"] = [r_wind, r_temp, r_tide]
+        r[0] = st.sidebar.slider("比率:風向", 0.5, 10.0, r[0], step=0.1)
+        r[1] = st.sidebar.slider("比率:気温", 0.5, 5.0, r[1], step=0.1)
+        r[2] = st.sidebar.slider("比率:潮位", 0.5, 5.0, r[2], step=0.1)
+        design_params["ratios"] = r
         
         st.sidebar.subheader("フォント")
         design_params["base_font_size"] = st.sidebar.slider("グラフ内文字サイズ", 6, 24, design_params["base_font_size"])
         design_params["label_font_size"] = st.sidebar.slider("X軸ラベルサイズ", 5, 20, design_params["label_font_size"])
-        design_params["bar_width"] = st.sidebar.slider("棒グラフ余白", 0.01, 0.1, 0.035, step=0.005)
     
+    # --- 縦幅の自動計算ロジック ---
+    # 比率 4.4 : 1.2 : 0.8 が合計 6.4 のとき height 3.0 ならば、1単位 = 3.0 / 6.4
+    unit_h = 3.0 / sum(CONFIG["DEFAULT_RATIOS"])
+    auto_height = 0
+    if design_params["show_wind"]: auto_height += design_params["ratios"][0] * unit_h
+    if design_params["show_temp"]: auto_height += design_params["ratios"][1] * unit_h
+    if design_params["show_tide"]: auto_height += design_params["ratios"][2] * unit_h
+    
+    # 開発者モードで手動調整が有効な場合はそちらを優先、そうでなければ自動計算
+    design_params["height"] = design_params.get("height_manual", auto_height) if is_dev else auto_height
+
     st.sidebar.markdown("---")
     st.sidebar.write("色付風向")
-    # 以前の回答で省略してしまった箇所を完全に復元しました
     saved_dirs = st.session_state.get("sel_dirs", CONFIG["DEFAULT_DIRS"])
     sel_dirs = []
     cols = st.sidebar.columns(2)
-    # ALL_DIRECTIONS は 2. データ定義 などの外部で定義されている前提です
     for i, d in enumerate(ALL_DIRECTIONS):
         with cols[i % 2]:
             if st.checkbox(d, value=(d in saved_dirs), key=f"chk_{d}"):
