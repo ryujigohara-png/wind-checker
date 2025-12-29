@@ -169,8 +169,8 @@ def get_x_axis_formatter():
 # 8. グラフの共通軸設定を適用するサブルーチン
 #==========================================================================================
 def apply_common_axis_settings(ax, df, formatter, now_jst, design_params):
-    # 引数で受け取った now_jst を使用して現在時刻ラインを描画
-    ax.axvline(now_jst, color='blue', linestyle='-', alpha=0.6, linewidth=2.5)
+    # ② 現在時刻ラインの太さを半分に変更
+    ax.axvline(now_jst, color='blue', linestyle='-', alpha=0.6, linewidth=CONFIG["VLINE_WIDTH"])
     ax.xaxis.set_major_locator(mdates.HourLocator(byhour=range(0, 24, 3)))
     ax.xaxis.set_major_formatter(plt.FuncFormatter(formatter))
     ax.xaxis.set_minor_locator(mdates.HourLocator(interval=1))
@@ -178,27 +178,34 @@ def apply_common_axis_settings(ax, df, formatter, now_jst, design_params):
     ax.grid(True, which='major', linestyle=':', alpha=0.6, color='#000000')
     ax.grid(True, which='minor', linestyle=':', alpha=0.2, color='#888888')
     
-    # サイドバーから渡されたラベルサイズを適用
     l_size = design_params.get("label_font_size", CONFIG["LABEL_SIZE"])
-    ax.tick_params(axis='x', which='major', labelsize=l_size, pad=10)
+    l_pad = design_params.get("label_pad", CONFIG["LABEL_PAD"])
+    
+    ax.tick_params(axis='x', which='major', labelsize=l_size, pad=l_pad)
     ax.tick_params(axis='y', labelsize=l_size)
-
+    
 #==========================================================================================
 # 9. 風速棒グラフを描画するサブルーチン
 #==========================================================================================
 def render_wind_bar_chart(ax, df, danger_v, wind_step, design_params=None):
     bar_width = design_params.get("bar_width", 0.035) if design_params else 0.035
     bars = ax.bar(df['time'], df['wind_speed_10m'], color=df['color'], alpha=0.9, width=bar_width)
-    ax.axhline(y=danger_v, color='red', linestyle='--', linewidth=2, alpha=0.8)
+    
+    # ③ 危険風速ラインの太さを半分に変更
+    ax.axhline(y=danger_v, color='red', linestyle='--', linewidth=CONFIG["HLINE_WIDTH"], alpha=0.8)
     
     max_speed = df['wind_speed_10m'].max()
     y_limit = max(max_speed, danger_v, 12) + 7
     ax.set_ylim(0, y_limit)
     ax.set_ylabel('風速 (m/s)', fontsize=CONFIG["LABEL_SIZE"])
     
-    # 風向文字などのサイズにサイドバーの設定を反映
     fs = design_params.get("base_font_size", CONFIG["GRAPH_FONT_SIZE"]) if design_params else CONFIG["GRAPH_FONT_SIZE"]
-    step, base = CONFIG["ANNOT_Y_STEP"], CONFIG["ANNOT_BASE_Y"]
+    # 間隔を design_params から取得
+    step = design_params.get("y_step", CONFIG["ANNOT_Y_STEP"]) if design_params else CONFIG["ANNOT_Y_STEP"]
+    base = CONFIG["ANNOT_BASE_Y"]
+    
+    show_w = design_params.get("show_w_text", CONFIG["SHOW_W_TEXT"]) if design_params else CONFIG["SHOW_W_TEXT"]
+    show_d = design_params.get("show_dir_name", CONFIG["SHOW_DIR_NAME"]) if design_params else CONFIG["SHOW_DIR_NAME"]
     
     for i, bar in enumerate(bars):
         if i % wind_step == 0:
@@ -206,11 +213,23 @@ def render_wind_bar_chart(ax, df, danger_v, wind_step, design_params=None):
             if pd.isna(row['wind_speed_10m']): continue
             base_y = bar.get_height()
             x_pos = bar.get_x() + bar.get_width()/2.
+            
+            # 風速数値
             ax.text(x_pos, base_y + base, f"{row['wind_speed_10m']:.0f}", ha='center', va='bottom', fontsize=fs-2)
-            ax.text(x_pos, base_y + base + step, row['arrow'], ha='center', va='bottom', fontsize=fs+2, fontweight='bold')
-            ax.text(x_pos, base_y + base + step*2, row['dir_name'], ha='center', va='bottom', fontsize=fs-2)
-            ax.text(x_pos, base_y + base + step*3, row['w_text'], ha='center', va='bottom', color=row['w_color'], fontweight='bold', fontsize=fs-1)
-
+            
+            # ① 矢印を青の太字に変更
+            ax.text(x_pos, base_y + base + step, row['arrow'], ha='center', va='bottom', 
+                    fontsize=fs+2, fontweight='bold', color=CONFIG["ARROW_COLOR"])
+            
+            # 風向名（表示フラグ連動）
+            if show_d:
+                ax.text(x_pos, base_y + base + step*2, row['dir_name'], ha='center', va='bottom', fontsize=fs-2)
+            
+            # 天気文字（表示フラグ連動）
+            if show_w:
+                ax.text(x_pos, base_y + base + step*3, row['w_text'], ha='center', va='bottom', 
+                        color=row['w_color'], fontweight='bold', fontsize=fs-1)
+                
 #==========================================================================================
 # 10. 気温折れ線グラフを描画するサブルーチン
 #==========================================================================================
@@ -425,13 +444,17 @@ def show_sidebar_controls():
         "height": CONFIG["GRAPH_HIGHT"],
         "base_font_size": CONFIG["GRAPH_FONT_SIZE"],
         "label_font_size": CONFIG["LABEL_SIZE"],
+        "label_pad": CONFIG["LABEL_PAD"],
         "bar_width": 0.035,
         "annot_size": CONFIG["ANNOT_SIZE"],
         "ratios": CONFIG["DEFAULT_RATIOS"],
         "hspace": CONFIG["HSPACE"],
+        "y_step": CONFIG["ANNOT_Y_STEP"],
         "show_wind": CONFIG["SHOW_WIND"],
         "show_temp": CONFIG["SHOW_TEMP"],
-        "show_tide": CONFIG["SHOW_TIDE"]
+        "show_tide": CONFIG["SHOW_TIDE"],
+        "show_w_text": CONFIG["SHOW_W_TEXT"],
+        "show_dir_name": CONFIG["SHOW_DIR_NAME"]
     }
 
     if is_dev:
@@ -439,11 +462,15 @@ def show_sidebar_controls():
         design_params["show_wind"] = st.sidebar.toggle("風向グラフを表示", value=design_params["show_wind"])
         design_params["show_temp"] = st.sidebar.toggle("気温グラフを表示", value=design_params["show_temp"])
         design_params["show_tide"] = st.sidebar.toggle("潮位グラフを表示", value=design_params["show_tide"])
+        design_params["show_w_text"] = st.sidebar.toggle("天気文字を表示", value=design_params["show_w_text"])
+        design_params["show_dir_name"] = st.sidebar.toggle("風向名を表示", value=design_params["show_dir_name"])
         
-        st.sidebar.subheader("サイズ・余白")
+        st.sidebar.subheader("サイズ・間隔")
         design_params["width"] = st.sidebar.slider("グラフ横幅 (inch)", 10, 80, design_params["width"])
         design_params["height"] = st.sidebar.slider("グラフ縦幅 (inch)", 3.0, 15.0, design_params["height"])
-        design_params["hspace"] = st.sidebar.slider("グラフ間余白 (ピンク部)", 0.0, 1.0, design_params["hspace"], step=0.05)
+        design_params["hspace"] = st.sidebar.slider("グラフ間余白 (hspace)", -0.1, 1.0, design_params["hspace"], step=0.05)
+        design_params["y_step"] = st.sidebar.slider("矢印・文字の間隔", 0.5, 3.0, design_params["y_step"], step=0.1)
+        design_params["label_pad"] = st.sidebar.slider("X軸ラベル距離", -5, 20, design_params["label_pad"])
         
         st.sidebar.subheader("高さ比率")
         r = design_params["ratios"]
@@ -455,7 +482,7 @@ def show_sidebar_controls():
         st.sidebar.subheader("フォント")
         design_params["base_font_size"] = st.sidebar.slider("グラフ内文字サイズ", 6, 20, design_params["base_font_size"])
         design_params["label_font_size"] = st.sidebar.slider("X軸ラベルサイズ", 5, 20, design_params["label_font_size"])
-        design_params["bar_width"] = st.sidebar.slider("棒グラフ余白 (width)", 0.01, 0.1, 0.035, step=0.005)
+        design_params["bar_width"] = st.sidebar.slider("棒グラフ余白", 0.01, 0.1, 0.035, step=0.005)
     
     st.sidebar.markdown("---")
     st.sidebar.write("色付風向")
