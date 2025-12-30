@@ -383,26 +383,29 @@ def show_location_map():
             st.rerun()
 
 # ======================================================================================
-# 15. ブラウザ設定同期（LocalStorageからsession_stateへ復元）
+# 15. ブラウザ設定同期
 # ======================================================================================
 def sync_all_settings():
+    """
+    ブラウザのLocalStorageから設定を読み込み、session_stateに反映させるサブルーチン。
+    読み込み完了時に一度だけ rerun を行い、サイドバーに値を同期する。
+    """
     STORAGE_KEY = CONFIG['STORAGE_KEY']
-    # すでに初期化済みの場合は二重実行しない
     if st.session_state.get("initialized"):
         return
 
-    # ブラウザからデータを取得（JavaScript実行）
-    stored_data = streamlit_js_eval(js_expressions=f"localStorage.getItem('{STORAGE_KEY}')", key="init_load_settings")
+    # ブラウザからデータを取得（非同期命令）
+    stored_data = streamlit_js_eval(js_expressions=f"localStorage.getItem('{STORAGE_KEY}')", key="init_load_settings_v2")
     
     # 取得が完了するまで（Noneの間）は処理を中断して待つ
     if stored_data is None:
-        return
+        st.stop()
 
     # データが存在する場合のみ復元処理を実行
     if stored_data:
         try:
             data = json.loads(stored_data)
-            # 取得した値をsession_stateに直接流し込む
+            # 各設定値をセッションに流し込む
             st.session_state.lat = float(data.get("lat", CONFIG["DEFAULT_LAT"]))
             st.session_state.lon = float(data.get("lon", CONFIG["DEFAULT_LON"]))
             st.session_state.last_basho = data.get("basho", CONFIG["DEFAULT_BASHO"])
@@ -423,7 +426,7 @@ def sync_all_settings():
         except Exception:
             pass
 
-    # 初期化完了フラグを立てて、サイドバーに値を反映させるためにリロード
+    # 読み込み完了フラグを立て、反映のためにリロード
     st.session_state.initialized = True
     st.rerun()
     
@@ -452,11 +455,13 @@ def handle_current_location_update():
                 st.rerun()
 
 # ======================================================================================
-# 17. ブラウザへの保存（session_stateをLocalStorageへ保存）
+# 17. ブラウザへの保存
 # ======================================================================================
 def save_settings_to_browser():
+    """
+    現在のsession_stateの状態をLocalStorageに保存するサブルーチン。
+    """
     STORAGE_KEY = CONFIG['STORAGE_KEY']
-    # セッション内の現在の値をすべて収集
     save_data = {
         "lat": st.session_state.get("lat", CONFIG["DEFAULT_LAT"]),
         "lon": st.session_state.get("lon", CONFIG["DEFAULT_LON"]),
@@ -477,18 +482,20 @@ def save_settings_to_browser():
         "ratios": st.session_state.get("ratios", CONFIG["DEFAULT_RATIOS"])
     }
     json_data = json.dumps(save_data, ensure_ascii=False)
-    # 即座にLocalStorageに保存。タイムスタンプをkeyに含めて確実に発火させる
+    # JSで即時保存。keyにタイムスタンプを含めて重複を回避
     streamlit_js_eval(js_expressions=f"localStorage.setItem('{STORAGE_KEY}', '{json_data}')", key=f"save_{int(time.time())}")
-    
 
 # ======================================================================================
-# 18. サイドバー制御（UI表示と設定値の同期）
+# 18. サイドバー制御
 # ======================================================================================
 def show_sidebar_controls():
+    """
+    サイドバーのUIを表示し、各設定値の変更をsession_stateに反映させるサブルーチン。
+    """
     is_dev_url = st.query_params.get("mode") == "dev"
     st.sidebar.header("1. 判定・表示設定")
     
-    # 15番で復元された値を優先参照。なければCONFIG。
+    # 復元された値を初期値として使用
     current_sel_dirs = st.session_state.get("sel_dirs", CONFIG["DEFAULT_DIRS"])
     current_danger_v = st.session_state.get("danger_v", CONFIG["DEFAULT_DANGER_V"])
 
@@ -500,7 +507,7 @@ def show_sidebar_controls():
     cols = st.sidebar.columns(2)
     for i, d in enumerate(ALL_DIRECTIONS):
         with cols[i % 2]:
-            # 【重要】初期値(value)を「保存されていたリストに含まれるか」で決定
+            # valueに保存されていた方位を指定
             if st.sidebar.checkbox(d, value=(d in current_sel_dirs), key=f"chk_{d}"):
                 sel_dirs.append(d)
     
@@ -543,7 +550,7 @@ def show_sidebar_controls():
         "sel_dirs": sel_dirs, "danger_v": danger_v
     }
     
-    # セッションを更新。これにより17番がブラウザへ保存するデータが確定します
+    # セッション更新
     st.session_state.update({
         "danger_v": danger_v, "sel_dirs": sel_dirs, "show_wind": show_wind, 
         "show_temp": show_temp, "show_tide": show_tide, "width": width, 
