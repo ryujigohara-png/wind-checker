@@ -387,23 +387,20 @@ def show_location_map():
 # ======================================================================================
 def sync_all_settings():
     STORAGE_KEY = CONFIG['STORAGE_KEY']
-    # すでに初期化済みの場合は何もしない
     if st.session_state.get("initialized"):
         return
 
     # ブラウザからデータを取得
     stored_data = streamlit_js_eval(js_expressions=f"localStorage.getItem('{STORAGE_KEY}')", key="init_load_settings")
     
-    # 取得待ちの状態（None）なら何もしない
+    # 取得待ち(None)の場合は何もしない
     if stored_data is None:
         return
 
-    # データが存在する場合のみ反映
+    # データが存在する場合、各設定値をセッションに復元
     if stored_data:
         try:
             data = json.loads(stored_data)
-            # ここで取得した値を session_state に上書き
-            # keyが存在しない場合のみCONFIGを使う
             st.session_state.lat = float(data.get("lat", CONFIG["DEFAULT_LAT"]))
             st.session_state.lon = float(data.get("lon", CONFIG["DEFAULT_LON"]))
             st.session_state.last_basho = data.get("basho", CONFIG["DEFAULT_BASHO"])
@@ -424,9 +421,8 @@ def sync_all_settings():
         except Exception:
             pass
 
-    # 読み込みが完了した（データがあった、または空だった）ことをマーク
+    # 読み込み完了フラグを立てて、画面を一度リロード(反映のため)
     st.session_state.initialized = True
-    # 強制再描画して、サイドバーに値を反映させる
     st.rerun()
             
 #==========================================================================================
@@ -453,23 +449,25 @@ def handle_current_location_update():
                 st.session_state.waiting_loc = False
                 st.rerun()
 
-#==========================================================================================
-# 17. ブラウザへの保存（JavaScript実行）
-#==========================================================================================
+# ======================================================================================
+# 17. ブラウザへの保存
+# ======================================================================================
 def save_settings_to_browser():
+    STORAGE_KEY = CONFIG['STORAGE_KEY']
+    # 現在のセッション状態をすべて保存用データにまとめる
     save_data = {
-        "lat": st.session_state.lat,
-        "lon": st.session_state.lon,
-        "basho": st.session_state.last_basho,
-        "show_wind": st.session_state.show_wind,
-        "show_temp": st.session_state.show_temp,
-        "show_tide": st.session_state.show_tide,
-        "width": st.session_state.width,
-        "base_height": st.session_state.base_height,
-        "base_font_size": st.session_state.base_font_size,
-        "label_font_size": st.session_state.label_font_size,
-        "danger_v": st.session_state.danger_v,
-        "sel_dirs": st.session_state.sel_dirs,
+        "lat": st.session_state.get("lat", CONFIG["DEFAULT_LAT"]),
+        "lon": st.session_state.get("lon", CONFIG["DEFAULT_LON"]),
+        "basho": st.session_state.get("last_basho", CONFIG["DEFAULT_BASHO"]),
+        "show_wind": st.session_state.get("show_wind", CONFIG["SHOW_WIND"]),
+        "show_temp": st.session_state.get("show_temp", CONFIG["SHOW_TEMP"]),
+        "show_tide": st.session_state.get("show_tide", CONFIG["SHOW_TIDE"]),
+        "width": st.session_state.get("width", CONFIG["GRAPH_WIDTH"]),
+        "base_height": st.session_state.get("base_height", CONFIG["GRAPH_HIGHT"]),
+        "base_font_size": st.session_state.get("base_font_size", CONFIG["GRAPH_FONT_SIZE"]),
+        "label_font_size": st.session_state.get("label_font_size", CONFIG["LABEL_SIZE"]),
+        "danger_v": st.session_state.get("danger_v", CONFIG["DEFAULT_DANGER_V"]),
+        "sel_dirs": st.session_state.get("sel_dirs", CONFIG["DEFAULT_DIRS"]),
         "label_pad": st.session_state.get("label_pad", CONFIG["LABEL_PAD"]),
         "hspace": st.session_state.get("hspace", CONFIG["HSPACE"]),
         "show_w_text": st.session_state.get("show_w_text", CONFIG["SHOW_W_TEXT"]),
@@ -477,17 +475,18 @@ def save_settings_to_browser():
         "ratios": st.session_state.get("ratios", CONFIG["DEFAULT_RATIOS"])
     }
     json_data = json.dumps(save_data, ensure_ascii=False)
-    components.html(f"<script>localStorage.setItem('{CONFIG['STORAGE_KEY']}', '{json_data}');</script>", height=0)
+    # JSでlocalStorageに即時書き込み。keyを変えることで重複実行を避けます
+    streamlit_js_eval(js_expressions=f"localStorage.setItem('{STORAGE_KEY}', '{json_data}')", key=f"save_{int(time.time())}")
+    
 
 # ======================================================================================
-# 18. サイドバー制御（復活・完全同期版）
+# 18. サイドバー制御
 # ======================================================================================
 def show_sidebar_controls():
     is_dev_url = st.query_params.get("mode") == "dev"
     st.sidebar.header("1. 判定・表示設定")
     
-    # 【復活の核心】15番で復元された値を最優先、なければCONFIG
-    # これにより、リロード後の2回目の実行でブラウザの値が確実に反映されます
+    # 復元された値を優先参照
     current_sel_dirs = st.session_state.get("sel_dirs", CONFIG["DEFAULT_DIRS"])
     current_danger_v = st.session_state.get("danger_v", CONFIG["DEFAULT_DANGER_V"])
 
@@ -499,14 +498,13 @@ def show_sidebar_controls():
     cols = st.sidebar.columns(2)
     for i, d in enumerate(ALL_DIRECTIONS):
         with cols[i % 2]:
-            # checkboxの初期値(value)をブラウザからの復元値(current_sel_dirs)に固定
-            # keyを付与することで、Streamlitが再実行時に状態を正しく管理します
+            # チェックボックスの初期値をブラウザ復元値と同期
             if st.sidebar.checkbox(d, value=(d in current_sel_dirs), key=f"chk_{d}"):
                 sel_dirs.append(d)
     
     st.sidebar.markdown("---")
     st.sidebar.header("2. グラフ表示切替")
-    # 以下のトグルやスライダーも同様に session_state を優先参照するように徹底
+    
     show_wind = st.sidebar.toggle("風向・風速グラフ", value=st.session_state.get("show_wind", CONFIG["SHOW_WIND"]))
     show_temp = st.sidebar.toggle("気温グラフ", value=st.session_state.get("show_temp", CONFIG["SHOW_TEMP"]))
     show_tide = st.sidebar.toggle("潮位グラフ", value=st.session_state.get("show_tide", CONFIG["SHOW_TIDE"]))
@@ -543,16 +541,7 @@ def show_sidebar_controls():
         "sel_dirs": sel_dirs, "danger_v": danger_v
     }
     
-    # グラフ高さ計算（ロジック維持）
-    base_ratio_total = design_params["ratios"][0] + design_params["ratios"][1]
-    fixed_unit_h = base_height / base_ratio_total 
-    auto_height = (0.45 if show_wind else 0.0)
-    if show_wind: auto_height += design_params["ratios"][0] * fixed_unit_h
-    if show_temp: auto_height += design_params["ratios"][1] * fixed_unit_h
-    if show_tide: auto_height += design_params["ratios"][2] * fixed_unit_h
-    design_params["height"] = auto_height
-    
-    # セッション更新：17番の保存ルーチンがここを見てブラウザへ保存します
+    # セッション更新（保存用）
     st.session_state.update({
         "danger_v": danger_v, "sel_dirs": sel_dirs, "show_wind": show_wind, 
         "show_temp": show_temp, "show_tide": show_tide, "width": width, 
@@ -560,6 +549,16 @@ def show_sidebar_controls():
         "label_font_size": label_font_size, "label_pad": label_pad, 
         "hspace": hspace, "ratios": ratios
     })
+    
+    # グラフ高さ計算（デザイン調整用）
+    base_ratio_total = ratios[0] + ratios[1]
+    fixed_unit_h = base_height / base_ratio_total 
+    auto_height = (0.45 if show_wind else 0.0)
+    if show_wind: auto_height += ratios[0] * fixed_unit_h
+    if show_temp: auto_height += ratios[1] * fixed_unit_h
+    if show_tide: auto_height += ratios[2] * fixed_unit_h
+    design_params["height"] = auto_height
+    
     return design_params
     
 #==========================================================================================
