@@ -594,31 +594,26 @@ def render_header_info(basho):
 def handle_location_selection():
     """
     地点選択コンボボックスの表示と、選択に伴う座標・状態の更新を行うサブルーチン。
-    「地図で指定」選択時には地図表示を強制ONにし、前回の確定座標を維持します。
+    「地図で指定」選択時には地図表示状態を強制的にTrueにし、前回の確定座標を維持します。
     """
     master = CONFIG["LOCATION_MASTER"].copy()
     
     # コンボボックス用の表示ラベル名と座標の対応表
-    # 地図や現在地の場合、現在のsession_stateにある座標を表示名に含める
     current_loc_label = f"📍 現在地 ({st.session_state.lat:.4f}, {st.session_state.lon:.4f})"
     map_label = "🗺️ 地図で指定"
     
-    # 選択肢のリストを作成
     display_options = {name: name for name in master.keys()}
     display_options[current_loc_label] = "現在地"
     display_options[map_label] = "地図で指定"
     
-    # 逆引き用（内部値から表示名を取得）
     reverse_display = {v: k for k, v in display_options.items()}
     
-    # 現在の選択状態からインデックスを特定
     current_basho = st.session_state.get("last_basho", CONFIG["DEFAULT_BASHO"])
     current_display_val = reverse_display.get(current_basho, current_loc_label)
     
     options_list = list(display_options.keys())
     default_idx = options_list.index(current_display_val) if current_display_val in options_list else 0
 
-    # コンボボックスの表示
     selected_display = st.selectbox("地点を選択してください", options_list, index=default_idx, key="main_loc_sel")
     basho = display_options[selected_display]
 
@@ -627,16 +622,15 @@ def handle_location_selection():
         st.session_state.last_basho = basho
         
         if basho == "地図で指定":
-            # 地図で指定が選ばれたら、地図表示をONにする
+            # 地図で指定が選ばれたら、地図表示フラグを強制的にTrueにする
             st.session_state.show_map_state = True
-            # 座標は現在の値を保持（前回確定した値が引き継がれる）
+            # 座標は更新せず、現在の session_state.lat/lon（前回確定値）を維持する
         elif basho == "現在地":
-            # 現在地取得は別途ボタンで行うため、ここでは座標更新しない
+            # 現在地取得は handle_current_location_update で行うため、ここでは座標更新しない
             pass
         else:
-            # マスターデータにある地点なら座標を更新
+            # マスターデータにある地点なら座標を更新し、地図は閉じる
             st.session_state.lat, st.session_state.lon = master[basho]
-            # 地図表示は紛らわしいのでOFFにする（任意）
             st.session_state.show_map_state = False
             
         st.cache_data.clear() 
@@ -652,7 +646,7 @@ def main():
     if 'lat' not in st.session_state: st.session_state.lat = CONFIG["DEFAULT_LAT"]
     if 'lon' not in st.session_state: st.session_state.lon = CONFIG["DEFAULT_LON"]
     if 'last_basho' not in st.session_state: st.session_state.last_basho = CONFIG["DEFAULT_BASHO"]
-    # 最後にグラフを描画した座標を保持するための変数（初期値はNone）
+    if 'show_map_state' not in st.session_state: st.session_state.show_map_state = False
     if 'last_drawn_lat' not in st.session_state: st.session_state.last_drawn_lat = None
     if 'last_drawn_lon' not in st.session_state: st.session_state.last_drawn_lon = None
     
@@ -662,11 +656,9 @@ def main():
     # --- 1. サイドバーコントロールの取得 ---
     design_params = show_sidebar_controls()
     
-    # サイドバーから反映された値を明示的に取得
     danger_v = design_params.get("danger_v", CONFIG.get("DEFAULT_DANGER_V", 10.0))
     sel_dirs = design_params.get("sel_dirs", [])
     
-    # フォントセットアップ
     setup_font(design_params.get("base_font_size", 14))
 
     # スタイル定義
@@ -691,25 +683,27 @@ def main():
     # --- 2. 地点選択の実行 ---
     basho = handle_location_selection()
 
-    # 地図表示トグル（session_stateと連動）
-    show_map = st.checkbox("地図表示", value=st.session_state.get('show_map_state', False), key="main_show_map_chk")
+    # --- 3. 地図表示の制御 ---
+    # 重要：valueに st.session_state.show_map_state を指定することで、
+    # handle_location_selection で変更された値が即座に反映されるようにする
+    show_map = st.checkbox("地図表示", value=st.session_state.show_map_state, key="main_show_map_chk")
     st.session_state.show_map_state = show_map
     
-    if show_map:
-        # 地図表示中は描画リソースを節約するため、ここで中断する
+    if st.session_state.show_map_state:
+        # 地図表示がONの場合は、地図を表示してメインループを終了（return）
+        # これにより、下の「スキップしました」メッセージの判定まで到達させない
         show_location_map()
         save_settings_to_browser()
         return
 
-    # --- 描画判定ロジック ---
-    # 座標が最後に描画した時と同じかチェック
+    # --- 4. 描画判定ロジック（地図を表示しない通常時のみ実行） ---
     is_same_coords = (st.session_state.lat == st.session_state.last_drawn_lat and 
                       st.session_state.lon == st.session_state.last_drawn_lon)
     
-    # 「地図で指定」時のみ、座標変更がない場合にスキップフラグを立てる
+    # 「地図で指定」モードの時に、前回描画時から座標が変わっていないかチェック
     skip_drawing = (basho == "地図で指定" and is_same_coords)
 
-    # 中段ボタンの配置
+    # 中段ボタンの配置（地図表示時は実行されない）
     col1, col2 = st.columns([1, 1]) 
     with col1:
         handle_current_location_update()
@@ -717,6 +711,7 @@ def main():
         render_header_info(basho) 
 
     if skip_drawing:
+        # 最後に確定した地点と同じ場合に表示
         st.info("🗺️ 座標に変更がないため、グラフの再描画をスキップしました。")
     else:
         # 通常の描画フロー
@@ -724,13 +719,6 @@ def main():
         tz = timezone(timedelta(hours=tz_offset))
         now_jst = datetime.now(tz)
         
-        # 診断情報の表示
-        if design_params.get("show_debug", False):
-           with st.expander("🔍 デバッグ診断", expanded=True):
-                st.write(f"現在の地点: {basho} ({st.session_state.lat}, {st.session_state.lon})")
-                st.write(f"危険ライン: {danger_v} m/s / 対象風向: {sel_dirs}")
-        
-        # 高解像度グラフ生成
         img_b64, ratio_info = generate_high_res_graph(
             st.session_state.lat, 
             st.session_state.lon, 
@@ -741,11 +729,10 @@ def main():
         )
         
         if img_b64:
-            # 描画が完了したら「最後に描画した座標」を更新
+            # 描画が成功したら、現在の座標を「最後に描画した座標」として記録
             st.session_state.last_drawn_lat = st.session_state.lat
             st.session_state.last_drawn_lon = st.session_state.lon
             
-            # アイコンとグラフの表示
             display_width = int(design_params.get("width", 10) * CONFIG["PX_PER_INCH"])
             df_for_icons = fetch_weather_data(st.session_state.lat, st.session_state.lon, 8)
             if df_for_icons is not None:
@@ -763,7 +750,7 @@ def main():
                     unsafe_allow_html=True
                 )
 
-    # 最終的な設定をブラウザに保存
+    # 最終的な設定をブラウザに記録
     save_settings_to_browser()
     
 if __name__ == "__main__":
