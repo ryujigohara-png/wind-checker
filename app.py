@@ -383,24 +383,26 @@ def show_location_map():
             st.rerun()
 
 # ======================================================================================
-# 15. ブラウザ設定同期
+# 15. ブラウザ設定同期（LocalStorageからsession_stateへ復元）
 # ======================================================================================
 def sync_all_settings():
     STORAGE_KEY = CONFIG['STORAGE_KEY']
+    # すでに初期化済みの場合は二重実行しない
     if st.session_state.get("initialized"):
         return
 
-    # ブラウザからデータを取得
+    # ブラウザからデータを取得（JavaScript実行）
     stored_data = streamlit_js_eval(js_expressions=f"localStorage.getItem('{STORAGE_KEY}')", key="init_load_settings")
     
-    # 取得待ち(None)の場合は何もしない
+    # 取得が完了するまで（Noneの間）は処理を中断して待つ
     if stored_data is None:
         return
 
-    # データが存在する場合、各設定値をセッションに復元
+    # データが存在する場合のみ復元処理を実行
     if stored_data:
         try:
             data = json.loads(stored_data)
+            # 取得した値をsession_stateに直接流し込む
             st.session_state.lat = float(data.get("lat", CONFIG["DEFAULT_LAT"]))
             st.session_state.lon = float(data.get("lon", CONFIG["DEFAULT_LON"]))
             st.session_state.last_basho = data.get("basho", CONFIG["DEFAULT_BASHO"])
@@ -421,10 +423,10 @@ def sync_all_settings():
         except Exception:
             pass
 
-    # 読み込み完了フラグを立てて、画面を一度リロード(反映のため)
+    # 初期化完了フラグを立てて、サイドバーに値を反映させるためにリロード
     st.session_state.initialized = True
     st.rerun()
-            
+    
 #==========================================================================================
 # 16. 現在地取得
 #==========================================================================================
@@ -450,11 +452,11 @@ def handle_current_location_update():
                 st.rerun()
 
 # ======================================================================================
-# 17. ブラウザへの保存
+# 17. ブラウザへの保存（session_stateをLocalStorageへ保存）
 # ======================================================================================
 def save_settings_to_browser():
     STORAGE_KEY = CONFIG['STORAGE_KEY']
-    # 現在のセッション状態をすべて保存用データにまとめる
+    # セッション内の現在の値をすべて収集
     save_data = {
         "lat": st.session_state.get("lat", CONFIG["DEFAULT_LAT"]),
         "lon": st.session_state.get("lon", CONFIG["DEFAULT_LON"]),
@@ -475,18 +477,18 @@ def save_settings_to_browser():
         "ratios": st.session_state.get("ratios", CONFIG["DEFAULT_RATIOS"])
     }
     json_data = json.dumps(save_data, ensure_ascii=False)
-    # JSでlocalStorageに即時書き込み。keyを変えることで重複実行を避けます
+    # 即座にLocalStorageに保存。タイムスタンプをkeyに含めて確実に発火させる
     streamlit_js_eval(js_expressions=f"localStorage.setItem('{STORAGE_KEY}', '{json_data}')", key=f"save_{int(time.time())}")
     
 
 # ======================================================================================
-# 18. サイドバー制御
+# 18. サイドバー制御（UI表示と設定値の同期）
 # ======================================================================================
 def show_sidebar_controls():
     is_dev_url = st.query_params.get("mode") == "dev"
     st.sidebar.header("1. 判定・表示設定")
     
-    # 復元された値を優先参照
+    # 15番で復元された値を優先参照。なければCONFIG。
     current_sel_dirs = st.session_state.get("sel_dirs", CONFIG["DEFAULT_DIRS"])
     current_danger_v = st.session_state.get("danger_v", CONFIG["DEFAULT_DANGER_V"])
 
@@ -498,7 +500,7 @@ def show_sidebar_controls():
     cols = st.sidebar.columns(2)
     for i, d in enumerate(ALL_DIRECTIONS):
         with cols[i % 2]:
-            # チェックボックスの初期値をブラウザ復元値と同期
+            # 【重要】初期値(value)を「保存されていたリストに含まれるか」で決定
             if st.sidebar.checkbox(d, value=(d in current_sel_dirs), key=f"chk_{d}"):
                 sel_dirs.append(d)
     
@@ -541,7 +543,7 @@ def show_sidebar_controls():
         "sel_dirs": sel_dirs, "danger_v": danger_v
     }
     
-    # セッション更新（保存用）
+    # セッションを更新。これにより17番がブラウザへ保存するデータが確定します
     st.session_state.update({
         "danger_v": danger_v, "sel_dirs": sel_dirs, "show_wind": show_wind, 
         "show_temp": show_temp, "show_tide": show_tide, "width": width, 
@@ -550,7 +552,7 @@ def show_sidebar_controls():
         "hspace": hspace, "ratios": ratios
     })
     
-    # グラフ高さ計算（デザイン調整用）
+    # グラフ高さ計算
     base_ratio_total = ratios[0] + ratios[1]
     fixed_unit_h = base_height / base_ratio_total 
     auto_height = (0.45 if show_wind else 0.0)
