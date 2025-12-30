@@ -637,7 +637,7 @@ def handle_location_selection():
 def main():
     """
     アプリ全体の実行フローを管理する。
-    地図とグラフが重ならないよう、専用のコンテナを個別に作成して順番に描画する。
+    要素が重ならないよう、empty()を使用して描画領域を完全に固定・予約する。
     """
     if 'lat' not in st.session_state: st.session_state.lat = CONFIG["DEFAULT_LAT"]
     if 'lon' not in st.session_state: st.session_state.lon = CONFIG["DEFAULT_LON"]
@@ -671,17 +671,18 @@ def main():
     
     basho = handle_location_selection()
 
-    # --- 描画領域をコンテナで物理的に分離する ---
-    map_container = st.container()    # 地図専用の枠
-    info_container = st.container()   # ヘッダー情報専用の枠
-    graph_container = st.container()  # グラフ専用の枠
+    # --- 重要：描画スロットをあらかじめ縦に並べて確保する ---
+    # これにより、後から描画されるグラフが地図のスロットを奪うことを防ぎます
+    slot_map = st.empty()     # 地図専用スロット
+    slot_info = st.empty()    # 情報ヘッダー専用スロット
+    slot_graph = st.empty()   # グラフ専用スロット
 
-    # 1. 地図コンテナの処理
+    # 1. 地図表示の処理
     is_map_on = st.checkbox("地図表示", value=st.session_state.show_map_state, key="main_show_map_chk")
     st.session_state.show_map_state = is_map_on
     
     if st.session_state.show_map_state:
-        with map_container:
+        with slot_map.container():
             show_location_map()
 
     # 2. 判定ロジック
@@ -689,16 +690,16 @@ def main():
                       st.session_state.lon == st.session_state.last_drawn_lon)
     skip_drawing = False if basho == "地図で指定" else is_same_coords
 
-    # 3. 情報コンテナの処理
-    with info_container:
+    # 3. 情報ヘッダーの処理
+    with slot_info.container():
         col1, col2 = st.columns([1, 1]) 
         with col1:
             handle_current_location_update()
         with col2:
             render_header_info(basho) 
 
-    # 4. グラフコンテナの処理
-    with graph_container:
+    # 4. グラフ描画の処理
+    with slot_graph.container():
         if skip_drawing:
             st.info("🗺️ 座標に変更がないため、グラフの再描画をスキップしました。")
         else:
@@ -706,14 +707,17 @@ def main():
             tz = timezone(timedelta(hours=tz_offset))
             now_jst = datetime.now(tz)
             
-            img_b64, ratio_info = generate_high_res_graph(
-                st.session_state.lat, 
-                st.session_state.lon, 
-                danger_v, 
-                tuple(sel_dirs), 
-                design_params,
-                now_jst=now_jst
-            )
+            # 生成中メッセージもグラフ用スロット内で表示させる
+            with st.status("グラフを生成中...", expanded=False) as status:
+                img_b64, ratio_info = generate_high_res_graph(
+                    st.session_state.lat, 
+                    st.session_state.lon, 
+                    danger_v, 
+                    tuple(sel_dirs), 
+                    design_params,
+                    now_jst=now_jst
+                )
+                status.update(label="生成完了", state="complete", expanded=False)
             
             if img_b64:
                 st.session_state.last_drawn_lat = st.session_state.lat
@@ -738,6 +742,7 @@ def main():
                     )
 
     save_settings_to_browser()
+    
     
 if __name__ == "__main__":
     main()
