@@ -637,9 +637,8 @@ def handle_location_selection():
 def main():
     """
     アプリ全体の実行フローを管理する。
-    地点選択、地図表示(オプション)、ヘッダー情報、グラフ描画の順で処理を行う。
+    地図とグラフが重ならないよう、専用のコンテナを個別に作成して順番に描画する。
     """
-    # 1. セッション状態の初期化
     if 'lat' not in st.session_state: st.session_state.lat = CONFIG["DEFAULT_LAT"]
     if 'lon' not in st.session_state: st.session_state.lon = CONFIG["DEFAULT_LON"]
     if 'last_basho' not in st.session_state: st.session_state.last_basho = CONFIG["DEFAULT_BASHO"]
@@ -647,14 +646,12 @@ def main():
     if 'last_drawn_lat' not in st.session_state: st.session_state.last_drawn_lat = None
     if 'last_drawn_lon' not in st.session_state: st.session_state.last_drawn_lon = None
     
-    # 2. 設定の同期とサイドバー表示
     sync_all_settings()
     design_params = show_sidebar_controls()
     danger_v = design_params.get("danger_v", CONFIG.get("DEFAULT_DANGER_V", 10.0))
     sel_dirs = design_params.get("sel_dirs", [])
     setup_font(design_params.get("base_font_size", 14))
 
-    # 3. 共通スタイルとタイトルの描画
     st.markdown(f"""
         <style>
             .block-container {{ padding-top: 2rem !important; padding-bottom: 0rem !important; }}
@@ -672,78 +669,75 @@ def main():
     """, unsafe_allow_html=True)
     st.markdown(f'<h1 style="font-size:{CONFIG["TITLE_SIZE"]}px;">⛵ Wind_Checker! </h1>', unsafe_allow_html=True)
     
-    # 4. 地点選択処理
     basho = handle_location_selection()
 
-    # 5. 【修正箇所】地図表示（オプション挿入）
-    # チェックボックスの状態をセッションに反映
+    # --- 描画領域をコンテナで物理的に分離する ---
+    map_container = st.container()    # 地図専用の枠
+    info_container = st.container()   # ヘッダー情報専用の枠
+    graph_container = st.container()  # グラフ専用の枠
+
+    # 1. 地図コンテナの処理
     is_map_on = st.checkbox("地図表示", value=st.session_state.show_map_state, key="main_show_map_chk")
     st.session_state.show_map_state = is_map_on
     
-    # 地図を表示しても return はせず、そのまま処理を続行させる
     if st.session_state.show_map_state:
-        show_location_map()
+        with map_container:
+            show_location_map()
 
-    # 6. 【修正箇所】描画スキップ判定の再構築
+    # 2. 判定ロジック
     is_same_coords = (st.session_state.lat == st.session_state.last_drawn_lat and 
                       st.session_state.lon == st.session_state.last_drawn_lon)
-    
-    # 「地図で指定」モード時は、地図上のクリックに即応するため無条件で描画(False)
-    # それ以外の既定地点では座標が変わっていない場合のみスキップ(True)
-    if basho == "地図で指定":
-        skip_drawing = False
-    else:
-        skip_drawing = is_same_coords
+    skip_drawing = False if basho == "地図で指定" else is_same_coords
 
-    # 7. 現在地・地点情報の表示
-    col1, col2 = st.columns([1, 1]) 
-    with col1:
-        handle_current_location_update()
-    with col2:
-        render_header_info(basho) 
+    # 3. 情報コンテナの処理
+    with info_container:
+        col1, col2 = st.columns([1, 1]) 
+        with col1:
+            handle_current_location_update()
+        with col2:
+            render_header_info(basho) 
 
-    # 8. グラフ描画セクション
-    if skip_drawing:
-        st.info("🗺️ 座標に変更がないため、グラフの再描画をスキップしました。")
-    else:
-        tz_offset = CONFIG.get("TIMEZONE_OFFSET", 9)
-        tz = timezone(timedelta(hours=tz_offset))
-        now_jst = datetime.now(tz)
-        
-        img_b64, ratio_info = generate_high_res_graph(
-            st.session_state.lat, 
-            st.session_state.lon, 
-            danger_v, 
-            tuple(sel_dirs), 
-            design_params,
-            now_jst=now_jst
-        )
-        
-        if img_b64:
-            st.session_state.last_drawn_lat = st.session_state.lat
-            st.session_state.last_drawn_lon = st.session_state.lon
+    # 4. グラフコンテナの処理
+    with graph_container:
+        if skip_drawing:
+            st.info("🗺️ 座標に変更がないため、グラフの再描画をスキップしました。")
+        else:
+            tz_offset = CONFIG.get("TIMEZONE_OFFSET", 9)
+            tz = timezone(timedelta(hours=tz_offset))
+            now_jst = datetime.now(tz)
             
-            display_width = int(design_params.get("width", 10) * CONFIG["PX_PER_INCH"])
-            df_for_icons = fetch_weather_data(st.session_state.lat, st.session_state.lon, 8)
+            img_b64, ratio_info = generate_high_res_graph(
+                st.session_state.lat, 
+                st.session_state.lon, 
+                danger_v, 
+                tuple(sel_dirs), 
+                design_params,
+                now_jst=now_jst
+            )
             
-            if df_for_icons is not None:
-                padding_df = pd.DataFrame({'time': [df_for_icons['time'].iloc[0] - timedelta(hours=i) for i in range(1, 4)][::-1]})
-                df_full = pd.concat([padding_df, df_for_icons], ignore_index=True)
+            if img_b64:
+                st.session_state.last_drawn_lat = st.session_state.lat
+                st.session_state.last_drawn_lon = st.session_state.lon
                 
-                icons_html = generate_weather_icons_html(df_full, ratio_info, display_width)
-                graph_html = f'<img src="data:image/png;base64,{img_b64}" style="width: {display_width}px; display: block;">'
+                display_width = int(design_params.get("width", 10) * CONFIG["PX_PER_INCH"])
+                df_for_icons = fetch_weather_data(st.session_state.lat, st.session_state.lon, 8)
                 
-                st.markdown(
-                    f'<div class="scroll-container">'
-                    f'<div style="width: {display_width}px;">'
-                    f'{icons_html}{graph_html}'
-                    f'</div></div>', 
-                    unsafe_allow_html=True
-                )
+                if df_for_icons is not None:
+                    padding_df = pd.DataFrame({'time': [df_for_icons['time'].iloc[0] - timedelta(hours=i) for i in range(1, 4)][::-1]})
+                    df_full = pd.concat([padding_df, df_for_icons], ignore_index=True)
+                    
+                    icons_html = generate_weather_icons_html(df_full, ratio_info, display_width)
+                    graph_html = f'<img src="data:image/png;base64,{img_b64}" style="width: {display_width}px; display: block;">'
+                    
+                    st.markdown(
+                        f'<div class="scroll-container">'
+                        f'<div style="width: {display_width}px;">'
+                        f'{icons_html}{graph_html}'
+                        f'</div></div>', 
+                        unsafe_allow_html=True
+                    )
 
-    # 9. ブラウザ保存
     save_settings_to_browser()
-    
     
 if __name__ == "__main__":
     main()
