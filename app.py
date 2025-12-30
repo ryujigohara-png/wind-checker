@@ -609,8 +609,9 @@ def main():
         render_header_info(basho) 
 
     # --- 5. グラフ描画（CONFIGに基づいたタイムゾーン設定） ---
-    # UTC時刻を取得し、CONFIGのオフセットを適用
-    tz = timezone(timedelta(hours=CONFIG.get("TIMEZONE_OFFSET", 9)))
+    # CONFIGのオフセット（未設定時は日本時間の9）を使用して時刻を生成
+    tz_offset = CONFIG.get("TIMEZONE_OFFSET", 9)
+    tz = timezone(timedelta(hours=tz_offset))
     now_jst = datetime.now(tz)
     
     # グラフ描画（サイドバーで修正された danger_v を使用）
