@@ -256,60 +256,53 @@ def render_tide_curve_chart(ax, df):
 #==========================================================================================
 # 12. 高解像度グラフ画像を生成するサブルーチン
 #==========================================================================================
-@st.cache_data(show_spinner="グラフを生成中...", ttl=600)
-def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_params, now_jst):
+#==========================================================================================
+# 11. 【最新統合】高解像度グラフ生成 (数学的座標算出版)
+#==========================================================================================
+@st.cache_data(show_spinner="グラフを生成中...")
+def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_params, now_jst=None):
+    # 1. データ取得
     df = fetch_weather_data(lat, lon, 8)
     if df is None: return None, (0, 0)
     
+    # 2. グラフの左側に余白を作るためのパディング処理
     padding_df = pd.DataFrame({'time': [df['time'].iloc[0] - timedelta(hours=i) for i in range(1, 4)][::-1]})
     df = pd.concat([padding_df, df], ignore_index=True)
-    df = process_wind_data(df, list(selected_dirs_tuple))
     
-    active_plots = []
-    if design_params.get("show_wind", True): active_plots.append("wind")
-    if design_params.get("show_temp", True): active_plots.append("temp")
-    if design_params.get("show_tide", True): active_plots.append("tide")
+    # ★重要：ここで選択された風向に対して色付けフラグを立てる
+    if 'process_wind_data' in globals():
+        df = process_wind_data(df, list(selected_dirs_tuple))
     
-    if not active_plots: return None, (0, 0)
+    # 3. グラフ領域の作成（design_paramsからサイズを取得）
+    fig, axes = plt.subplots(3, 1, 
+                             figsize=(design_params.get("width", 10), design_params.get("height", 8)), 
+                             dpi=CONFIG["DPI"], 
+                             gridspec_kw={'height_ratios': CONFIG["HEIGHT_RATIOS"]})
+    plt.subplots_adjust(hspace=0.6)
     
-    ratios = design_params.get("ratios", CONFIG["DEFAULT_RATIOS"])
-    current_ratios = []
-    if "wind" in active_plots: current_ratios.append(ratios[0])
-    if "temp" in active_plots: current_ratios.append(ratios[1])
-    if "tide" in active_plots: current_ratios.append(ratios[2])
-    
-    fig_w = design_params.get("width", CONFIG["GRAPH_WIDTH"])
-    fig_h = design_params.get("height", CONFIG["GRAPH_HIGHT"])
-    dpi_value = design_params.get("graph_dpi", CONFIG.get("DPI", 200))
-    
-    fig, axes = plt.subplots(len(active_plots), 1, figsize=(fig_w, fig_h), dpi=dpi_value, 
-                             gridspec_kw={'height_ratios': current_ratios})
-    
-    if len(active_plots) == 1: axes = [axes]
-    
-    plt.subplots_adjust(hspace=design_params.get("hspace", CONFIG["HSPACE"]))
+    # 4. 軸のフォーマッター取得
     formatter = get_x_axis_formatter()
     
-    idx = 0
-    if "wind" in active_plots:
-        render_wind_bar_chart(axes[idx], df, danger_v, 3, design_params)
-        idx += 1
-    if "temp" in active_plots:
-        render_temp_line_chart(axes[idx], df)
-        idx += 1
-    if "tide" in active_plots:
-        render_tide_curve_chart(axes[idx], df)
-        idx += 1
+    # 5. 各チャートの描画
+    # render_wind_bar_chart の内部で、df内の色付けフラグを見て色を変える仕様のはずです
+    render_wind_bar_chart(axes[0], df, danger_v, 3)
+    render_temp_line_chart(axes[1], df)
+    render_tide_curve_chart(axes[2], df)
 
+    # 6. 共通設定（ここで青い現在時刻ラインが引かれます）
     for ax in axes:
-        apply_common_axis_settings(ax, df, formatter, now_jst, design_params)
+        # now_jst が None でない場合のみラインを引く
+        apply_common_axis_settings(ax, df, formatter, now_jst)
 
-    fig.tight_layout(pad=1.0) 
+    fig.tight_layout() 
     pos = axes[0].get_position() 
+    
+    # 天気マーク配置用の比率情報を返す
     ratio_info = (pos.x0, pos.width / (len(df) - 1))
     
+    # 7. 画像化
     buf = io.BytesIO()
-    fig.savefig(buf, format="png", bbox_inches=None, pad_inches=0, dpi=dpi_value)
+    fig.savefig(buf, format="png", bbox_inches=None, pad_inches=0)
     plt.close(fig) 
     
     img_b64 = base64.b64encode(buf.getvalue()).decode()
