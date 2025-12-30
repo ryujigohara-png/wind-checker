@@ -695,44 +695,47 @@ def main():
     danger_v = design_params.get("danger_v", 10.0)
     sel_dirs = design_params.get("sel_dirs", [])
 
-    # 7. 画像再生成（描き直し）が必要かどうかの判定
-    tz = timezone(timedelta(hours=CONFIG.get("TIMEZONE_OFFSET", 9)))
-    now_jst = datetime.now(tz)
+    # 7. 画像再生成が必要かどうかの判定
+    # タイムゾーンを明示的に指定して現在時刻を取得
+    JST = timezone(timedelta(hours=9))
+    now_jst = datetime.now(JST)
     
-    # 座標が一致しているか
     is_same_coords = (st.session_state.lat == st.session_state.last_drawn_lat and 
                       st.session_state.lon == st.session_state.last_drawn_lon)
     
-    # 10分以内か
     is_within_10min = False
     if st.session_state.last_draw_time:
-        elapsed = (now_jst - st.session_state.last_draw_time).total_seconds()
-        if elapsed < 600:  # 600秒 = 10分
+        last_time = st.session_state.last_draw_time
+        # タイムゾーンがない場合はJSTとして扱う（エラー防止）
+        if last_time.tzinfo is None:
+            last_time = last_time.replace(tzinfo=JST)
+            
+        elapsed = (now_jst - last_time).total_seconds()
+        if elapsed < 600:
             is_within_10min = True
 
-    # 生成フラグ：地図指定時は強制、それ以外は座標変更か時間超過があれば生成する
     needs_generate = True
     if basho != "地図で指定" and is_same_coords and is_within_10min and st.session_state.last_img is not None:
         needs_generate = False
 
-    # 8. 画像生成処理（必要な時のみ実行）
+    # 8. 画像生成処理
     FIXED_WIDTH = 4000 
     if needs_generate:
+        # 💡 generate_high_res_graph 内部でも now_jst を基準にグラフを描画させる
         img_b64, ratio_info = generate_high_res_graph(
             st.session_state.lat, 
             st.session_state.lon, 
             danger_v, 
             tuple(sel_dirs), 
             design_params,
-            now_jst=now_jst
+            now_jst=now_jst  # JST時刻を渡す
         )
         if img_b64:
-            # 最新の画像とパラメータをセッションにキャッシュする
             st.session_state.last_img = img_b64
             st.session_state.last_ratio = ratio_info
             st.session_state.last_drawn_lat = st.session_state.lat
             st.session_state.last_drawn_lon = st.session_state.lon
-            st.session_state.last_draw_time = now_jst
+            st.session_state.last_draw_time = now_jst # JSTで保存
 
     # 9. グラフの最終描画（画像生成をスキップした場合も、キャッシュから表示）
     if st.session_state.last_img:
