@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# 最終更新 2025.12.30 0030 ベータ版完全統合・UI復元・NameError修正版
+# 最終更新 2025.12.30 1333 ベータ版　復元版
 
 import streamlit as st
 import requests
