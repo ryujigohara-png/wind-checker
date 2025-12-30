@@ -588,6 +588,62 @@ def render_header_info(basho):
     now_str = datetime.now().strftime("%Y/%m/%d %H:%M:%S")
     st.button(f"🔄 グラフ更新 ({now_str})", use_container_width=True)
 
+#==========================================================================================
+# 14. 地点選択のロジックを制御するサブルーチン
+#==========================================================================================
+def handle_location_selection():
+    """
+    地点選択コンボボックスの表示と、選択に伴う座標・状態の更新を行うサブルーチン。
+    「地図で指定」選択時には地図表示を強制ONにし、前回の確定座標を維持します。
+    """
+    master = CONFIG["LOCATION_MASTER"].copy()
+    
+    # コンボボックス用の表示ラベル名と座標の対応表
+    # 地図や現在地の場合、現在のsession_stateにある座標を表示名に含める
+    current_loc_label = f"📍 現在地 ({st.session_state.lat:.4f}, {st.session_state.lon:.4f})"
+    map_label = "🗺️ 地図で指定"
+    
+    # 選択肢のリストを作成
+    display_options = {name: name for name in master.keys()}
+    display_options[current_loc_label] = "現在地"
+    display_options[map_label] = "地図で指定"
+    
+    # 逆引き用（内部値から表示名を取得）
+    reverse_display = {v: k for k, v in display_options.items()}
+    
+    # 現在の選択状態からインデックスを特定
+    current_basho = st.session_state.get("last_basho", CONFIG["DEFAULT_BASHO"])
+    current_display_val = reverse_display.get(current_basho, current_loc_label)
+    
+    options_list = list(display_options.keys())
+    default_idx = options_list.index(current_display_val) if current_display_val in options_list else 0
+
+    # コンボボックスの表示
+    selected_display = st.selectbox("地点を選択してください", options_list, index=default_idx, key="main_loc_sel")
+    basho = display_options[selected_display]
+
+    # 選択が変更された場合の処理
+    if basho != st.session_state.last_basho:
+        st.session_state.last_basho = basho
+        
+        if basho == "地図で指定":
+            # 地図で指定が選ばれたら、地図表示をONにする
+            st.session_state.show_map_state = True
+            # 座標は現在の値を保持（前回確定した値が引き継がれる）
+        elif basho == "現在地":
+            # 現在地取得は別途ボタンで行うため、ここでは座標更新しない
+            pass
+        else:
+            # マスターデータにある地点なら座標を更新
+            st.session_state.lat, st.session_state.lon = master[basho]
+            # 地図表示は紛らわしいのでOFFにする（任意）
+            st.session_state.show_map_state = False
+            
+        st.cache_data.clear() 
+        st.rerun()
+    
+    return basho
+
 # ==========================================================================================
 # 20. アプリのメインフローを制御するメインルーチン
 # ==========================================================================================
@@ -604,7 +660,6 @@ def main():
     sync_all_settings()
     
     # --- 1. サイドバーコントロールの取得 ---
-    # 各ウィジェットに一意のkeyを設定し、ID衝突を回避
     design_params = show_sidebar_controls()
     
     # サイドバーから反映された値を明示的に取得
@@ -623,7 +678,7 @@ def main():
             div.stButton > button p {{ text-align: left !important; width: 100% !important; }}
             div.stButton > button {{ justify-content: flex-start !important; }}
             .scroll-container {{
-                overflow-x: auto; 
+                overflow-x: auto;
                 background: white; 
                 border: 1px solid #ddd;
                 width: 100%;
@@ -633,35 +688,10 @@ def main():
 
     st.markdown(f'<h1 style="font-size:{CONFIG["TITLE_SIZE"]}px;">⛵ Wind_Checker! </h1>', unsafe_allow_html=True)
     
-    # 地点選択肢の構築
-    master = CONFIG["LOCATION_MASTER"].copy()
-    display_options = {f"{name} ({coords[0]:.4f}, {coords[1]:.4f})": name for name, coords in master.items()}
-    
-    current_loc_label = f"📍 現在地 ({st.session_state.lat:.4f}, {st.session_state.lon:.4f})"
-    display_options[current_loc_label] = "現在地"
-    display_options["🗺️ 地図で指定"] = "地図で指定"
+    # --- 2. 地点選択の実行 ---
+    basho = handle_location_selection()
 
-    reverse_display = {v: k for k, v in display_options.items()}
-    current_display_val = reverse_display.get(st.session_state.last_basho, current_loc_label)
-    
-    options_list = list(display_options.keys())
-    default_idx = options_list.index(current_display_val) if current_display_val in options_list else 0
-
-    # UIの安定性のためにkeyを付与
-    selected_display = st.selectbox("地点を選択してください", options_list, index=default_idx, key="main_loc_sel")
-    basho = display_options[selected_display]
-
-    if basho != st.session_state.last_basho:
-        st.session_state.last_basho = basho
-        if basho not in ["地図で指定", "現在地"]:
-            st.session_state.lat, st.session_state.lon = master[basho]
-        if basho == "地図で指定":
-            # 「地図で指定」選択時に自動的に地図を開く
-            st.session_state.show_map_state = True
-        st.cache_data.clear() 
-        st.rerun()
-
-    # 地図表示トグル
+    # 地図表示トグル（session_stateと連動）
     show_map = st.checkbox("地図表示", value=st.session_state.get('show_map_state', False), key="main_show_map_chk")
     st.session_state.show_map_state = show_map
     
@@ -696,7 +726,7 @@ def main():
         
         # 診断情報の表示
         if design_params.get("show_debug", False):
-            with st.expander("🔍 デバッグ診断", expanded=True):
+           with st.expander("🔍 デバッグ診断", expanded=True):
                 st.write(f"現在の地点: {basho} ({st.session_state.lat}, {st.session_state.lon})")
                 st.write(f"危険ライン: {danger_v} m/s / 対象風向: {sel_dirs}")
         
