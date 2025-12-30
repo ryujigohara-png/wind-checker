@@ -53,6 +53,7 @@ CONFIG = {
     "DEFAULT_DIRS": ["南","南南西","南西","西南西","西","西北西","北西","北北西"],
     "ANNOT_Y_STEP": 1.5,
     "ANNOT_BASE_Y": 0.5,
+    "SHOW_DEV_MODE": False,  # ← これを追記 [1]
     "STORAGE_KEY": "wind_checker_settings_v2", # バージョン管理用にキー変更
     "TEMP_COLOR": "darkorange",
     "ARROW_COLOR": "blue",
@@ -439,6 +440,7 @@ def sync_all_settings():
             st.session_state.sel_dirs = data.get("sel_dirs", CONFIG["DEFAULT_DIRS"])
             
             # 開発者用パラメータもあれば復元
+            st.session_state.is_dev_mode = data.get("is_dev_mode", CONFIG.get("SHOW_DEV_MODE", False)) # [4, 6]
             st.session_state.label_pad = data.get("label_pad", CONFIG["LABEL_PAD"])
             st.session_state.hspace = data.get("hspace", CONFIG["HSPACE"])
             st.session_state.show_w_text = data.get("show_w_text", CONFIG["SHOW_W_TEXT"])
@@ -497,6 +499,7 @@ def save_settings_to_browser():
         "label_font_size": st.session_state.label_font_size,
         "danger_v": st.session_state.danger_v,
         "sel_dirs": st.session_state.sel_dirs,
+        "is_dev_mode": st.session_state.get("is_dev_mode", False), # ← これを追加 [5, 6]
         "label_pad": st.session_state.get("label_pad", CONFIG["LABEL_PAD"]),
         "hspace": st.session_state.get("hspace", CONFIG["HSPACE"]),
         "show_w_text": st.session_state.get("show_w_text", CONFIG["SHOW_W_TEXT"]),
@@ -521,8 +524,13 @@ def save_settings_to_browser():
 #==========================================================================================
 def show_sidebar_controls():
     is_beta = True 
+
+    # --- 1. URLパラメータから mode=dev を取得するロジックを復活 ---
+    # st.query_params を使用します
+    is_dev_url = st.query_params.get("mode") == "dev" [2], [3]
+
     st.sidebar.header("表示設定")
-    
+     
     show_wind = st.sidebar.toggle("風向・風速", value=st.session_state.get("show_wind", CONFIG["SHOW_WIND"]))
     show_temp = st.sidebar.toggle("気温", value=st.session_state.get("show_temp", CONFIG["SHOW_TEMP"]))
     show_tide = st.sidebar.toggle("潮位", value=st.session_state.get("show_tide", CONFIG["SHOW_TIDE"]))
@@ -537,7 +545,11 @@ def show_sidebar_controls():
     label_font_size = st.sidebar.slider("軸ラベル文字", f_cfg["min"], f_cfg["max"], st.session_state.get("label_font_size", CONFIG["LABEL_SIZE"]), step=f_cfg["step"])
 
     st.sidebar.markdown("---")
-    is_dev = st.sidebar.checkbox("🔧 開発者用マイクロ調整", value=st.session_state.get("is_dev_mode", False))
+    # --- 2. チェックボックスの初期値に URL判定の結果を組み込む ---
+    # URLが dev モード、またはセッションに保存された値が True なら有効にする
+    default_dev_val = is_dev_url or st.session_state.get("is_dev_mode", False)
+    is_dev = st.sidebar.checkbox("🔧 開発者用マイクロ調整", value=default_dev_val) [1]
+    # is_dev = st.sidebar.checkbox("🔧 開発者用マイクロ調整", value=st.session_state.get("is_dev_mode", False))
     st.session_state.is_dev_mode = is_dev
 
     # 初期値セット
