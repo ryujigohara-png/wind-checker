@@ -551,20 +551,20 @@ def main():
     # ブラウザデータの同期（記録機能を有効化）
     sync_all_settings()
     
-    # --- サイドバーコントロールの取得 ---
-    # 戻り値の数に依存しないよう、一旦1つの変数で受け取ります
+    # --- 1. サイドバーコントロールの取得 ---
     sidebar_res = show_sidebar_controls()
     
     if isinstance(sidebar_res, tuple) and len(sidebar_res) == 3:
-        # 戻り値が3つの場合（以前の正規版形式）
         danger_v, sel_dirs, design_params = sidebar_res
     else:
-        # 戻り値が辞書1つの場合（現在のベータ版形式）
         design_params = sidebar_res
-        # CONFIG["DEFAULT_DANGER_V"] をサイドバーで修正した値、
-        # もしくは辞書内の値を優先的に取得します
         danger_v = design_params.get("danger_v", CONFIG.get("DEFAULT_DANGER_V", 10.0))
         sel_dirs = design_params.get("sel_dirs", [])
+
+    # ★【最重要修正】サイドバーの受け取り直後にセッションから強制的に最新の選択を読み込む
+    # これにより、サイドバーの関数が空を返していても、画面上のチェック状態を反映できます
+    if "selected_dirs" in st.session_state:
+        sel_dirs = st.session_state["selected_dirs"]
     
     # フォントセットアップ
     setup_font(design_params.get("base_font_size", 14))
@@ -627,17 +627,12 @@ def main():
     with col2:
         render_header_info(basho) 
 
-    # --- 5. グラフ描画（CONFIGに基づいたタイムゾーン設定） ---
-    # CONFIGのオフセット（未設定時は日本時間の9）を使用して時刻を生成
+    # --- 2. 時刻の設定 ---
     tz_offset = CONFIG.get("TIMEZONE_OFFSET", 9)
     tz = timezone(timedelta(hours=tz_offset))
     now_jst = datetime.now(tz)
     
-    # グラフ描画（サイドバーで修正された danger_v を使用）
-    now_jst = datetime.now(timezone(timedelta(hours=9)))
-
-    # --- 診断用一時表示（後で削除してください） -----------------------------------------------
-    # --- 診断用一時表示（main関数内の適切な場所に貼り付けてください） ---
+    # --- 3. 診断情報の表示（正しい sel_dirs で判定されます） ---
     with st.expander("🔍 色付け・設定の診断情報", expanded=True):
         col_diag1, col_diag2 = st.columns(2)
         with col_diag1:
@@ -656,22 +651,20 @@ def main():
         st.write("**4. 取得データの生データ（先頭5件）:**")
         test_df = fetch_weather_data(st.session_state.lat, st.session_state.lon, 8)
         if test_df is not None:
-            # ここで実際に色判定が走るかテスト
+            # 最新の sel_dirs を使って色を計算
             test_df = process_wind_data(test_df, list(sel_dirs))
             st.dataframe(test_df[['time', 'wind_speed_10m', 'dir_name', 'color']].head())
         else:
             st.error("データの取得に失敗しています")
-    # ----------------------------------------------
-    # ------- 診断用一時表示（後で削除してください） -----------------------------------------------
     
-    
+    # --- 4. グラフ描画 ---
     img_b64, ratio_info = generate_high_res_graph(
         st.session_state.lat, 
         st.session_state.lon, 
         danger_v, 
         tuple(sel_dirs), 
         design_params,
-        now_jst=now_jst  # ← ここに now_jst を明示的に渡します
+        now_jst=now_jst
     )
     
     if img_b64:
@@ -693,11 +686,9 @@ def main():
                 unsafe_allow_html=True
             )
 
-        
-
     # 設定の保存
     save_settings_to_browser()
     
-    
 if __name__ == "__main__":
     main()
+    
