@@ -473,18 +473,23 @@ def save_settings_to_browser():
 def show_sidebar_controls():
     is_dev_url = st.query_params.get("mode") == "dev"
     st.sidebar.header("1. 判定・表示設定")
-    danger_v = st.sidebar.number_input("危険風速ライン(m/s)", value=st.session_state.get("danger_v", CONFIG["DEFAULT_DANGER_V"]), step=0.5)
-    st.sidebar.write("色付風向選択")
     
-    # --- 読込ルーチン(15番)で復元されたデータをサイドバーに転記するための修正 ---
+    # 危険風速ライン
+    danger_v = st.sidebar.number_input("危険風速ライン(m/s)", value=st.session_state.get("danger_v", CONFIG["DEFAULT_DANGER_V"]), step=0.5)
+    
+    st.sidebar.write("色付風向選択")
+    # 15番の読み込みルーチンで入った値を初期値として使用
     saved_dirs = st.session_state.get("sel_dirs", CONFIG["DEFAULT_DIRS"])
     
     sel_dirs = []
     cols = st.sidebar.columns(2)
     for i, d in enumerate(ALL_DIRECTIONS):
         with cols[i % 2]:
-            # sync_all_settingsで復元された saved_dirs の中身を見てチェック状態を決める
-            if st.sidebar.checkbox(d, value=(d in saved_dirs), key=f"chk_{d}"): sel_dirs.append(d)
+            # keyを指定することで、Streamlitが内部で状態を保持します
+            # valueには「現在保存されている状態」を反映させます
+            if st.sidebar.checkbox(d, value=(d in saved_dirs), key=f"chk_{d}"):
+                sel_dirs.append(d)
+    
     st.sidebar.markdown("---")
     st.sidebar.header("2. グラフ表示切替")
     show_wind = st.sidebar.toggle("風向・風速グラフ", value=st.session_state.get("show_wind", CONFIG["SHOW_WIND"]))
@@ -492,6 +497,7 @@ def show_sidebar_controls():
     show_tide = st.sidebar.toggle("潮位グラフ", value=st.session_state.get("show_tide", CONFIG["SHOW_TIDE"]))
     width = st.sidebar.slider("全体の横幅 (inch)", 10.0, 30.0, float(st.session_state.get("width", CONFIG["GRAPH_WIDTH"])))
     base_height = st.sidebar.slider("基準縦幅 (inch)", 2.0, 10.0, float(st.session_state.get("base_height", CONFIG["GRAPH_HIGHT"])))
+    
     if is_dev_url:
         st.sidebar.markdown("---")
         st.sidebar.header("3. デザイン調整 (Dev)")
@@ -510,6 +516,7 @@ def show_sidebar_controls():
         label_pad = st.session_state.get("label_pad", CONFIG["LABEL_PAD"])
         hspace = st.session_state.get("hspace", CONFIG["HSPACE"])
         ratios = st.session_state.get("ratios", CONFIG["DEFAULT_RATIOS"])
+        
     design_params = {
         "width": width, "base_height": base_height, "height": 0,
         "base_font_size": base_font_size, "label_font_size": label_font_size,
@@ -520,6 +527,7 @@ def show_sidebar_controls():
         "ratios": ratios, "graph_dpi": st.session_state.get("graph_dpi", 200),
         "sel_dirs": sel_dirs, "danger_v": danger_v
     }
+    
     base_ratio_total = design_params["ratios"][0] + design_params["ratios"][1]
     fixed_unit_h = base_height / base_ratio_total 
     auto_height = (0.45 if show_wind else 0.0)
@@ -527,13 +535,15 @@ def show_sidebar_controls():
     if show_temp: auto_height += design_params["ratios"][1] * fixed_unit_h
     if show_tide: auto_height += design_params["ratios"][2] * fixed_unit_h
     design_params["height"] = auto_height
+    
+    # セッション更新：ここで sel_dirs を更新すれば、メインルーチンの最後にある
+    # save_settings_to_browser(17番) がこの値を拾って保存してくれます。
     st.session_state.update({
         "danger_v": danger_v, "sel_dirs": sel_dirs, "show_wind": show_wind, 
         "show_temp": show_temp, "show_tide": show_tide, "width": width, 
         "base_height": base_height, "base_font_size": base_font_size,
         "label_font_size": label_font_size, "label_pad": label_pad, 
-        "hspace": hspace, "ratios": ratios,
-        "selected_dirs": sel_dirs
+        "hspace": hspace, "ratios": ratios
     })
     return design_params
     
