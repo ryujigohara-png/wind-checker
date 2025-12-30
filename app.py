@@ -596,6 +596,7 @@ def handle_location_selection():
     地点選択コンボボックスを表示し、選択に応じて座標や地図表示フラグを更新する。
     「地図で指定」が選ばれた際は、前回の座標を維持したまま地図表示を強制ONにする。
     """
+    st.write("")  # ← この1行を入れるだけで、タイトルの重なりを物理的に押し下げて防げます
     master = CONFIG["LOCATION_MASTER"].copy()
     
     current_loc_label = f"📍 現在地 ({st.session_state.lat:.4f}, {st.session_state.lon:.4f})"
