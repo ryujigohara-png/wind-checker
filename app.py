@@ -645,7 +645,7 @@ def main():
     st.markdown(f"""
         <style>
             .block-container {{ padding-top: 3.5rem !important; padding-bottom: 0rem !important; }}
-            h1 {{ margin-top: 0px !important; margin-bottom: -15px !important; line-height: 1.0 !important; }}
+            h1 {{ margin-top: 0px !important; margin-bottom: -10px !important; line-height: 1.0 !important; }}
             [data-testid="stVerticalBlock"] {{ gap: 0.3rem !important; }}
             div.stButton > button p {{ text-align: left !important; width: 100% !important; }}
             div.stButton > button {{ justify-content: flex-start !important; }}
