@@ -387,13 +387,23 @@ def show_location_map():
 # ======================================================================================
 def sync_all_settings():
     STORAGE_KEY = CONFIG['STORAGE_KEY']
-    if st.session_state.get("initialized"): return
+    # すでに初期化済みの場合は何もしない
+    if st.session_state.get("initialized"):
+        return
 
+    # ブラウザからデータを取得
     stored_data = streamlit_js_eval(js_expressions=f"localStorage.getItem('{STORAGE_KEY}')", key="init_load_settings")
     
+    # 取得待ちの状態（None）なら何もしない
+    if stored_data is None:
+        return
+
+    # データが存在する場合のみ反映
     if stored_data:
         try:
             data = json.loads(stored_data)
+            # ここで取得した値を session_state に上書き
+            # keyが存在しない場合のみCONFIGを使う
             st.session_state.lat = float(data.get("lat", CONFIG["DEFAULT_LAT"]))
             st.session_state.lon = float(data.get("lon", CONFIG["DEFAULT_LON"]))
             st.session_state.last_basho = data.get("basho", CONFIG["DEFAULT_BASHO"])
@@ -411,11 +421,13 @@ def sync_all_settings():
             st.session_state.show_w_text = data.get("show_w_text", CONFIG["SHOW_W_TEXT"])
             st.session_state.show_dir_name = data.get("show_dir_name", CONFIG["SHOW_DIR_NAME"])
             st.session_state.ratios = data.get("ratios", CONFIG["DEFAULT_RATIOS"])
-            
-            st.session_state.initialized = True
-            st.rerun()
         except Exception:
-            st.session_state.initialized = True
+            pass
+
+    # 読み込みが完了した（データがあった、または空だった）ことをマーク
+    st.session_state.initialized = True
+    # 強制再描画して、サイドバーに値を反映させる
+    st.rerun()
             
 #==========================================================================================
 # 16. 現在地取得
