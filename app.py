@@ -548,7 +548,7 @@ def show_sidebar_controls():
     # --- 2. チェックボックスの初期値に URL判定の結果を組み込む ---
     # URLが dev モード、またはセッションに保存された値が True なら有効にする
     default_dev_val = is_dev_url or st.session_state.get("is_dev_mode", False)
-    is_dev = st.sidebar.checkbox("🔧 開発者用マイクロ調整", value=default_dev_val) [1]
+    is_dev = st.sidebar.checkbox("🔧 開発者用マイクロ調整", value=default_dev_val)  #  [1]
     # is_dev = st.sidebar.checkbox("🔧 開発者用マイクロ調整", value=st.session_state.get("is_dev_mode", False))
     st.session_state.is_dev_mode = is_dev
 
