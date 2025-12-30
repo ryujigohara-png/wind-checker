@@ -35,6 +35,7 @@ CONFIG = {
     "DPI": 200,
     "MAP_HEIGHT": 350,
     "DEFAULT_RATIOS": [4.4, 1.2, 0.8],
+    "SHOW_DEBUG": False,  # デバッグ画面の初期表示設定
     "SHOW_WIND": True,
     "SHOW_TEMP": True,
     "SHOW_TIDE": False,          # デフォルトOFF
@@ -517,6 +518,10 @@ def show_sidebar_controls():
     show_wind = st.sidebar.toggle("風向・風速グラフ", value=st.session_state.get("show_wind", CONFIG["SHOW_WIND"]))
     show_temp = st.sidebar.toggle("気温グラフ", value=st.session_state.get("show_temp", CONFIG["SHOW_TEMP"]))
     show_tide = st.sidebar.toggle("潮位グラフ", value=st.session_state.get("show_tide", CONFIG["SHOW_TIDE"]))
+    
+    # デバッグ画面表示の切り替えスイッチを追加
+    show_debug = st.sidebar.toggle("デバッグ用画面表示", value=st.session_state.get("show_debug", CONFIG.get("SHOW_DEBUG", False)))
+    
     width = st.sidebar.slider("全体の横幅 (inch)", 10.0, 30.0, float(st.session_state.get("width", CONFIG["GRAPH_WIDTH"])))
     base_height = st.sidebar.slider("基準縦幅 (inch)", 2.0, 10.0, float(st.session_state.get("base_height", CONFIG["GRAPH_HIGHT"])))
     
@@ -544,17 +549,18 @@ def show_sidebar_controls():
         "base_font_size": base_font_size, "label_font_size": label_font_size,
         "label_pad": label_pad, "hspace": hspace,
         "show_wind": show_wind, "show_temp": show_temp, "show_tide": show_tide,
+        "show_debug": show_debug,
         "show_w_text": st.session_state.get("show_w_text", CONFIG["SHOW_W_TEXT"]),
         "show_dir_name": st.session_state.get("show_dir_name", CONFIG["SHOW_DIR_NAME"]),
         "ratios": ratios, "graph_dpi": st.session_state.get("graph_dpi", 200),
         "sel_dirs": sel_dirs, "danger_v": danger_v
     }
     
-    # セッション更新
+    # セッション更新（次回の保存用）
     st.session_state.update({
         "danger_v": danger_v, "sel_dirs": sel_dirs, "show_wind": show_wind, 
-        "show_temp": show_temp, "show_tide": show_tide, "width": width, 
-        "base_height": base_height, "base_font_size": base_font_size,
+        "show_temp": show_temp, "show_tide": show_tide, "show_debug": show_debug,
+        "width": width, "base_height": base_height, "base_font_size": base_font_size,
         "label_font_size": label_font_size, "label_pad": label_pad, 
         "hspace": hspace, "ratios": ratios
     })
@@ -578,9 +584,9 @@ def render_header_info(basho):
     now_str = datetime.now().strftime("%Y/%m/%d %H:%M:%S")
     st.button(f"🔄 グラフ更新 ({now_str})", use_container_width=True)
 
-#==========================================================================================
+# ==========================================================================================
 # 19. アプリのメインフローを制御するメインルーチン
-#==========================================================================================
+# ==========================================================================================
 def main():
     # 状態の初期化
     if 'lat' not in st.session_state: st.session_state.lat = CONFIG["DEFAULT_LAT"]
@@ -601,9 +607,8 @@ def main():
         sel_dirs = design_params.get("sel_dirs", [])
 
     # ★【最重要修正】サイドバーの受け取り直後にセッションから強制的に最新の選択を読み込む
-    # これにより、サイドバーの関数が空を返していても、画面上のチェック状態を反映できます
-    if "selected_dirs" in st.session_state:
-        sel_dirs = st.session_state["selected_dirs"]
+    if "sel_dirs" in st.session_state:
+        sel_dirs = st.session_state["sel_dirs"]
     
     # フォントセットアップ
     setup_font(design_params.get("base_font_size", 14))
@@ -671,30 +676,32 @@ def main():
     tz = timezone(timedelta(hours=tz_offset))
     now_jst = datetime.now(tz)
     
-    # --- 3. 診断情報の表示（正しい sel_dirs で判定されます） ---
-    with st.expander("🔍 色付け・設定の診断情報", expanded=True):
-        col_diag1, col_diag2 = st.columns(2)
-        with col_diag1:
-            st.write("**1. サイドバーから渡された風向:**")
-            st.code(sel_dirs)
-            st.write("**2. 危険風速の設定値:**")
-            st.code(danger_v)
-            
-        with col_diag2:
-            st.write("**3. システム定義の全方位リスト:**")
-            if 'ALL_DIRECTIONS' in globals():
-                st.code(ALL_DIRECTIONS)
-            else:
-                st.error("ALL_DIRECTIONS が定義されていません")
+    # --- 3. 診断情報の表示（トグルスイッチに連動） ---
+    # sidebarで設定された show_debug が True の場合のみ表示
+    if design_params.get("show_debug", False):
+        with st.expander("🔍 色付け・設定の診断情報", expanded=True):
+            col_diag1, col_diag2 = st.columns(2)
+            with col_diag1:
+                st.write("**1. サイドバーから渡された風向:**")
+                st.code(sel_dirs)
+                st.write("**2. 危険風速の設定値:**")
+                st.code(danger_v)
+                
+            with col_diag2:
+                st.write("**3. システム定義の全方位リスト:**")
+                if 'ALL_DIRECTIONS' in globals():
+                    st.code(ALL_DIRECTIONS)
+                else:
+                    st.error("ALL_DIRECTIONS が定義されていません")
 
-        st.write("**4. 取得データの生データ（先頭5件）:**")
-        test_df = fetch_weather_data(st.session_state.lat, st.session_state.lon, 8)
-        if test_df is not None:
-            # 最新の sel_dirs を使って色を計算
-            test_df = process_wind_data(test_df, list(sel_dirs))
-            st.dataframe(test_df[['time', 'wind_speed_10m', 'dir_name', 'color']].head())
-        else:
-            st.error("データの取得に失敗しています")
+            st.write("**4. 取得データの生データ（先頭5件）:**")
+            test_df = fetch_weather_data(st.session_state.lat, st.session_state.lon, 8)
+            if test_df is not None:
+                # 最新の sel_dirs を使って色を計算
+                test_df = process_wind_data(test_df, list(sel_dirs))
+                st.dataframe(test_df[['time', 'wind_speed_10m', 'dir_name', 'color']].head())
+            else:
+                st.error("データの取得に失敗しています")
     
     # --- 4. グラフ描画 ---
     img_b64, ratio_info = generate_high_res_graph(
