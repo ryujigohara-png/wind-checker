@@ -607,6 +607,11 @@ def main():
         handle_current_location_update()
     with col2:
         render_header_info(basho) 
+
+    # --- 5. グラフ描画（CONFIGに基づいたタイムゾーン設定） ---
+    # UTC時刻を取得し、CONFIGのオフセットを適用
+    tz = timezone(timedelta(hours=CONFIG.get("TIMEZONE_OFFSET", 9)))
+    now_jst = datetime.now(tz)
     
     # グラフ描画（サイドバーで修正された danger_v を使用）
     now_jst = datetime.now(timezone(timedelta(hours=9)))
@@ -629,20 +634,16 @@ def main():
             
             icons_html = generate_weather_icons_html(df_full, ratio_info, display_width)
             graph_html = f'<img src="data:image/png;base64,{img_b64}" style="width: {display_width}px; display: block;">'
-
-            # --- 5. グラフ描画（CONFIGに基づいたタイムゾーン設定） ---
-            # UTC時刻を取得し、CONFIGのオフセットを適用
-            tz = timezone(timedelta(hours=CONFIG.get("TIMEZONE_OFFSET", 9)))
-            now_jst = datetime.now(tz)
-        
-            img_b64, ratio_info = generate_high_res_graph(
-                st.session_state.lat, 
-                st.session_state.lon, 
-                danger_v, 
-                tuple(sel_dirs), 
-                design_params,
-                now_jst=now_jst  # 正しい時刻を渡す
+            
+            st.markdown(
+                f'<div class="scroll-container">'
+                f'<div style="width: {display_width}px;">'
+                f'{icons_html}{graph_html}'
+                f'</div></div>', 
+                unsafe_allow_html=True
             )
+
+        
 
     # 設定の保存
     save_settings_to_browser()
