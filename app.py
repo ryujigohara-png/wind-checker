@@ -598,7 +598,6 @@ def handle_location_selection():
     """
     master = CONFIG["LOCATION_MASTER"].copy()
     
-    # 表示用ラベルの構築
     current_loc_label = f"📍 現在地 ({st.session_state.lat:.4f}, {st.session_state.lon:.4f})"
     display_options = {f"{name} ({coords[0]:.4f}, {coords[1]:.4f})": name for name, coords in master.items()}
     display_options[current_loc_label] = "現在地"
@@ -619,17 +618,14 @@ def handle_location_selection():
         st.session_state.last_basho = basho
         
         if basho == "地図で指定":
-            # 座標は維持し、地図表示をONにする
             st.session_state.show_map_state = True
         elif basho == "現在地":
             st.session_state.show_map_state = False
         else:
-            # 固定地点の場合は座標をマスターから取得
             st.session_state.lat, st.session_state.lon = master[basho]
             st.session_state.show_map_state = False
             
         st.cache_data.clear() 
-        # リロード前に現在の「地図ON」の状態をブラウザ記憶へ書き込み、一瞬で消えるのを防ぐ
         save_settings_to_browser()
         st.rerun()
     
@@ -639,7 +635,11 @@ def handle_location_selection():
 # 20. アプリのメインフローを制御するメインルーチン
 # ==========================================================================================
 def main():
-    # 状態の初期化
+    """
+    アプリ全体の実行フローを管理する。
+    地点選択、地図表示(オプション)、ヘッダー情報、グラフ描画の順で処理を行う。
+    """
+    # 1. セッション状態の初期化
     if 'lat' not in st.session_state: st.session_state.lat = CONFIG["DEFAULT_LAT"]
     if 'lon' not in st.session_state: st.session_state.lon = CONFIG["DEFAULT_LON"]
     if 'last_basho' not in st.session_state: st.session_state.last_basho = CONFIG["DEFAULT_BASHO"]
@@ -647,16 +647,14 @@ def main():
     if 'last_drawn_lat' not in st.session_state: st.session_state.last_drawn_lat = None
     if 'last_drawn_lon' not in st.session_state: st.session_state.last_drawn_lon = None
     
-    # ブラウザデータの同期
+    # 2. 設定の同期とサイドバー表示
     sync_all_settings()
-    
-    # --- 1. サイドバーコントロールの取得 ---
     design_params = show_sidebar_controls()
     danger_v = design_params.get("danger_v", CONFIG.get("DEFAULT_DANGER_V", 10.0))
     sel_dirs = design_params.get("sel_dirs", [])
     setup_font(design_params.get("base_font_size", 14))
 
-    # スタイル定義
+    # 3. 共通スタイルとタイトルの描画
     st.markdown(f"""
         <style>
             .block-container {{ padding-top: 2rem !important; padding-bottom: 0rem !important; }}
@@ -672,42 +670,42 @@ def main():
             }}
         </style>
     """, unsafe_allow_html=True)
-
     st.markdown(f'<h1 style="font-size:{CONFIG["TITLE_SIZE"]}px;">⛵ Wind_Checker! </h1>', unsafe_allow_html=True)
     
-    # --- 2. 地点選択の実行 ---
+    # 4. 地点選択処理
     basho = handle_location_selection()
 
-    # --- 3. 地図表示の制御 ---
-    show_map = st.checkbox("地図表示", value=st.session_state.show_map_state, key="main_show_map_chk")
-    st.session_state.show_map_state = show_map
+    # 5. 【修正箇所】地図表示（オプション挿入）
+    # チェックボックスの状態をセッションに反映
+    is_map_on = st.checkbox("地図表示", value=st.session_state.show_map_state, key="main_show_map_chk")
+    st.session_state.show_map_state = is_map_on
     
+    # 地図を表示しても return はせず、そのまま処理を続行させる
     if st.session_state.show_map_state:
-        # 地図を表示する（「地図で指定」時は無条件でここを通る）
         show_location_map()
-        # ここで return せず、下のグラフ描画まで継続させる
 
-    # --- 4. 描画判定ロジック ---
+    # 6. 【修正箇所】描画スキップ判定の再構築
     is_same_coords = (st.session_state.lat == st.session_state.last_drawn_lat and 
                       st.session_state.lon == st.session_state.last_drawn_lon)
     
-    # 「地図で指定」の場合は、座標に関わらず無条件で描画する（skipをFalseにする）
+    # 「地図で指定」モード時は、地図上のクリックに即応するため無条件で描画(False)
+    # それ以外の既定地点では座標が変わっていない場合のみスキップ(True)
     if basho == "地図で指定":
         skip_drawing = False
     else:
         skip_drawing = is_same_coords
 
-    # 中段ボタンの配置
+    # 7. 現在地・地点情報の表示
     col1, col2 = st.columns([1, 1]) 
     with col1:
         handle_current_location_update()
     with col2:
         render_header_info(basho) 
 
+    # 8. グラフ描画セクション
     if skip_drawing:
         st.info("🗺️ 座標に変更がないため、グラフの再描画をスキップしました。")
     else:
-        # 通常の描画フロー（地図表示ONの時も実行される）
         tz_offset = CONFIG.get("TIMEZONE_OFFSET", 9)
         tz = timezone(timedelta(hours=tz_offset))
         now_jst = datetime.now(tz)
@@ -727,6 +725,7 @@ def main():
             
             display_width = int(design_params.get("width", 10) * CONFIG["PX_PER_INCH"])
             df_for_icons = fetch_weather_data(st.session_state.lat, st.session_state.lon, 8)
+            
             if df_for_icons is not None:
                 padding_df = pd.DataFrame({'time': [df_for_icons['time'].iloc[0] - timedelta(hours=i) for i in range(1, 4)][::-1]})
                 df_full = pd.concat([padding_df, df_for_icons], ignore_index=True)
@@ -742,8 +741,9 @@ def main():
                     unsafe_allow_html=True
                 )
 
+    # 9. ブラウザ保存
     save_settings_to_browser()
-
-
+    
+    
 if __name__ == "__main__":
     main()
