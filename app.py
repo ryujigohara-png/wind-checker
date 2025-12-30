@@ -616,7 +616,7 @@ def main():
         danger_v = design_params.get("danger_v", CONFIG.get("DEFAULT_DANGER_V", 10.0))
         sel_dirs = design_params.get("sel_dirs", [])
 
-    # サイドバーの受け取り直後にセッションから強制的に最新の選択を読み込む
+    # ★【最重要修正】サイドバーの受け取り直後にセッションから強制的に最新の選択を読み込む
     if "sel_dirs" in st.session_state:
         sel_dirs = st.session_state["sel_dirs"]
     
@@ -664,6 +664,7 @@ def main():
         if basho not in ["地図で指定", "現在地"]:
             st.session_state.lat, st.session_state.lon = master[basho]
         if basho == "地図で指定":
+            # 「地図で指定」が選ばれたら強制的に地図表示フラグを立てる
             st.session_state.show_map_state = True
         st.cache_data.clear() 
         st.rerun()
@@ -673,6 +674,9 @@ def main():
     st.session_state.show_map_state = show_map
     if show_map:
         show_location_map()
+        # 地図表示中はここで処理を中断（以降の診断情報やグラフ描画を行わない）
+        save_settings_to_browser()
+        return
 
     # 中段ボタン
     col1, col2 = st.columns([1, 1]) 
@@ -725,10 +729,13 @@ def main():
         df_for_icons = fetch_weather_data(st.session_state.lat, st.session_state.lon, 8)
         if df_for_icons is not None:
             display_width = int(design_params.get("width", 10) * CONFIG["PX_PER_INCH"])
+            
             padding_df = pd.DataFrame({'time': [df_for_icons['time'].iloc[0] - timedelta(hours=i) for i in range(1, 4)][::-1]})
             df_full = pd.concat([padding_df, df_for_icons], ignore_index=True)
+            
             icons_html = generate_weather_icons_html(df_full, ratio_info, display_width)
             graph_html = f'<img src="data:image/png;base64,{img_b64}" style="width: {display_width}px; display: block;">'
+            
             st.markdown(
                 f'<div class="scroll-container">'
                 f'<div style="width: {display_width}px;">'
@@ -737,7 +744,7 @@ def main():
                 unsafe_allow_html=True
             )
 
-    # 設定の保存（ここでもshow_debugが保存されるようになります）
+    # 設定の保存
     save_settings_to_browser()
     
 if __name__ == "__main__":
