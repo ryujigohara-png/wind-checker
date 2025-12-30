@@ -580,12 +580,25 @@ def show_sidebar_controls():
     
     return design_params
     
-#==========================================================================================
+# ==========================================================================================
 # 19. ヘッダー情報（更新時刻等）を描画するサブルーチン
-#==========================================================================================
+# ==========================================================================================
 def render_header_info(basho):
-    """更新時刻を表示するボタン風UIの描画"""
-    now_str = datetime.now().strftime("%Y/%m/%d %H:%M:%S")
+    """
+    更新時刻を表示するボタン風UIの描画。
+    セッションに保存された last_draw_time（JST）を優先して表示する。
+    """
+    # 日本標準時 (JST) の設定
+    JST = timezone(timedelta(hours=9))
+    
+    # 最後に描画した時刻があればそれを使い、なければ現在のJST時刻を使う
+    draw_time = st.session_state.get('last_draw_time')
+    if draw_time is None:
+        draw_time = datetime.now(JST)
+    elif draw_time.tzinfo is None:
+        draw_time = draw_time.replace(tzinfo=JST)
+
+    now_str = draw_time.strftime("%Y/%m/%d %H:%M:%S")
     st.button(f"🔄 グラフ更新 ({now_str})", use_container_width=True)
 
 #==========================================================================================
