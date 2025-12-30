@@ -632,68 +632,64 @@ def handle_location_selection():
     return basho
 
 # ==========================================================================================
-# 20. アプリのメインフローを制御するメインルーチン
+# 20. アプリのメインフローを制御するメインルーチン（正規版構造を復元）
 # ==========================================================================================
 def main():
+    """
+    正規版の安定したレイアウト構造をベースに、地点選択ロジックを統合。
+    地図とグラフが物理的に重ならない順序を厳守する。
+    """
+    setup_font() # 正規版に合わせて引数なしで呼び出し
+
+    # スタイル定義（正規版の数値を優先）
+    st.markdown(f"""
+        <style>
+            .block-container {{ padding-top: 3.5rem !important; padding-bottom: 0rem !important; }}
+            h1 {{ margin-top: 0px !important; margin-bottom: -15px !important; line-height: 1.0 !important; }}
+            [data-testid="stVerticalBlock"] {{ gap: 0.3rem !important; }}
+            div.stButton > button p {{ text-align: left !important; width: 100% !important; }}
+            div.stButton > button {{ justify-content: flex-start !important; }}
+        </style>
+    """, unsafe_allow_html=True)
+
+    st.markdown(f'<h1 style="font-size:{CONFIG["TITLE_SIZE"]}px;">⛵ Wind_Checker!</h1>', unsafe_allow_html=True)
+    
+    # セッション初期化
     if 'lat' not in st.session_state: st.session_state.lat = CONFIG["DEFAULT_LAT"]
     if 'lon' not in st.session_state: st.session_state.lon = CONFIG["DEFAULT_LON"]
     if 'last_basho' not in st.session_state: st.session_state.last_basho = CONFIG["DEFAULT_BASHO"]
     if 'show_map_state' not in st.session_state: st.session_state.show_map_state = False
-    if 'last_drawn_lat' not in st.session_state: st.session_state.last_drawn_lat = None
-    if 'last_drawn_lon' not in st.session_state: st.session_state.last_drawn_lon = None
     
     sync_all_settings()
-    
-    design_params = show_sidebar_controls()
-    danger_v = design_params.get("danger_v", CONFIG.get("DEFAULT_DANGER_V", 10.0))
-    sel_dirs = design_params.get("sel_dirs", [])
-    setup_font(design_params.get("base_font_size", 14))
 
-    st.markdown(f"""
-        <style>
-            .block-container {{ padding-top: 2rem !important; padding-bottom: 0rem !important; }}
-            h1 {{ margin-top: 10px !important; margin-bottom: 20px !important; line-height: 1.2 !important; }}
-            [data-testid="stVerticalBlock"] {{ gap: 0.8rem !important; }}
-            div.stButton > button p {{ text-align: left !important; width: 100% !important; }}
-            div.stButton > button {{ justify-content: flex-start !important; }}
-            .scroll-container {{
-                overflow-x: auto;
-                background: white; 
-                border: 1px solid #ddd;
-                width: 100%;
-            }}
-        </style>
-    """, unsafe_allow_html=True)
-
-    st.markdown(f'<h1 style="font-size:{CONFIG["TITLE_SIZE"]}px;">⛵ Wind_Checker! </h1>', unsafe_allow_html=True)
-    
+    # 1. 地点選択（サブルーチン呼び出し）
     basho = handle_location_selection()
 
-    # --- 地図表示セクション（オプション挿入） ---
-    is_map_on = st.checkbox("地図表示", value=st.session_state.show_map_state, key="main_show_map_chk")
-    st.session_state.show_map_state = is_map_on
-    
-    if st.session_state.show_map_state:
+    # 2. 地図表示（正規版の配置：チェックボックスの直後に表示）
+    show_map = st.checkbox("地図表示", value=st.session_state.show_map_state, key="main_show_map_chk")
+    st.session_state.show_map_state = show_map
+    if show_map:
         show_location_map()
-        # ここで return せず、下の描画まで継続させる
 
-    # --- 描画判定ロジック ---
-    is_same_coords = (st.session_state.lat == st.session_state.last_drawn_lat and 
-                      st.session_state.lon == st.session_state.last_drawn_lon)
-    
-    if basho == "地図で指定":
-        skip_drawing = False
-    else:
-        skip_drawing = is_same_coords
-
-    # --- ヘッダー・現在地表示 ---
-    col1, col2 = st.columns([1, 1]) 
+    # 3. ボタン配置（正規版の 0.7+0.7 カラム配置を復元）
+    col1, col2 = st.columns([0.7, 0.7]) 
     with col1:
         handle_current_location_update()
     with col2:
         render_header_info(basho) 
 
-    # --- グラフ描画セクション ---
+    # 4. サイドバー設定の取得（正規版のタイミング）
+    # design_params を使用しているサブルーチンのために取得
+    design_params = show_sidebar_controls()
+    danger_v = design_params.get("danger_v", 10.0)
+    sel_dirs = design_params.get("sel_dirs", [])
+
+    # 5. 描画スキップ判定（ベータ版の仕様：地図で指定時は強制描画）
+    is_same_coords = (st.session_state.lat == st.session_state.get('last_drawn_lat') and 
+                      st.session_state.lon == st.session_state.get('last_drawn_lon'))
+    skip_drawing = False if basho == "地図で指定" else is_same_coords
+
+    # 6. グラフ描画セクション（正規版のHTML構造を優先）
     if skip_drawing:
         st.info("🗺️ 座標に変更がないため、グラフの再描画をスキップしました。")
     else:
@@ -705,7 +701,7 @@ def main():
             st.session_state.lat, 
             st.session_state.lon, 
             danger_v, 
-            tuple(sel_dirs), 
+            tuple(sel_dirs),
             design_params,
             now_jst=now_jst
         )
@@ -714,25 +710,23 @@ def main():
             st.session_state.last_drawn_lat = st.session_state.lat
             st.session_state.last_drawn_lon = st.session_state.lon
             
-            display_width = int(design_params.get("width", 10) * CONFIG["PX_PER_INCH"])
             df_for_icons = fetch_weather_data(st.session_state.lat, st.session_state.lon, 8)
             if df_for_icons is not None:
                 padding_df = pd.DataFrame({'time': [df_for_icons['time'].iloc[0] - timedelta(hours=i) for i in range(1, 4)][::-1]})
                 df_full = pd.concat([padding_df, df_for_icons], ignore_index=True)
                 
-                icons_html = generate_weather_icons_html(df_full, ratio_info, display_width)
-                graph_html = f'<img src="data:image/png;base64,{img_b64}" style="width: {display_width}px; display: block;">'
+                # 正規版の引数構成で呼び出し
+                icons_html = generate_weather_icons_html(df_full, ratio_info)
+                graph_html = f'<img src="data:image/png;base64,{img_b64}" style="width: 100%; min-width: 800px; display: block;">'
                 
+                # 正規版のシンプルなスタイルで表示
                 st.markdown(
-                    f'<div class="scroll-container">'
-                    f'<div style="width: {display_width}px;">'
-                    f'{icons_html}{graph_html}'
-                    f'</div></div>', 
+                    f'<div style="overflow-x: auto; background: white; white-space: nowrap;">'
+                    f'{icons_html}{graph_html}</div>', 
                     unsafe_allow_html=True
                 )
 
-    save_settings_to_browser()
-    
+    save_settings_to_browser()    
     
 if __name__ == "__main__":
     main()
