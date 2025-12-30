@@ -635,10 +635,6 @@ def handle_location_selection():
 # 20. アプリのメインフローを制御するメインルーチン
 # ==========================================================================================
 def main():
-    """
-    アプリ全体の実行フローを管理する。
-    要素が重ならないよう、empty()を使用して描画領域を完全に固定・予約する。
-    """
     if 'lat' not in st.session_state: st.session_state.lat = CONFIG["DEFAULT_LAT"]
     if 'lon' not in st.session_state: st.session_state.lon = CONFIG["DEFAULT_LON"]
     if 'last_basho' not in st.session_state: st.session_state.last_basho = CONFIG["DEFAULT_BASHO"]
@@ -647,6 +643,7 @@ def main():
     if 'last_drawn_lon' not in st.session_state: st.session_state.last_drawn_lon = None
     
     sync_all_settings()
+    
     design_params = show_sidebar_controls()
     danger_v = design_params.get("danger_v", CONFIG.get("DEFAULT_DANGER_V", 10.0))
     sel_dirs = design_params.get("sel_dirs", [])
@@ -667,79 +664,72 @@ def main():
             }}
         </style>
     """, unsafe_allow_html=True)
+
     st.markdown(f'<h1 style="font-size:{CONFIG["TITLE_SIZE"]}px;">⛵ Wind_Checker! </h1>', unsafe_allow_html=True)
     
     basho = handle_location_selection()
 
-    # --- 重要：描画スロットをあらかじめ縦に並べて確保する ---
-    # これにより、後から描画されるグラフが地図のスロットを奪うことを防ぎます
-    slot_map = st.empty()     # 地図専用スロット
-    slot_info = st.empty()    # 情報ヘッダー専用スロット
-    slot_graph = st.empty()   # グラフ専用スロット
-
-    # 1. 地図表示の処理
+    # --- 地図表示セクション（オプション挿入） ---
     is_map_on = st.checkbox("地図表示", value=st.session_state.show_map_state, key="main_show_map_chk")
     st.session_state.show_map_state = is_map_on
     
     if st.session_state.show_map_state:
-        with slot_map.container():
-            show_location_map()
+        show_location_map()
+        # ここで return せず、下の描画まで継続させる
 
-    # 2. 判定ロジック
+    # --- 描画判定ロジック ---
     is_same_coords = (st.session_state.lat == st.session_state.last_drawn_lat and 
                       st.session_state.lon == st.session_state.last_drawn_lon)
-    skip_drawing = False if basho == "地図で指定" else is_same_coords
+    
+    if basho == "地図で指定":
+        skip_drawing = False
+    else:
+        skip_drawing = is_same_coords
 
-    # 3. 情報ヘッダーの処理
-    with slot_info.container():
-        col1, col2 = st.columns([1, 1]) 
-        with col1:
-            handle_current_location_update()
-        with col2:
-            render_header_info(basho) 
+    # --- ヘッダー・現在地表示 ---
+    col1, col2 = st.columns([1, 1]) 
+    with col1:
+        handle_current_location_update()
+    with col2:
+        render_header_info(basho) 
 
-    # 4. グラフ描画の処理
-    with slot_graph.container():
-        if skip_drawing:
-            st.info("🗺️ 座標に変更がないため、グラフの再描画をスキップしました。")
-        else:
-            tz_offset = CONFIG.get("TIMEZONE_OFFSET", 9)
-            tz = timezone(timedelta(hours=tz_offset))
-            now_jst = datetime.now(tz)
+    # --- グラフ描画セクション ---
+    if skip_drawing:
+        st.info("🗺️ 座標に変更がないため、グラフの再描画をスキップしました。")
+    else:
+        tz_offset = CONFIG.get("TIMEZONE_OFFSET", 9)
+        tz = timezone(timedelta(hours=tz_offset))
+        now_jst = datetime.now(tz)
+        
+        img_b64, ratio_info = generate_high_res_graph(
+            st.session_state.lat, 
+            st.session_state.lon, 
+            danger_v, 
+            tuple(sel_dirs), 
+            design_params,
+            now_jst=now_jst
+        )
+        
+        if img_b64:
+            st.session_state.last_drawn_lat = st.session_state.lat
+            st.session_state.last_drawn_lon = st.session_state.lon
             
-            # 生成中メッセージもグラフ用スロット内で表示させる
-            with st.status("グラフを生成中...", expanded=False) as status:
-                img_b64, ratio_info = generate_high_res_graph(
-                    st.session_state.lat, 
-                    st.session_state.lon, 
-                    danger_v, 
-                    tuple(sel_dirs), 
-                    design_params,
-                    now_jst=now_jst
+            display_width = int(design_params.get("width", 10) * CONFIG["PX_PER_INCH"])
+            df_for_icons = fetch_weather_data(st.session_state.lat, st.session_state.lon, 8)
+            if df_for_icons is not None:
+                padding_df = pd.DataFrame({'time': [df_for_icons['time'].iloc[0] - timedelta(hours=i) for i in range(1, 4)][::-1]})
+                df_full = pd.concat([padding_df, df_for_icons], ignore_index=True)
+                
+                icons_html = generate_weather_icons_html(df_full, ratio_info, display_width)
+                graph_html = f'<img src="data:image/png;base64,{img_b64}" style="width: {display_width}px; display: block;">'
+                
+                st.markdown(
+                    f'<div class="scroll-container">'
+                    f'<div style="width: {display_width}px;">'
+                    f'{icons_html}{graph_html}'
+                    f'</div></div>', 
+                    unsafe_allow_html=True
                 )
-                status.update(label="生成完了", state="complete", expanded=False)
-            
-            if img_b64:
-                st.session_state.last_drawn_lat = st.session_state.lat
-                st.session_state.last_drawn_lon = st.session_state.lon
-                
-                display_width = int(design_params.get("width", 10) * CONFIG["PX_PER_INCH"])
-                df_for_icons = fetch_weather_data(st.session_state.lat, st.session_state.lon, 8)
-                
-                if df_for_icons is not None:
-                    padding_df = pd.DataFrame({'time': [df_for_icons['time'].iloc[0] - timedelta(hours=i) for i in range(1, 4)][::-1]})
-                    df_full = pd.concat([padding_df, df_for_icons], ignore_index=True)
-                    
-                    icons_html = generate_weather_icons_html(df_full, ratio_info, display_width)
-                    graph_html = f'<img src="data:image/png;base64,{img_b64}" style="width: {display_width}px; display: block;">'
-                    
-                    st.markdown(
-                        f'<div class="scroll-container">'
-                        f'<div style="width: {display_width}px;">'
-                        f'{icons_html}{graph_html}'
-                        f'</div></div>', 
-                        unsafe_allow_html=True
-                    )
 
     save_settings_to_browser()
     
