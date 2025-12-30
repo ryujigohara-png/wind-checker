@@ -632,16 +632,32 @@ def handle_location_selection():
     
     return basho
 
-#==========================================================================================
+# ==========================================================================================
 # 20. アプリのメインフローを制御するメインルーチン
-#==========================================================================================
+# ==========================================================================================
 def main():
     """
-    地図のON/OFF状態に関わらず、グラフを常に一番下に描画し続ける。
-    地図を消した際にグラフが道連れで消える現象を物理的に解消する。
+    全体のレイアウトと描画ロジックを制御。
+    - 地図の表示切替時にグラフ位置を即座にスライドさせる。
+    - 同一座標かつ10分以内であれば、画像の再生成（generate_high_res_graph）をスキップする。
+    - 生成をスキップしても、セッションに保持した画像を常に表示し続ける。
     """
+    # 1. セッション状態の初期化（前回の状態を保持し、未定義エラーを防ぐ）
+    if 'lat' not in st.session_state: st.session_state.lat = CONFIG["DEFAULT_LAT"]
+    if 'lon' not in st.session_state: st.session_state.lon = CONFIG["DEFAULT_LON"]
+    if 'last_basho' not in st.session_state: st.session_state.last_basho = CONFIG["DEFAULT_BASHO"]
+    if 'show_map_state' not in st.session_state: st.session_state.show_map_state = False
+    if 'last_draw_time' not in st.session_state: st.session_state.last_draw_time = None
+    if 'last_drawn_lat' not in st.session_state: st.session_state.last_drawn_lat = None
+    if 'last_drawn_lon' not in st.session_state: st.session_state.last_drawn_lon = None
+    if 'last_img' not in st.session_state: st.session_state.last_img = None
+    if 'last_ratio' not in st.session_state: st.session_state.last_ratio = None
+    
+    # ブラウザ記憶との同期とフォント設定
+    sync_all_settings()
     setup_font() 
 
+    # 2. UIスタイル定義（正規版準拠）
     st.markdown(f"""
         <style>
             .block-container {{ padding-top: 3.5rem !important; padding-bottom: 0rem !important; }}
@@ -654,65 +670,81 @@ def main():
 
     st.markdown(f'<h1 style="font-size:{CONFIG["TITLE_SIZE"]}px;">⛵ Wind_Checker!</h1>', unsafe_allow_html=True)
     
-    if 'lat' not in st.session_state: st.session_state.lat = CONFIG["DEFAULT_LAT"]
-    if 'lon' not in st.session_state: st.session_state.lon = CONFIG["DEFAULT_LON"]
-    if 'last_basho' not in st.session_state: st.session_state.last_basho = CONFIG["DEFAULT_BASHO"]
-    if 'show_map_state' not in st.session_state: st.session_state.show_map_state = False
-    
-    sync_all_settings()
-
-    # 1. 地点選択（コンボボックス）
+    # 3. 地点選択処理（サブルーチン呼び出し）
     basho = handle_location_selection()
 
-    # 2. 地図セクション：ここを単なる「条件付き表示」にする
-    # 地図をOFFにしても、このif文を通り抜けて下の処理へ進む
+    # 4. 地図表示セクション
+    # 地図のON/OFFが切り替わった場合のみ rerun してレイアウトを詰め直す
     is_map_on = st.checkbox("地図表示", value=st.session_state.show_map_state, key="main_show_map_chk")
-    st.session_state.show_map_state = is_map_on
-    if is_map_on:
+    if is_map_on != st.session_state.show_map_state:
+        st.session_state.show_map_state = is_map_on
+        st.rerun()
+
+    if st.session_state.show_map_state:
         show_location_map()
 
-    # 3. 情報ヘッダー（現在地取得ボタン等）
+    # 5. 情報表示ヘッダー
     col1, col2 = st.columns([0.7, 0.7]) 
     with col1:
         handle_current_location_update()
     with col2:
         render_header_info(basho) 
 
-    # 4. サイドバー設定
+    # 6. デザインパラメータの取得
     design_params = show_sidebar_controls()
     danger_v = design_params.get("danger_v", 10.0)
     sel_dirs = design_params.get("sel_dirs", [])
 
-    # 5. グラフ描画セクション（条件分岐を排除し、常に描画を実行）
-    FIXED_WIDTH = 4000 
-    tz_offset = CONFIG.get("TIMEZONE_OFFSET", 9)
-    tz = timezone(timedelta(hours=tz_offset))
+    # 7. 画像再生成（描き直し）が必要かどうかの判定
+    tz = timezone(timedelta(hours=CONFIG.get("TIMEZONE_OFFSET", 9)))
     now_jst = datetime.now(tz)
     
-    # グラフ生成
-    img_b64, ratio_info = generate_high_res_graph(
-        st.session_state.lat, 
-        st.session_state.lon, 
-        danger_v, 
-        tuple(sel_dirs),
-        design_params,
-        now_jst=now_jst
-    )
+    # 座標が一致しているか
+    is_same_coords = (st.session_state.lat == st.session_state.last_drawn_lat and 
+                      st.session_state.lon == st.session_state.last_drawn_lon)
     
-    if img_b64:
-        # 描画位置の記録
-        st.session_state.last_drawn_lat = st.session_state.lat
-        st.session_state.last_drawn_lon = st.session_state.lon
-        
+    # 10分以内か
+    is_within_10min = False
+    if st.session_state.last_draw_time:
+        elapsed = (now_jst - st.session_state.last_draw_time).total_seconds()
+        if elapsed < 600:  # 600秒 = 10分
+            is_within_10min = True
+
+    # 生成フラグ：地図指定時は強制、それ以外は座標変更か時間超過があれば生成する
+    needs_generate = True
+    if basho != "地図で指定" and is_same_coords and is_within_10min and st.session_state.last_img is not None:
+        needs_generate = False
+
+    # 8. 画像生成処理（必要な時のみ実行）
+    FIXED_WIDTH = 4000 
+    if needs_generate:
+        img_b64, ratio_info = generate_high_res_graph(
+            st.session_state.lat, 
+            st.session_state.lon, 
+            danger_v, 
+            tuple(sel_dirs), 
+            design_params,
+            now_jst=now_jst
+        )
+        if img_b64:
+            # 最新の画像とパラメータをセッションにキャッシュする
+            st.session_state.last_img = img_b64
+            st.session_state.last_ratio = ratio_info
+            st.session_state.last_drawn_lat = st.session_state.lat
+            st.session_state.last_drawn_lon = st.session_state.lon
+            st.session_state.last_draw_time = now_jst
+
+    # 9. グラフの最終描画（画像生成をスキップした場合も、キャッシュから表示）
+    if st.session_state.last_img:
         df_for_icons = fetch_weather_data(st.session_state.lat, st.session_state.lon, 8)
         if df_for_icons is not None:
             padding_df = pd.DataFrame({'time': [df_for_icons['time'].iloc[0] - timedelta(hours=i) for i in range(1, 4)][::-1]})
             df_full = pd.concat([padding_df, df_for_icons], ignore_index=True)
             
-            icons_html = generate_weather_icons_html(df_full, ratio_info, FIXED_WIDTH)
-            graph_html = f'<img src="data:image/png;base64,{img_b64}" style="width: {FIXED_WIDTH}px; display: block;">'
+            # アイコンと画像を横スクロール可能なHTMLに配置
+            icons_html = generate_weather_icons_html(df_full, st.session_state.last_ratio, FIXED_WIDTH)
+            graph_html = f'<img src="data:image/png;base64,{st.session_state.last_img}" style="width: {FIXED_WIDTH}px; display: block;">'
             
-            # スクロールエリアの描画
             st.markdown(
                 f'<div style="overflow-x: auto; background: white; white-space: nowrap;">'
                 f'<div style="width: {FIXED_WIDTH}px;">'
@@ -720,7 +752,8 @@ def main():
                 unsafe_allow_html=True
             )
 
+    # ブラウザへの最終状態の記録
     save_settings_to_browser()
-    
+
 if __name__ == "__main__":
     main()
