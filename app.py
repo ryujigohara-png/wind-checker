@@ -392,10 +392,11 @@ def sync_all_settings():
     読み込み完了時に一度だけ rerun を行い、サイドバーに値を同期する。
     """
     STORAGE_KEY = CONFIG['STORAGE_KEY']
+    # すでに初期化済みの場合は二重実行しない
     if st.session_state.get("initialized"):
         return
 
-    # ブラウザからデータを取得（非同期命令）
+    # ブラウザからデータを取得（JavaScript実行）
     stored_data = streamlit_js_eval(js_expressions=f"localStorage.getItem('{STORAGE_KEY}')", key="init_load_settings_v2")
     
     # 取得が完了するまで（Noneの間）は処理を中断して待つ
@@ -406,7 +407,7 @@ def sync_all_settings():
     if stored_data:
         try:
             data = json.loads(stored_data)
-            # 各設定値をセッションに流し込む
+            # 取得した値をsession_stateに直接流し込む
             st.session_state.lat = float(data.get("lat", CONFIG["DEFAULT_LAT"]))
             st.session_state.lon = float(data.get("lon", CONFIG["DEFAULT_LON"]))
             st.session_state.last_basho = data.get("basho", CONFIG["DEFAULT_BASHO"])
@@ -415,6 +416,9 @@ def sync_all_settings():
             st.session_state.show_wind = data.get("show_wind", CONFIG["SHOW_WIND"])
             st.session_state.show_temp = data.get("show_temp", CONFIG["SHOW_TEMP"])
             st.session_state.show_tide = data.get("show_tide", CONFIG["SHOW_TIDE"])
+            # 【重要】デバッグフラグの復元を追加
+            st.session_state.show_debug = data.get("show_debug", CONFIG.get("SHOW_DEBUG", False))
+            
             st.session_state.width = float(data.get("width", CONFIG["GRAPH_WIDTH"]))
             st.session_state.base_height = float(data.get("base_height", CONFIG["GRAPH_HIGHT"]))
             st.session_state.base_font_size = int(data.get("base_font_size", CONFIG["GRAPH_FONT_SIZE"]))
@@ -427,9 +431,10 @@ def sync_all_settings():
         except Exception:
             pass
 
-    # 読み込み完了フラグを立て、反映のためにリロード
+    # 初期化完了フラグを立てて、サイドバーに値を反映させるためにリロード
     st.session_state.initialized = True
     st.rerun()
+    
     
 #==========================================================================================
 # 16. 現在地取得
@@ -519,15 +524,20 @@ def show_sidebar_controls():
     show_temp = st.sidebar.toggle("気温グラフ", value=st.session_state.get("show_temp", CONFIG["SHOW_TEMP"]))
     show_tide = st.sidebar.toggle("潮位グラフ", value=st.session_state.get("show_tide", CONFIG["SHOW_TIDE"]))
     
-    # デバッグ画面表示の切り替えスイッチを追加
-    show_debug = st.sidebar.toggle("デバッグ用画面表示", value=st.session_state.get("show_debug", CONFIG.get("SHOW_DEBUG", False)))
-    
     width = st.sidebar.slider("全体の横幅 (inch)", 10.0, 30.0, float(st.session_state.get("width", CONFIG["GRAPH_WIDTH"])))
     base_height = st.sidebar.slider("基準縦幅 (inch)", 2.0, 10.0, float(st.session_state.get("base_height", CONFIG["GRAPH_HIGHT"])))
     
+    # --- 3. 開発者のみのメニュー ---
+    st.sidebar.markdown("---")
+    st.sidebar.header("3. 開発者のみのメニュー")
+    
+    # セッションにある現在の値を優先的に初期値として使用
+    current_show_debug = st.session_state.get("show_debug", CONFIG.get("SHOW_DEBUG", False))
+    show_debug = st.sidebar.toggle("デバッグ用画面表示", value=current_show_debug)
+
     if is_dev_url:
         st.sidebar.markdown("---")
-        st.sidebar.header("3. デザイン調整 (Dev)")
+        st.sidebar.header("4. デザイン調整 (Dev)")
         base_font_size = st.sidebar.slider("グラフ内文字", 5, 20, st.session_state.get("base_font_size", CONFIG["GRAPH_FONT_SIZE"]))
         label_font_size = st.sidebar.slider("軸ラベル文字", 5, 20, st.session_state.get("label_font_size", CONFIG["LABEL_SIZE"]))
         label_pad = st.sidebar.slider("ラベル距離", -5, 15, st.session_state.get("label_pad", CONFIG["LABEL_PAD"]))
@@ -556,7 +566,7 @@ def show_sidebar_controls():
         "sel_dirs": sel_dirs, "danger_v": danger_v
     }
     
-    # セッション更新（次回の保存用）
+    # セッション更新（保存ロジックとの同期）
     st.session_state.update({
         "danger_v": danger_v, "sel_dirs": sel_dirs, "show_wind": show_wind, 
         "show_temp": show_temp, "show_tide": show_tide, "show_debug": show_debug,
@@ -606,7 +616,7 @@ def main():
         danger_v = design_params.get("danger_v", CONFIG.get("DEFAULT_DANGER_V", 10.0))
         sel_dirs = design_params.get("sel_dirs", [])
 
-    # ★【最重要修正】サイドバーの受け取り直後にセッションから強制的に最新の選択を読み込む
+    # サイドバーの受け取り直後にセッションから強制的に最新の選択を読み込む
     if "sel_dirs" in st.session_state:
         sel_dirs = st.session_state["sel_dirs"]
     
@@ -676,8 +686,7 @@ def main():
     tz = timezone(timedelta(hours=tz_offset))
     now_jst = datetime.now(tz)
     
-    # --- 3. 診断情報の表示（トグルスイッチに連動） ---
-    # sidebarで設定された show_debug が True の場合のみ表示
+    # --- 3. 診断情報の表示 ---
     if design_params.get("show_debug", False):
         with st.expander("🔍 色付け・設定の診断情報", expanded=True):
             col_diag1, col_diag2 = st.columns(2)
@@ -697,7 +706,6 @@ def main():
             st.write("**4. 取得データの生データ（先頭5件）:**")
             test_df = fetch_weather_data(st.session_state.lat, st.session_state.lon, 8)
             if test_df is not None:
-                # 最新の sel_dirs を使って色を計算
                 test_df = process_wind_data(test_df, list(sel_dirs))
                 st.dataframe(test_df[['time', 'wind_speed_10m', 'dir_name', 'color']].head())
             else:
@@ -717,13 +725,10 @@ def main():
         df_for_icons = fetch_weather_data(st.session_state.lat, st.session_state.lon, 8)
         if df_for_icons is not None:
             display_width = int(design_params.get("width", 10) * CONFIG["PX_PER_INCH"])
-            
             padding_df = pd.DataFrame({'time': [df_for_icons['time'].iloc[0] - timedelta(hours=i) for i in range(1, 4)][::-1]})
             df_full = pd.concat([padding_df, df_for_icons], ignore_index=True)
-            
             icons_html = generate_weather_icons_html(df_full, ratio_info, display_width)
             graph_html = f'<img src="data:image/png;base64,{img_b64}" style="width: {display_width}px; display: block;">'
-            
             st.markdown(
                 f'<div class="scroll-container">'
                 f'<div style="width: {display_width}px;">'
@@ -732,7 +737,7 @@ def main():
                 unsafe_allow_html=True
             )
 
-    # 設定の保存
+    # 設定の保存（ここでもshow_debugが保存されるようになります）
     save_settings_to_browser()
     
 if __name__ == "__main__":
