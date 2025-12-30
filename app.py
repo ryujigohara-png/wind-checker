@@ -624,11 +624,12 @@ def handle_location_selection():
         elif basho == "現在地":
             st.session_state.show_map_state = False
         else:
+            # 固定地点の場合は座標をマスターから取得
             st.session_state.lat, st.session_state.lon = master[basho]
             st.session_state.show_map_state = False
             
         st.cache_data.clear() 
-        # 重要：リロード前に現在の「地図ON」の状態をブラウザ記憶へ書き込む
+        # リロード前に現在の「地図ON」の状態をブラウザ記憶へ書き込み、一瞬で消えるのを防ぐ
         save_settings_to_browser()
         st.rerun()
     
@@ -677,23 +678,24 @@ def main():
     # --- 2. 地点選択の実行 ---
     basho = handle_location_selection()
 
-    # --- 3. 地図表示の制御（判定順序を最優先に変更） ---
-    # コンボボックスでの操作を反映させるため value を指定
+    # --- 3. 地図表示の制御 ---
     show_map = st.checkbox("地図表示", value=st.session_state.show_map_state, key="main_show_map_chk")
     st.session_state.show_map_state = show_map
     
     if st.session_state.show_map_state:
-        # 地図表示がONの場合は、ここで地図を表示して終了(return)する
-        # これにより、下の「スキップしました」判定に到達するのを防ぐ
+        # 地図を表示する（「地図で指定」時は無条件でここを通る）
         show_location_map()
-        save_settings_to_browser()
-        return
+        # ここで return せず、下のグラフ描画まで継続させる
 
-    # --- 4. 描画判定ロジック（地図がOFFの時のみ実行される） ---
+    # --- 4. 描画判定ロジック ---
     is_same_coords = (st.session_state.lat == st.session_state.last_drawn_lat and 
                       st.session_state.lon == st.session_state.last_drawn_lon)
     
-    skip_drawing = (basho == "地図で指定" and is_same_coords)
+    # 「地図で指定」の場合は、座標に関わらず無条件で描画する（skipをFalseにする）
+    if basho == "地図で指定":
+        skip_drawing = False
+    else:
+        skip_drawing = is_same_coords
 
     # 中段ボタンの配置
     col1, col2 = st.columns([1, 1]) 
@@ -705,7 +707,7 @@ def main():
     if skip_drawing:
         st.info("🗺️ 座標に変更がないため、グラフの再描画をスキップしました。")
     else:
-        # 通常の描画フロー
+        # 通常の描画フロー（地図表示ONの時も実行される）
         tz_offset = CONFIG.get("TIMEZONE_OFFSET", 9)
         tz = timezone(timedelta(hours=tz_offset))
         now_jst = datetime.now(tz)
