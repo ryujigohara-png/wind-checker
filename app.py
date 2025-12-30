@@ -637,6 +637,7 @@ def main():
     now_jst = datetime.now(timezone(timedelta(hours=9)))
 
     # --- 診断用一時表示（後で削除してください） -----------------------------------------------
+    # --- 診断用一時表示（main関数内の適切な場所に貼り付けてください） ---
     with st.expander("🔍 色付け・設定の診断情報", expanded=True):
         col_diag1, col_diag2 = st.columns(2)
         with col_diag1:
@@ -647,22 +648,21 @@ def main():
             
         with col_diag2:
             st.write("**3. システム定義の全方位リスト:**")
-            # ALL_DIRECTIONS が定義されているか確認
             if 'ALL_DIRECTIONS' in globals():
                 st.code(ALL_DIRECTIONS)
             else:
                 st.error("ALL_DIRECTIONS が定義されていません")
-    
-        # 実際にデータフレームの中身を確認（最初の5件だけ）
+
         st.write("**4. 取得データの生データ（先頭5件）:**")
         test_df = fetch_weather_data(st.session_state.lat, st.session_state.lon, 8)
         if test_df is not None:
-            # process_wind_dataを通して色が決まる過程を再現
+            # ここで実際に色判定が走るかテスト
             test_df = process_wind_data(test_df, list(sel_dirs))
             st.dataframe(test_df[['time', 'wind_speed_10m', 'dir_name', 'color']].head())
         else:
             st.error("データの取得に失敗しています")
-# ------- 診断用一時表示（後で削除してください） -----------------------------------------------
+    # ----------------------------------------------
+    # ------- 診断用一時表示（後で削除してください） -----------------------------------------------
     
     
     img_b64, ratio_info = generate_high_res_graph(
