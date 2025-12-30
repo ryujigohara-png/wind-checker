@@ -636,12 +636,11 @@ def handle_location_selection():
 #==========================================================================================
 def main():
     """
-    正規版の安定した順序をベースに、地図とグラフが重ならないよう配置。
-    グラフ幅は 4000px 定数とし、地図指定時は必ず描画を更新する。
+    地図のON/OFF状態に関わらず、グラフを常に一番下に描画し続ける。
+    地図を消した際にグラフが道連れで消える現象を物理的に解消する。
     """
     setup_font() 
 
-    # スタイル定義（正規版の数値を優先し、安定性を確保）
     st.markdown(f"""
         <style>
             .block-container {{ padding-top: 3.5rem !important; padding-bottom: 0rem !important; }}
@@ -654,7 +653,6 @@ def main():
 
     st.markdown(f'<h1 style="font-size:{CONFIG["TITLE_SIZE"]}px;">⛵ Wind_Checker!</h1>', unsafe_allow_html=True)
     
-    # セッション状態の管理
     if 'lat' not in st.session_state: st.session_state.lat = CONFIG["DEFAULT_LAT"]
     if 'lon' not in st.session_state: st.session_state.lon = CONFIG["DEFAULT_LON"]
     if 'last_basho' not in st.session_state: st.session_state.last_basho = CONFIG["DEFAULT_BASHO"]
@@ -662,77 +660,64 @@ def main():
     
     sync_all_settings()
 
-    # 1. 地点選択処理（サブルーチン）
+    # 1. 地点選択（コンボボックス）
     basho = handle_location_selection()
 
-    # 2. 地図表示（正規版と同じく、チェックボックスの直後に地図を配置）
-    show_map = st.checkbox("地図表示", value=st.session_state.show_map_state, key="main_show_map_chk")
-    st.session_state.show_map_state = show_map
-    if show_map:
+    # 2. 地図セクション：ここを単なる「条件付き表示」にする
+    # 地図をOFFにしても、このif文を通り抜けて下の処理へ進む
+    is_map_on = st.checkbox("地図表示", value=st.session_state.show_map_state, key="main_show_map_chk")
+    st.session_state.show_map_state = is_map_on
+    if is_map_on:
         show_location_map()
 
-    # 3. 座標情報・更新ボタン（正規版の 0.7:0.7 カラム配置）
+    # 3. 情報ヘッダー（現在地取得ボタン等）
     col1, col2 = st.columns([0.7, 0.7]) 
     with col1:
         handle_current_location_update()
     with col2:
         render_header_info(basho) 
 
-    # 4. サイドバー設定の取得
+    # 4. サイドバー設定
     design_params = show_sidebar_controls()
     danger_v = design_params.get("danger_v", 10.0)
     sel_dirs = design_params.get("sel_dirs", [])
 
-    # 5. 描画判定ロジック
-    # 最後に描画した際の座標を取得
-    last_lat = st.session_state.get('last_drawn_lat')
-    last_lon = st.session_state.get('last_drawn_lon')
-    
-    is_same_coords = (st.session_state.lat == last_lat and st.session_state.lon == last_lon)
-    
-    # 地図で指定時は強制描画、それ以外は座標変更時のみ
-    skip_drawing = False if basho == "地図で指定" else is_same_coords
-
-    # 6. グラフ描画（定数 4000px）
+    # 5. グラフ描画セクション（条件分岐を排除し、常に描画を実行）
     FIXED_WIDTH = 4000 
+    tz_offset = CONFIG.get("TIMEZONE_OFFSET", 9)
+    tz = timezone(timedelta(hours=tz_offset))
+    now_jst = datetime.now(tz)
     
-    if skip_drawing:
-        st.info("🗺️ 座標に変更がないため、グラフの再描画をスキップしました。")
-    else:
-        tz_offset = CONFIG.get("TIMEZONE_OFFSET", 9)
-        tz = timezone(timedelta(hours=tz_offset))
-        now_jst = datetime.now(tz)
+    # グラフ生成
+    img_b64, ratio_info = generate_high_res_graph(
+        st.session_state.lat, 
+        st.session_state.lon, 
+        danger_v, 
+        tuple(sel_dirs),
+        design_params,
+        now_jst=now_jst
+    )
+    
+    if img_b64:
+        # 描画位置の記録
+        st.session_state.last_drawn_lat = st.session_state.lat
+        st.session_state.last_drawn_lon = st.session_state.lon
         
-        img_b64, ratio_info = generate_high_res_graph(
-            st.session_state.lat, 
-            st.session_state.lon, 
-            danger_v, 
-            tuple(sel_dirs),
-            design_params,
-            now_jst=now_jst
-        )
-        
-        if img_b64:
-            # 描画した座標を保存
-            st.session_state.last_drawn_lat = st.session_state.lat
-            st.session_state.last_drawn_lon = st.session_state.lon
+        df_for_icons = fetch_weather_data(st.session_state.lat, st.session_state.lon, 8)
+        if df_for_icons is not None:
+            padding_df = pd.DataFrame({'time': [df_for_icons['time'].iloc[0] - timedelta(hours=i) for i in range(1, 4)][::-1]})
+            df_full = pd.concat([padding_df, df_for_icons], ignore_index=True)
             
-            df_for_icons = fetch_weather_data(st.session_state.lat, st.session_state.lon, 8)
-            if df_for_icons is not None:
-                padding_df = pd.DataFrame({'time': [df_for_icons['time'].iloc[0] - timedelta(hours=i) for i in range(1, 4)][::-1]})
-                df_full = pd.concat([padding_df, df_for_icons], ignore_index=True)
-                
-                # 4000px 定数を渡して HTML 生成
-                icons_html = generate_weather_icons_html(df_full, ratio_info, FIXED_WIDTH)
-                graph_html = f'<img src="data:image/png;base64,{img_b64}" style="width: {FIXED_WIDTH}px; display: block;">'
-                
-                # 正規版の安定したスクロール表示
-                st.markdown(
-                    f'<div style="overflow-x: auto; background: white; white-space: nowrap;">'
-                    f'<div style="width: {FIXED_WIDTH}px;">'
-                    f'{icons_html}{graph_html}</div></div>', 
-                    unsafe_allow_html=True
-                )
+            icons_html = generate_weather_icons_html(df_full, ratio_info, FIXED_WIDTH)
+            graph_html = f'<img src="data:image/png;base64,{img_b64}" style="width: {FIXED_WIDTH}px; display: block;">'
+            
+            # スクロールエリアの描画
+            st.markdown(
+                f'<div style="overflow-x: auto; background: white; white-space: nowrap;">'
+                f'<div style="width: {FIXED_WIDTH}px;">'
+                f'{icons_html}{graph_html}</div></div>', 
+                unsafe_allow_html=True
+            )
 
     save_settings_to_browser()
     
