@@ -631,17 +631,17 @@ def handle_location_selection():
     
     return basho
 
-# ==========================================================================================
-# 20. アプリのメインフローを制御するメインルーチン（正規版構造を復元）
-# ==========================================================================================
+#==========================================================================================
+# 20. アプリのメインフローを制御するメインルーチン
+#==========================================================================================
 def main():
     """
-    正規版の安定したレイアウト構造をベースに、地点選択ロジックを統合。
-    地図とグラフが物理的に重ならない順序を厳守する。
+    正規版の安定した順序をベースに、地図とグラフが重ならないよう配置。
+    グラフ幅は 4000px 定数とし、地図指定時は必ず描画を更新する。
     """
-    setup_font() # 正規版に合わせて引数なしで呼び出し
+    setup_font() 
 
-    # スタイル定義（正規版の数値を優先）
+    # スタイル定義（正規版の数値を優先し、安定性を確保）
     st.markdown(f"""
         <style>
             .block-container {{ padding-top: 3.5rem !important; padding-bottom: 0rem !important; }}
@@ -654,7 +654,7 @@ def main():
 
     st.markdown(f'<h1 style="font-size:{CONFIG["TITLE_SIZE"]}px;">⛵ Wind_Checker!</h1>', unsafe_allow_html=True)
     
-    # セッション初期化
+    # セッション状態の管理
     if 'lat' not in st.session_state: st.session_state.lat = CONFIG["DEFAULT_LAT"]
     if 'lon' not in st.session_state: st.session_state.lon = CONFIG["DEFAULT_LON"]
     if 'last_basho' not in st.session_state: st.session_state.last_basho = CONFIG["DEFAULT_BASHO"]
@@ -662,34 +662,40 @@ def main():
     
     sync_all_settings()
 
-    # 1. 地点選択（サブルーチン呼び出し）
+    # 1. 地点選択処理（サブルーチン）
     basho = handle_location_selection()
 
-    # 2. 地図表示（正規版の配置：チェックボックスの直後に表示）
+    # 2. 地図表示（正規版と同じく、チェックボックスの直後に地図を配置）
     show_map = st.checkbox("地図表示", value=st.session_state.show_map_state, key="main_show_map_chk")
     st.session_state.show_map_state = show_map
     if show_map:
         show_location_map()
 
-    # 3. ボタン配置（正規版の 0.7+0.7 カラム配置を復元）
+    # 3. 座標情報・更新ボタン（正規版の 0.7:0.7 カラム配置）
     col1, col2 = st.columns([0.7, 0.7]) 
     with col1:
         handle_current_location_update()
     with col2:
         render_header_info(basho) 
 
-    # 4. サイドバー設定の取得（正規版のタイミング）
-    # design_params を使用しているサブルーチンのために取得
+    # 4. サイドバー設定の取得
     design_params = show_sidebar_controls()
     danger_v = design_params.get("danger_v", 10.0)
     sel_dirs = design_params.get("sel_dirs", [])
 
-    # 5. 描画スキップ判定（ベータ版の仕様：地図で指定時は強制描画）
-    is_same_coords = (st.session_state.lat == st.session_state.get('last_drawn_lat') and 
-                      st.session_state.lon == st.session_state.get('last_drawn_lon'))
+    # 5. 描画判定ロジック
+    # 最後に描画した際の座標を取得
+    last_lat = st.session_state.get('last_drawn_lat')
+    last_lon = st.session_state.get('last_drawn_lon')
+    
+    is_same_coords = (st.session_state.lat == last_lat and st.session_state.lon == last_lon)
+    
+    # 地図で指定時は強制描画、それ以外は座標変更時のみ
     skip_drawing = False if basho == "地図で指定" else is_same_coords
 
-    # 6. グラフ描画セクション（正規版のHTML構造を優先）
+    # 6. グラフ描画（定数 4000px）
+    FIXED_WIDTH = 4000 
+    
     if skip_drawing:
         st.info("🗺️ 座標に変更がないため、グラフの再描画をスキップしました。")
     else:
@@ -707,6 +713,7 @@ def main():
         )
         
         if img_b64:
+            # 描画した座標を保存
             st.session_state.last_drawn_lat = st.session_state.lat
             st.session_state.last_drawn_lon = st.session_state.lon
             
@@ -715,18 +722,19 @@ def main():
                 padding_df = pd.DataFrame({'time': [df_for_icons['time'].iloc[0] - timedelta(hours=i) for i in range(1, 4)][::-1]})
                 df_full = pd.concat([padding_df, df_for_icons], ignore_index=True)
                 
-                # 正規版の引数構成で呼び出し
-                icons_html = generate_weather_icons_html(df_full, ratio_info)
-                graph_html = f'<img src="data:image/png;base64,{img_b64}" style="width: 100%; min-width: 800px; display: block;">'
+                # 4000px 定数を渡して HTML 生成
+                icons_html = generate_weather_icons_html(df_full, ratio_info, FIXED_WIDTH)
+                graph_html = f'<img src="data:image/png;base64,{img_b64}" style="width: {FIXED_WIDTH}px; display: block;">'
                 
-                # 正規版のシンプルなスタイルで表示
+                # 正規版の安定したスクロール表示
                 st.markdown(
                     f'<div style="overflow-x: auto; background: white; white-space: nowrap;">'
-                    f'{icons_html}{graph_html}</div>', 
+                    f'<div style="width: {FIXED_WIDTH}px;">'
+                    f'{icons_html}{graph_html}</div></div>', 
                     unsafe_allow_html=True
                 )
 
-    save_settings_to_browser()    
+    save_settings_to_browser()
     
 if __name__ == "__main__":
     main()
