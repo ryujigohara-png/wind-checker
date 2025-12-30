@@ -186,17 +186,31 @@ def get_x_axis_formatter():
 #==========================================================================================
 # 8. グラフの共通軸設定を適用するサブルーチン
 #==========================================================================================
+#==========================================================================================
+# 12. 軸の共通設定を適用するサブルーチン
+#==========================================================================================
 def apply_common_axis_settings(ax, df, formatter, now_jst, design_params):
-    ax.axvline(now_jst, color='blue', linestyle='-', alpha=0.6, linewidth=CONFIG["VLINE_WIDTH"])
+    # 青い現在時刻ライン（now_jst が None の場合は描画をスキップしてエラー回避）
+    if now_jst is not None:
+        # タイムゾーン情報を正規化して描画
+        line_time = now_jst.replace(tzinfo=None) if hasattr(now_jst, 'replace') else now_jst
+        ax.axvline(line_time, color='blue', linestyle='-', alpha=0.6, linewidth=CONFIG.get("VLINE_WIDTH", 1.25))
+    
+    # 目盛りの設定（修復中コードの仕様を維持）
     ax.xaxis.set_major_locator(mdates.HourLocator(byhour=range(0, 24, 3)))
     ax.xaxis.set_major_formatter(plt.FuncFormatter(formatter))
     ax.xaxis.set_minor_locator(mdates.HourLocator(interval=1))
+    
+    # 範囲設定
     ax.set_xlim(df['time'].iloc[0], df['time'].iloc[-1])
+    
+    # グリッド設定
     ax.grid(True, which='major', linestyle=':', alpha=0.6, color='#000000')
     ax.grid(True, which='minor', linestyle=':', alpha=0.2, color='#888888')
     
-    l_size = design_params.get("label_font_size", CONFIG["LABEL_SIZE"])
-    l_pad = design_params.get("label_pad", CONFIG["LABEL_PAD"])
+    # フォントサイズ設定（design_params から取得、なければ CONFIG から取得）
+    l_size = design_params.get("label_font_size", CONFIG.get("LABEL_SIZE", 9))
+    l_pad = design_params.get("label_pad", CONFIG.get("LABEL_PAD", 0))
     
     ax.tick_params(axis='x', which='major', labelsize=l_size, pad=l_pad)
     ax.tick_params(axis='y', labelsize=l_size)
@@ -276,42 +290,41 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
     df = fetch_weather_data(lat, lon, 8)
     if df is None: return None, (0, 0)
     
-    # 2. グラフの左側に余白を作るためのパディング処理
+    # 2. パディング処理
     padding_df = pd.DataFrame({'time': [df['time'].iloc[0] - timedelta(hours=i) for i in range(1, 4)][::-1]})
     df = pd.concat([padding_df, df], ignore_index=True)
     
-    # ★重要：ここで選択された風向に対して色付けフラグを立てる
+    # --- 【色付け復旧】 ---
     if 'process_wind_data' in globals():
         df = process_wind_data(df, list(selected_dirs_tuple))
     
-    # 3. グラフ領域の作成（design_paramsからサイズを取得）
-    fig, axes = plt.subplots(3, 1, 
-                             figsize=(design_params.get("width", 10), design_params.get("height", 8)), 
-                             dpi=CONFIG["DPI"], 
-                             gridspec_kw={'height_ratios': CONFIG["HEIGHT_RATIOS"]})
+    # 3. グラフ領域の作成
+    h_ratios = CONFIG.get("HEIGHT_RATIOS", CONFIG.get("DEFAULT_RATIOS", [4.4, 1.2, 0.8]))
+    fig, axes = plt.subplots(
+        3, 1, 
+        figsize=(design_params.get("width", 20), design_params.get("height", 3.0)), 
+        dpi=CONFIG.get("DPI", 200), 
+        gridspec_kw={'height_ratios': h_ratios}
+    )
     plt.subplots_adjust(hspace=0.6)
     
     # 4. 軸のフォーマッター取得
     formatter = get_x_axis_formatter()
     
     # 5. 各チャートの描画
-    # render_wind_bar_chart の内部で、df内の色付けフラグを見て色を変える仕様のはずです
     render_wind_bar_chart(axes[0], df, danger_v, 3)
     render_temp_line_chart(axes[1], df)
     render_tide_curve_chart(axes[2], df)
 
-    # 6. 共通設定（ここで青い現在時刻ラインが引かれます）
+    # 6. 共通設定（引数を修復中の定義に完全に合わせます）
     for ax in axes:
-        # now_jst が None でない場合のみラインを引く
-        apply_common_axis_settings(ax, df, formatter, now_jst)
+        # ベータ版の定義に合わせ、now_jst と design_params を両方渡します
+        apply_common_axis_settings(ax, df, formatter, now_jst, design_params)
 
     fig.tight_layout() 
     pos = axes[0].get_position() 
-    
-    # 天気マーク配置用の比率情報を返す
     ratio_info = (pos.x0, pos.width / (len(df) - 1))
     
-    # 7. 画像化
     buf = io.BytesIO()
     fig.savefig(buf, format="png", bbox_inches=None, pad_inches=0)
     plt.close(fig) 
