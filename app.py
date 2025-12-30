@@ -513,7 +513,8 @@ def show_sidebar_controls():
         "show_wind": show_wind, "show_temp": show_temp, "show_tide": show_tide,
         "show_w_text": st.session_state.get("show_w_text", CONFIG["SHOW_W_TEXT"]),
         "show_dir_name": st.session_state.get("show_dir_name", CONFIG["SHOW_DIR_NAME"]),
-        "ratios": ratios, "graph_dpi": st.session_state.get("graph_dpi", 200)
+        "ratios": ratios, "graph_dpi": st.session_state.get("graph_dpi", 200),
+        "sel_dirs": sel_dirs, "danger_v": danger_v # 色付けに必要な戻り値を辞書に追加
     }
     base_ratio_total = design_params["ratios"][0] + design_params["ratios"][1]
     fixed_unit_h = base_height / base_ratio_total 
@@ -527,7 +528,8 @@ def show_sidebar_controls():
         "show_temp": show_temp, "show_tide": show_tide, "width": width, 
         "base_height": base_height, "base_font_size": base_font_size,
         "label_font_size": label_font_size, "label_pad": label_pad, 
-        "hspace": hspace, "ratios": ratios
+        "hspace": hspace, "ratios": ratios,
+        "selected_dirs": sel_dirs
     })
     return design_params
 
