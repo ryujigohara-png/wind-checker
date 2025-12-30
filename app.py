@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# 最終更新 2025.12.30 1333 ベータ版　復元版
+# 最終更新 2025.12.30 1500 ベータ版　復元版 AIが認識しているもの
 
 import streamlit as st
 import requests
@@ -602,7 +602,7 @@ def main():
     if 'lat' not in st.session_state: st.session_state.lat = CONFIG["DEFAULT_LAT"]
     if 'lon' not in st.session_state: st.session_state.lon = CONFIG["DEFAULT_LON"]
     if 'last_basho' not in st.session_state: st.session_state.last_basho = CONFIG["DEFAULT_BASHO"]
-    # 最後にグラフを描画した座標を保持（初期値は現在の座標）
+    # 最後にグラフを描画した座標を保持するための変数（初期値はNone）
     if 'last_drawn_lat' not in st.session_state: st.session_state.last_drawn_lat = None
     if 'last_drawn_lon' not in st.session_state: st.session_state.last_drawn_lon = None
     
@@ -610,18 +610,12 @@ def main():
     sync_all_settings()
     
     # --- 1. サイドバーコントロールの取得 ---
-    sidebar_res = show_sidebar_controls()
+    # 各ウィジェットに一意のkeyを設定し、ID衝突を回避
+    design_params = show_sidebar_controls()
     
-    if isinstance(sidebar_res, tuple) and len(sidebar_res) == 3:
-        danger_v, sel_dirs, design_params = sidebar_res
-    else:
-        design_params = sidebar_res
-        danger_v = design_params.get("danger_v", CONFIG.get("DEFAULT_DANGER_V", 10.0))
-        sel_dirs = design_params.get("sel_dirs", [])
-
-    # ★【最重要修正】サイドバーの受け取り直後にセッションから強制的に最新の選択を読み込む
-    if "sel_dirs" in st.session_state:
-        sel_dirs = st.session_state["sel_dirs"]
+    # サイドバーから反映された値を明示的に取得
+    danger_v = design_params.get("danger_v", CONFIG.get("DEFAULT_DANGER_V", 10.0))
+    sel_dirs = design_params.get("sel_dirs", [])
     
     # フォントセットアップ
     setup_font(design_params.get("base_font_size", 14))
@@ -659,7 +653,8 @@ def main():
     options_list = list(display_options.keys())
     default_idx = options_list.index(current_display_val) if current_display_val in options_list else 0
 
-    selected_display = st.selectbox("地点を選択してください", options_list, index=default_idx)
+    # UIの安定性のためにkeyを付与
+    selected_display = st.selectbox("地点を選択してください", options_list, index=default_idx, key="main_loc_sel")
     basho = display_options[selected_display]
 
     if basho != st.session_state.last_basho:
@@ -667,58 +662,51 @@ def main():
         if basho not in ["地図で指定", "現在地"]:
             st.session_state.lat, st.session_state.lon = master[basho]
         if basho == "地図で指定":
-            # 「地図で指定」が選ばれたら強制的に地図表示フラグを立てる
+            # 「地図で指定」選択時に自動的に地図を開く
             st.session_state.show_map_state = True
         st.cache_data.clear() 
         st.rerun()
 
-    # 地図表示
-    show_map = st.checkbox("地図表示", value=st.session_state.get('show_map_state', False))
+    # 地図表示トグル
+    show_map = st.checkbox("地図表示", value=st.session_state.get('show_map_state', False), key="main_show_map_chk")
     st.session_state.show_map_state = show_map
+    
     if show_map:
+        # 地図表示中は描画リソースを節約するため、ここで中断する
         show_location_map()
-        # 地図表示中はここで処理を中断（以降の診断情報やグラフ描画を行わない）
         save_settings_to_browser()
         return
 
-    # --- 描画スキップ判定ロジック ---
-    # 「地図で指定」モードかつ、座標が前回描画時と全く同じ場合は、グラフ描画を行わない
+    # --- 描画判定ロジック ---
+    # 座標が最後に描画した時と同じかチェック
     is_same_coords = (st.session_state.lat == st.session_state.last_drawn_lat and 
                       st.session_state.lon == st.session_state.last_drawn_lon)
     
-    if basho == "地図で指定" and is_same_coords:
-        st.info("🗺️ 座標に変更がないため、グラフの再描画をスキップしました。場所を変更するには再度「地図表示」をONにしてください。")
-        # 中段ボタン（現在地取得など）は表示したいので、以降の描画処理のみを制限する
-        skip_drawing = True
-    else:
-        skip_drawing = False
+    # 「地図で指定」時のみ、座標変更がない場合にスキップフラグを立てる
+    skip_drawing = (basho == "地図で指定" and is_same_coords)
 
-    # 中段ボタン
+    # 中段ボタンの配置
     col1, col2 = st.columns([1, 1]) 
     with col1:
         handle_current_location_update()
     with col2:
         render_header_info(basho) 
 
-    # スキップ対象外の場合のみ、グラフを描画する
-    if not skip_drawing:
-        # --- 2. 時刻の設定 ---
+    if skip_drawing:
+        st.info("🗺️ 座標に変更がないため、グラフの再描画をスキップしました。")
+    else:
+        # 通常の描画フロー
         tz_offset = CONFIG.get("TIMEZONE_OFFSET", 9)
         tz = timezone(timedelta(hours=tz_offset))
         now_jst = datetime.now(tz)
         
-        # --- 3. 診断情報の表示 ---
+        # 診断情報の表示
         if design_params.get("show_debug", False):
-            with st.expander("🔍 色付け・設定の診断情報", expanded=True):
-                col_diag1, col_diag2 = st.columns(2)
-                with col_diag1:
-                    st.write("**1. サイドバーから渡された風向:**")
-                    st.code(sel_dirs)
-                    st.write("**2. 危険風速の設定値:**")
-                    st.code(danger_v)
-                # ...（中略なしで本来はここに全診断情報が入るが、今回は制御フローに集中するため枠組みを維持）
+            with st.expander("🔍 デバッグ診断", expanded=True):
+                st.write(f"現在の地点: {basho} ({st.session_state.lat}, {st.session_state.lon})")
+                st.write(f"危険ライン: {danger_v} m/s / 対象風向: {sel_dirs}")
         
-        # --- 4. グラフ描画 ---
+        # 高解像度グラフ生成
         img_b64, ratio_info = generate_high_res_graph(
             st.session_state.lat, 
             st.session_state.lon, 
@@ -729,17 +717,20 @@ def main():
         )
         
         if img_b64:
-            # 描画に成功したら、この座標を「最後に描画した座標」として記録
+            # 描画が完了したら「最後に描画した座標」を更新
             st.session_state.last_drawn_lat = st.session_state.lat
             st.session_state.last_drawn_lon = st.session_state.lon
             
+            # アイコンとグラフの表示
+            display_width = int(design_params.get("width", 10) * CONFIG["PX_PER_INCH"])
             df_for_icons = fetch_weather_data(st.session_state.lat, st.session_state.lon, 8)
             if df_for_icons is not None:
-                display_width = int(design_params.get("width", 10) * CONFIG["PX_PER_INCH"])
                 padding_df = pd.DataFrame({'time': [df_for_icons['time'].iloc[0] - timedelta(hours=i) for i in range(1, 4)][::-1]})
                 df_full = pd.concat([padding_df, df_for_icons], ignore_index=True)
+                
                 icons_html = generate_weather_icons_html(df_full, ratio_info, display_width)
                 graph_html = f'<img src="data:image/png;base64,{img_b64}" style="width: {display_width}px; display: block;">'
+                
                 st.markdown(
                     f'<div class="scroll-container">'
                     f'<div style="width: {display_width}px;">'
@@ -748,7 +739,7 @@ def main():
                     unsafe_allow_html=True
                 )
 
-    # 設定の保存
+    # 最終的な設定をブラウザに保存
     save_settings_to_browser()
     
 if __name__ == "__main__":
