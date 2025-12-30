@@ -475,11 +475,15 @@ def show_sidebar_controls():
     st.sidebar.header("1. 判定・表示設定")
     danger_v = st.sidebar.number_input("危険風速ライン(m/s)", value=st.session_state.get("danger_v", CONFIG["DEFAULT_DANGER_V"]), step=0.5)
     st.sidebar.write("色付風向選択")
+    
+    # --- 読込ルーチン(15番)で復元されたデータをサイドバーに転記するための修正 ---
     saved_dirs = st.session_state.get("sel_dirs", CONFIG["DEFAULT_DIRS"])
+    
     sel_dirs = []
     cols = st.sidebar.columns(2)
     for i, d in enumerate(ALL_DIRECTIONS):
         with cols[i % 2]:
+            # sync_all_settingsで復元された saved_dirs の中身を見てチェック状態を決める
             if st.sidebar.checkbox(d, value=(d in saved_dirs), key=f"chk_{d}"): sel_dirs.append(d)
     st.sidebar.markdown("---")
     st.sidebar.header("2. グラフ表示切替")
@@ -514,7 +518,7 @@ def show_sidebar_controls():
         "show_w_text": st.session_state.get("show_w_text", CONFIG["SHOW_W_TEXT"]),
         "show_dir_name": st.session_state.get("show_dir_name", CONFIG["SHOW_DIR_NAME"]),
         "ratios": ratios, "graph_dpi": st.session_state.get("graph_dpi", 200),
-        "sel_dirs": sel_dirs, "danger_v": danger_v # 色付けに必要な戻り値を辞書に追加
+        "sel_dirs": sel_dirs, "danger_v": danger_v
     }
     base_ratio_total = design_params["ratios"][0] + design_params["ratios"][1]
     fixed_unit_h = base_height / base_ratio_total 
@@ -532,7 +536,7 @@ def show_sidebar_controls():
         "selected_dirs": sel_dirs
     })
     return design_params
-
+    
 #==========================================================================================
 # 18_x. ヘッダー情報（更新時刻等）を描画するサブルーチン
 #==========================================================================================
