@@ -468,35 +468,33 @@ def save_settings_to_browser():
     components.html(f"<script>localStorage.setItem('{CONFIG['STORAGE_KEY']}', '{json_data}');</script>", height=0)
 
 # ======================================================================================
-# 18. サイドバー制御（確実な同期版）
+# 18. サイドバー制御（復活・完全同期版）
 # ======================================================================================
 def show_sidebar_controls():
     is_dev_url = st.query_params.get("mode") == "dev"
     st.sidebar.header("1. 判定・表示設定")
     
-    danger_v = st.sidebar.number_input("危険風速ライン(m/s)", value=st.session_state.get("danger_v", CONFIG["DEFAULT_DANGER_V"]), step=0.5)
+    # 【復活の核心】15番で復元された値を最優先、なければCONFIG
+    # これにより、リロード後の2回目の実行でブラウザの値が確実に反映されます
+    current_sel_dirs = st.session_state.get("sel_dirs", CONFIG["DEFAULT_DIRS"])
+    current_danger_v = st.session_state.get("danger_v", CONFIG["DEFAULT_DANGER_V"])
+
+    danger_v = st.sidebar.number_input("危険風速ライン(m/s)", value=current_danger_v, step=0.5)
     
     st.sidebar.write("色付風向選択")
-    # 15番の読み込みルーチン(sync_all_settings)で復元された値を優先参照
-    # セッションにまだない場合は CONFIG から取得
-    saved_dirs = st.session_state.get("sel_dirs", CONFIG["DEFAULT_DIRS"])
     
     sel_dirs = []
     cols = st.sidebar.columns(2)
     for i, d in enumerate(ALL_DIRECTIONS):
         with cols[i % 2]:
-            # --- ここが修正の核心 ---
-            # 各チェックボックスの「現在の状態（key=chk_北）」を直接参照し、
-            # リロード直後でまだ key が存在しない場合のみ saved_dirs を見ます。
-            # これにより、ブラウザから届いた値が確実にサイドバーへ転記されます。
-            default_val = (d in saved_dirs)
-            is_checked = st.sidebar.checkbox(d, value=default_val, key=f"chk_{d}")
-            if is_checked:
+            # checkboxの初期値(value)をブラウザからの復元値(current_sel_dirs)に固定
+            # keyを付与することで、Streamlitが再実行時に状態を正しく管理します
+            if st.sidebar.checkbox(d, value=(d in current_sel_dirs), key=f"chk_{d}"):
                 sel_dirs.append(d)
     
     st.sidebar.markdown("---")
     st.sidebar.header("2. グラフ表示切替")
-    # 以下の既存ロジックは一切変更・省略しません
+    # 以下のトグルやスライダーも同様に session_state を優先参照するように徹底
     show_wind = st.sidebar.toggle("風向・風速グラフ", value=st.session_state.get("show_wind", CONFIG["SHOW_WIND"]))
     show_temp = st.sidebar.toggle("気温グラフ", value=st.session_state.get("show_temp", CONFIG["SHOW_TEMP"]))
     show_tide = st.sidebar.toggle("潮位グラフ", value=st.session_state.get("show_tide", CONFIG["SHOW_TIDE"]))
@@ -533,6 +531,7 @@ def show_sidebar_controls():
         "sel_dirs": sel_dirs, "danger_v": danger_v
     }
     
+    # グラフ高さ計算（ロジック維持）
     base_ratio_total = design_params["ratios"][0] + design_params["ratios"][1]
     fixed_unit_h = base_height / base_ratio_total 
     auto_height = (0.45 if show_wind else 0.0)
@@ -541,7 +540,7 @@ def show_sidebar_controls():
     if show_tide: auto_height += design_params["ratios"][2] * fixed_unit_h
     design_params["height"] = auto_height
     
-    # セッション更新：17番の保存ルーチンがこれを参照してブラウザを上書きします
+    # セッション更新：17番の保存ルーチンがここを見てブラウザへ保存します
     st.session_state.update({
         "danger_v": danger_v, "sel_dirs": sel_dirs, "show_wind": show_wind, 
         "show_temp": show_temp, "show_tide": show_tide, "width": width, 
