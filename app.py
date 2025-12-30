@@ -407,7 +407,13 @@ def sync_all_settings():
         return
 
     # 初回起動時のみブラウザからデータを読み込む
+    # stored_data = streamlit_js_eval(js_expressions=f"localStorage.getItem('{STORAGE_KEY}')", key="init_load_settings")
+    # ブラウザからデータを取得
     stored_data = streamlit_js_eval(js_expressions=f"localStorage.getItem('{STORAGE_KEY}')", key="init_load_settings")
+
+    # 【重要】データが取得できるまでここで止める（これが「戻ってしまう」現象の対策）
+    if stored_data is None:
+        st.stop() 
     
     if stored_data:
         try:
