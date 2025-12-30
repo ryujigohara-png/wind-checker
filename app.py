@@ -216,19 +216,26 @@ def apply_common_axis_settings(ax, df, formatter, now_jst, design_params):
     ax.tick_params(axis='y', labelsize=l_size)
     
 #==========================================================================================
-# 9. 風速棒グラフを描画するサブルーチン
+# 9. 風速棒グラフを描画するサブルーチン (引数リレー修正版)
 #==========================================================================================
 def render_wind_bar_chart(ax, df, danger_v, wind_step, design_params=None):
-    bar_width = design_params.get("bar_width", 0.035) if design_params else 0.035
-    bars = ax.bar(df['time'], df['wind_speed_10m'], color=df['color'], alpha=0.9, width=bar_width)
-    ax.axhline(y=danger_v, color='red', linestyle='--', linewidth=CONFIG["HLINE_WIDTH"], alpha=0.8)
+    # design_paramsがNoneの場合でもエラーにならないよう空辞書を入れる
+    dp = design_params if design_params is not None else {}
     
-    fs = design_params.get("base_font_size", CONFIG["GRAPH_FONT_SIZE"]) if design_params else CONFIG["GRAPH_FONT_SIZE"]
+    bar_width = dp.get("bar_width", 0.035)
+    # df['color'] を使って棒を描画。これで色付けが復活します。
+    bars = ax.bar(df['time'], df['wind_speed_10m'], color=df['color'], alpha=0.9, width=bar_width)
+    
+    # 危険ラインの描画（引数の danger_v をそのまま使用）
+    ax.axhline(y=danger_v, color='red', linestyle='--', linewidth=CONFIG.get("HLINE_WIDTH", 1.0), alpha=0.8)
+    
+    # 各種表示設定
+    fs = dp.get("base_font_size", CONFIG.get("GRAPH_FONT_SIZE", 12))
     step = fs * 0.12 
     base = step * 0.5
     
-    show_w = design_params.get("show_w_text", CONFIG["SHOW_W_TEXT"]) if design_params else CONFIG["SHOW_W_TEXT"]
-    show_d = design_params.get("show_dir_name", CONFIG["SHOW_DIR_NAME"]) if design_params else CONFIG["SHOW_DIR_NAME"]
+    show_w = dp.get("show_w_text", CONFIG.get("SHOW_W_TEXT", False))
+    show_d = dp.get("show_dir_name", CONFIG.get("SHOW_DIR_NAME", False))
     
     max_speed = df['wind_speed_10m'].max()
     element_count = 1 + 1 + (1 if show_d else 0) + (1 if show_w else 0)
@@ -236,7 +243,7 @@ def render_wind_bar_chart(ax, df, danger_v, wind_step, design_params=None):
     y_limit = max(max_speed + required_top_space, danger_v + 3.0)
     
     ax.set_ylim(0, y_limit)
-    ax.set_ylabel('風速 (m/s)', fontsize=CONFIG["LABEL_SIZE"])
+    ax.set_ylabel('風速 (m/s)', fontsize=CONFIG.get("LABEL_SIZE", 9))
     
     for i, bar in enumerate(bars):
         if i % wind_step == 0:
@@ -250,7 +257,7 @@ def render_wind_bar_chart(ax, df, danger_v, wind_step, design_params=None):
             
             current_y += step
             ax.text(x_pos, current_y, row['arrow'], ha='center', va='bottom', 
-                    fontsize=fs+2, fontweight='bold', color=CONFIG["ARROW_COLOR"])
+                    fontsize=fs+2, fontweight='bold', color=CONFIG.get("ARROW_COLOR", "blue"))
             
             if show_d:
                 current_y += step
@@ -286,20 +293,17 @@ def render_tide_curve_chart(ax, df):
 #==========================================================================================
 @st.cache_data(show_spinner="グラフを生成中...")
 def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_params, now_jst=None):
-    # 1. データ取得
     df = fetch_weather_data(lat, lon, 8)
     if df is None: return None, (0, 0)
     
-    # 2. パディング処理
     padding_df = pd.DataFrame({'time': [df['time'].iloc[0] - timedelta(hours=i) for i in range(1, 4)][::-1]})
     df = pd.concat([padding_df, df], ignore_index=True)
     
-    # --- 【色付け復旧】 ---
+    # 色付けロジック（修正なしの既存関数を呼び出し）
     if 'process_wind_data' in globals():
         df = process_wind_data(df, list(selected_dirs_tuple))
     
-    # 3. グラフ領域の作成
-    h_ratios = CONFIG.get("HEIGHT_RATIOS", CONFIG.get("DEFAULT_RATIOS", [4.4, 1.2, 0.8]))
+    h_ratios = CONFIG.get("HEIGHT_RATIOS", [4.4, 1.2, 0.8])
     fig, axes = plt.subplots(
         3, 1, 
         figsize=(design_params.get("width", 20), design_params.get("height", 3.0)), 
@@ -308,17 +312,15 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
     )
     plt.subplots_adjust(hspace=0.6)
     
-    # 4. 軸のフォーマッター取得
     formatter = get_x_axis_formatter()
     
-    # 5. 各チャートの描画
-    render_wind_bar_chart(axes[0], df, danger_v, 3)
+    # --- 【修正ポイント】design_params を渡してベータ版の描画関数を活かす ---
+    render_wind_bar_chart(axes[0], df, danger_v, 3, design_params=design_params)
+    
     render_temp_line_chart(axes[1], df)
     render_tide_curve_chart(axes[2], df)
 
-    # 6. 共通設定（引数を修復中の定義に完全に合わせます）
     for ax in axes:
-        # ベータ版の定義に合わせ、now_jst と design_params を両方渡します
         apply_common_axis_settings(ax, df, formatter, now_jst, design_params)
 
     fig.tight_layout() 
