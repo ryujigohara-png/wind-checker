@@ -247,7 +247,7 @@ def render_wind_bar_chart(ax, df, danger_v, wind_step, design_params=None):
     """
     風速棒グラフを描画し、上部に風速数値、矢印、(設定により)風向名、天気テキストを表示する。
     さらに、グラフ枠外の上部（天気アイコンの下）に降水量を表示する。
-    降水量は0mmの場合は表示せず、色はブルー、サイズは軸ラベルサイズに従う。
+    降水量は0mmまたはデータ不在(NaN)の場合は表示せず、色はブルー、サイズは軸ラベルサイズに従う。
     """
     bar_width = design_params.get("bar_width", 0.035) if design_params else 0.035
     bars = ax.bar(df['time'], df['wind_speed_10m'], color=df['color'], alpha=0.9, width=bar_width)
@@ -266,7 +266,7 @@ def render_wind_bar_chart(ax, df, danger_v, wind_step, design_params=None):
     show_d = design_params.get("show_dir_name", CONFIG["SHOW_DIR_NAME"]) if design_params else CONFIG["SHOW_DIR_NAME"]
     
     # グラフ内部のY軸上限計算
-    max_speed = df['wind_speed_10m'].max()
+    max_speed = df['wind_speed_10m'].max() if not df['wind_speed_10m'].dropna().empty else 0
     element_count = 1 + 1 + (1 if show_d else 0) + (1 if show_w else 0)
     required_top_space = element_count * step + 1.0
     y_limit = max(max_speed + required_top_space, danger_v + 3.0)
@@ -306,11 +306,12 @@ def render_wind_bar_chart(ax, df, danger_v, wind_step, design_params=None):
 
         # --- 2. グラフエリア外の表示（降水量：3時間おき、時刻基準） ---
         if dt.hour % 3 == 0:
-            precip = row.get('precipitation', 0)
-            if not pd.isna(precip) and precip > 0:
+            # データの存在確認と0より大きいことの確認
+            precip = row.get('precipitation')
+            if pd.notna(precip) and precip > 0:
                 ax.text(
                     dt, 
-                    1.15, # 気温(1.02)より高く配置し、天気アイコンとの間を確保
+                    1.12, # 天気アイコンの直下に来るよう調整
                     f"{precip:.0f}", 
                     ha='center', 
                     va='bottom', 
@@ -467,7 +468,7 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
 def generate_weather_icons_html(df, ratio_info, display_width):
     """
     データフレームの時間軸に基づいて、お天気アイコンを正確な位置に配置するHTMLを生成する。
-    3時間おき(0,3,6...)の時刻にのみアイコンを表示し、グラフとの重なりを制御する。
+    時刻基準（dt.hour % 3 == 0）で配置し、降水量表示スペースを確保する。
     """
     start_x, hour_w = ratio_info
     icon_html = ""
@@ -476,8 +477,11 @@ def generate_weather_icons_html(df, ratio_info, display_width):
         row = df.iloc[i]
         dt = row['time']
         
-        # 時刻が3の倍数の時のみ描画（パディングがあってもズレない）
+        # 時刻が3の倍数の時のみ描画
         if dt.hour % 3 == 0:
+            # アイコンがデータ不在(NaN)の場合はスキップ
+            if pd.isna(row.get('weather_icon')): continue
+            
             pos_left_px = (start_x + (i * hour_w)) * display_width
             
             icon_html += f'''
@@ -488,12 +492,12 @@ def generate_weather_icons_html(df, ratio_info, display_width):
                     width: 80px; 
                     text-align: center; 
                     font-size: 32px;
-                    z-index: 10;">
+                    z-index: 5;">
                     {row["weather_icon"]}
                 </div>'''
     
-    # heightとmargin-bottomを調整して、下の降水量ラベルとのスペースを確保
-    return f'<div style="position: relative; width: {display_width}px; height: 55px; margin-bottom: 0px;">{icon_html}</div>'
+    # heightを固定しつつ、下のグラフとの重なりを防ぐためにmargin-bottomを調整
+    return f'<div style="position: relative; width: {display_width}px; height: 50px; margin-bottom: 5px;">{icon_html}</div>'
 
 #==========================================================================================
 # 14. 地図UIを表示し地点を選択するサブルーチン
