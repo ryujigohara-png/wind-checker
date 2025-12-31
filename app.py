@@ -627,7 +627,7 @@ def show_sidebar_controls():
 def render_header_info(current_basho_name):
     now = datetime.now(timezone(timedelta(hours=9)))
     date_time_str = now.strftime('%Y/%m/%d %H:%M:%S')
-    update_label = f"🔄 グラフ更新 ({date_time_str})　　      　"
+    update_label = f"🔄 グラフ更新 ({date_time_str})　　        　"
     if st.button(update_label, use_container_width=True):
         st.cache_data.clear()
         st.rerun()
@@ -664,9 +664,16 @@ def main():
     for name, coords in master.items():
         display_options[f"{name} ({coords[0]:.4f}, {coords[1]:.4f})"] = name
 
-    current_loc_label = f"📍 現在地 ({st.session_state.lat:.4f}, {st.session_state.lon:.4f})"
+    # 【復活】現在地ラベルに座標を表示
+    current_loc_label = f"📍 現在地 ({st.session_state.lat:.4f}, {st.session_state.lon:.4f})  "
     display_options[current_loc_label] = "現在地"
-    display_options["🗺️ 地図で指定"] = "地図で指定"
+    map_loc_label = f"🗺️ 地図で指定 ({st.session_state.lat:.4f}, {st.session_state.lon:.4f})   "
+    display_options[map_loc_label] = "地図で指定"
+
+    
+    # current_loc_label = f"📍 現在地 ({st.session_state.lat:.4f}, {st.session_state.lon:.4f})"
+    # display_options[current_loc_label] = "現在地"
+    # display_options["🗺️ 地図で指定"] = "地図で指定"
 
     reverse_display = {v: k for k, v in display_options.items()}
     current_display_val = reverse_display.get(st.session_state.last_basho, current_loc_label)
