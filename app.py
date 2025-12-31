@@ -320,14 +320,29 @@ def render_tide_curve_chart(ax, df):
 def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_params, now_jst):
     """
     指定されたパラメータに基づき、高解像度の気象グラフ画像を生成してBase64形式で返す。
+    描画開始時刻を現在時刻の直前の3時間区切り（0,3,6,9,12,15,18,21時）に設定する。
     """
-    df = fetch_weather_data(lat, lon, 8)
-    if df is None: return None, (0, 0)
+    df_raw = fetch_weather_data(lat, lon, 8)
+    if df_raw is None: return None, (0, 0)
     
+    # --- 描画開始基準時刻の計算 ---
+    # 現在時刻の「時」を3で割った商に3を掛けることで、直近の3時間区切りを求める
+    # 例: 17:20 -> 17 // 3 * 3 = 15時
+    base_hour = (now_jst.hour // 3) * 3
+    start_time = now_jst.replace(hour=base_hour, minute=0, second=0, microsecond=0)
+    
+    # 基準時刻以降のデータを抽出
+    df = df_raw[df_raw['time'] >= start_time].copy().reset_index(drop=True)
+    
+    # --- 左端の3時間空白（パディング）処理 ---
+    # 現在のコードの仕様通り、開始時刻のさらに3時間前からの空データを作成して結合
     padding_df = pd.DataFrame({'time': [df['time'].iloc[0] - timedelta(hours=i) for i in range(1, 4)][::-1]})
     df = pd.concat([padding_df, df], ignore_index=True)
+    
+    # 風データ等の処理
     df = process_wind_data(df, list(selected_dirs_tuple))
     
+    # 表示するプロットの決定
     active_plots = []
     if design_params.get("show_wind", True): active_plots.append("wind")
     if design_params.get("show_temp", True): active_plots.append("temp")
@@ -335,6 +350,7 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
     
     if not active_plots: return None, (0, 0)
     
+    # レイアウト設定
     ratios = design_params.get("ratios", CONFIG["DEFAULT_RATIOS"])
     current_ratios = []
     if "wind" in active_plots: current_ratios.append(ratios[0])
@@ -343,8 +359,6 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
     
     fig_w = design_params.get("width", CONFIG["GRAPH_WIDTH"])
     fig_h = design_params.get("height", CONFIG["GRAPH_HIGHT"])
-    
-    # 開発者設定からDPIを取得（デフォルトはCONFIG["DPI"]）
     dpi_value = design_params.get("graph_dpi", CONFIG.get("DPI", 200))
     
     fig, axes = plt.subplots(len(active_plots), 1, figsize=(fig_w, fig_h), dpi=dpi_value, 
@@ -356,6 +370,7 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
     
     formatter = get_x_axis_formatter()
     
+    # 各チャートの描画
     idx = 0
     if "wind" in active_plots:
         render_wind_bar_chart(axes[idx], df, danger_v, 3, design_params)
@@ -367,20 +382,22 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
         render_tide_curve_chart(axes[idx], df)
         idx += 1
 
+    # 共通軸設定の適用
     for ax in axes:
         apply_common_axis_settings(ax, df, formatter, now_jst, design_params)
 
     fig.tight_layout(pad=1.0) 
     pos = axes[0].get_position() 
+    # HTMLアイコン配置用の比率情報を計算
     ratio_info = (pos.x0, pos.width / (len(df) - 1))
     
+    # 画像のバイナリ化
     buf = io.BytesIO()
     fig.savefig(buf, format="png", bbox_inches=None, pad_inches=0, dpi=dpi_value)
     plt.close(fig) 
     
     img_b64 = base64.b64encode(buf.getvalue()).decode()
-    return img_b64, ratio_info
-    
+    return img_b64, ratio_info    
 #==========================================================================================
 # 13. お天気アイコンのHTMLを生成するサブルーチン
 #==========================================================================================
