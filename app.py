@@ -59,6 +59,10 @@ CONFIG = {
     "VLINE_WIDTH": 1.25,
     "HLINE_WIDTH": 1.0,
     "PX_PER_INCH": 200,
+    "DEFAULT_PRECIP_Y": 1.06,      # 降水量の表示高さ（グラフ枠を1.0とした相対値）
+    "DEFAULT_ICON_MARGIN": 10,     # アイコンHTMLの下マージン(px)
+    "SLIDER_PRECIP_Y": {"min": 1.00, "max": 1.30, "step": 0.01},
+    "SLIDER_ICON_MARGIN": {"min": -20, "max": 50, "step": 5},
     # スライダーの範囲設定
     "SLIDER_WIDTH": {"min": 13.0, "max": 30.0, "step": 1.0},
     "SLIDER_HEIGHT": {"min": 1.5, "max": 5.0, "step": 0.5},
@@ -245,27 +249,23 @@ def apply_common_axis_settings(ax, df, formatter, now_jst, design_params):
 #==========================================================================================
 def render_wind_bar_chart(ax, df, danger_v, wind_step, design_params=None):
     """
-    風速棒グラフを描画し、上部に風速数値、矢印、(設定により)風向名、天気テキストを表示する。
-    さらに、グラフ枠外の上部（天気アイコンの下）に降水量を表示する。
-    降水量は0mmまたはデータ不在(NaN)の場合は表示せず、色はブルー、サイズは軸ラベルサイズに従う。
+    風速棒グラフを描画し、上部に風速数値、矢印を表示する。
+    さらに、グラフ枠外の上部に降水量を表示する。位置は design_params['precip_y'] で制御する。
     """
     bar_width = design_params.get("bar_width", 0.035) if design_params else 0.035
     bars = ax.bar(df['time'], df['wind_speed_10m'], color=df['color'], alpha=0.9, width=bar_width)
     ax.axhline(y=danger_v, color='red', linestyle='--', linewidth=CONFIG["HLINE_WIDTH"], alpha=0.8)
     
-    # フォントサイズ取得
     fs = design_params.get("base_font_size", CONFIG["GRAPH_FONT_SIZE"]) if design_params else CONFIG["GRAPH_FONT_SIZE"]
     l_fs = design_params.get("label_font_size", CONFIG["LABEL_SIZE"]) if design_params else CONFIG["LABEL_SIZE"]
+    precip_y = design_params.get("precip_y", CONFIG["DEFAULT_PRECIP_Y"])
     
-    # グラフ内要素（風速・矢印等）の間隔計算
     step = fs * 0.144 
     base = step * 0.5
     
-    # 表示フラグ
     show_w = design_params.get("show_w_text", CONFIG["SHOW_W_TEXT"]) if design_params else CONFIG["SHOW_W_TEXT"]
     show_d = design_params.get("show_dir_name", CONFIG["SHOW_DIR_NAME"]) if design_params else CONFIG["SHOW_DIR_NAME"]
     
-    # グラフ内部のY軸上限計算
     max_speed = df['wind_speed_10m'].max() if not df['wind_speed_10m'].dropna().empty else 0
     element_count = 1 + 1 + (1 if show_d else 0) + (1 if show_w else 0)
     required_top_space = element_count * step + 1.0
@@ -278,45 +278,41 @@ def render_wind_bar_chart(ax, df, danger_v, wind_step, design_params=None):
         row = df.iloc[i]
         dt = row['time']
         
-        # --- 1. グラフエリア内の表示（3時間おき） ---
+        # グラフ内の風速・矢印表示
         if i % wind_step == 0:
             if pd.isna(row['wind_speed_10m']): continue
             base_y = bar.get_height()
             x_pos = bar.get_x() + bar.get_width()/2.
             
-            # 風速数値
             current_y = base_y + base
             ax.text(x_pos, current_y, f"{row['wind_speed_10m']:.0f}", ha='center', va='bottom', fontsize=fs-2)
             
-            # 矢印
             current_y += step
             ax.text(x_pos, current_y, row['arrow'], ha='center', va='bottom', 
                     fontsize=fs+2, fontweight='bold', color=CONFIG["ARROW_COLOR"])
             
-            # 風向名
             if show_d:
                 current_y += step
                 ax.text(x_pos, current_y, row['dir_name'], ha='center', va='bottom', fontsize=fs-2)
             
-            # 天気文字
             if show_w:
                 current_y += step
                 ax.text(x_pos, current_y, row['w_text'], ha='center', va='bottom', 
                         color=row['w_color'], fontweight='bold', fontsize=fs-1)
 
-        # --- 2. グラフエリア外の表示（降水量：3時間おき、時刻基準） ---
+        # グラフ外の降水量表示 (サイドバーの precip_y を使用)
         if dt.hour % 3 == 0:
-            # データの存在確認と0より大きいことの確認
             precip = row.get('precipitation')
-            if pd.notna(precip) and precip > 0:
+            if pd.notna(precip) and str(precip).lower() != 'nan' and precip > 0:
                 ax.text(
                     dt, 
-                    1.12, # 天気アイコンの直下に来るよう調整
+                    precip_y, 
                     f"{precip:.0f}", 
                     ha='center', 
                     va='bottom', 
-                    fontsize=l_fs,
+                    fontsize=l_fs + 1,
                     color="blue",
+                    fontweight='bold',
                     transform=ax.get_xaxis_transform(),
                     clip_on=False
                 )
@@ -465,11 +461,14 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
 #==========================================================================================
 # 13. お天気アイコンのHTMLを生成するサブルーチン
 #==========================================================================================
-def generate_weather_icons_html(df, ratio_info, display_width):
+def generate_weather_icons_html(df, ratio_info, display_width, icon_margin=None):
     """
     データフレームの時間軸に基づいて、お天気アイコンを正確な位置に配置するHTMLを生成する。
-    時刻基準（dt.hour % 3 == 0）で配置し、降水量表示スペースを確保する。
+    icon_margin: サイドバーから渡される、下のグラフとの隙間調整値。
     """
+    if icon_margin is None:
+        icon_margin = CONFIG["DEFAULT_ICON_MARGIN"]
+        
     start_x, hour_w = ratio_info
     icon_html = ""
     
@@ -477,11 +476,8 @@ def generate_weather_icons_html(df, ratio_info, display_width):
         row = df.iloc[i]
         dt = row['time']
         
-        # 時刻が3の倍数の時のみ描画
         if dt.hour % 3 == 0:
-            # アイコンがデータ不在(NaN)の場合はスキップ
-            if pd.isna(row.get('weather_icon')): continue
-            
+            if pd.isna(row.get('weather_icon')) or pd.isna(dt): continue
             pos_left_px = (start_x + (i * hour_w)) * display_width
             
             icon_html += f'''
@@ -492,12 +488,12 @@ def generate_weather_icons_html(df, ratio_info, display_width):
                     width: 80px; 
                     text-align: center; 
                     font-size: 32px;
+                    line-height: 1;
                     z-index: 5;">
                     {row["weather_icon"]}
                 </div>'''
     
-    # heightを固定しつつ、下のグラフとの重なりを防ぐためにmargin-bottomを調整
-    return f'<div style="position: relative; width: {display_width}px; height: 50px; margin-bottom: 5px;">{icon_html}</div>'
+    return f'<div style="position: relative; width: {display_width}px; height: 40px; margin-bottom: {icon_margin}px;">{icon_html}</div>'
 
 #==========================================================================================
 # 14. 地図UIを表示し地点を選択するサブルーチン
@@ -729,6 +725,23 @@ def show_sidebar_controls():
         design_params["show_dir_name"] = st.sidebar.toggle("風向名を表示", value=design_params["show_dir_name"])
         design_params["hspace"] = st.sidebar.slider("グラフ間余白", -0.2, 1.5, design_params["hspace"], step=0.05)
         design_params["label_pad"] = st.sidebar.slider("ラベル距離", -5, 10, design_params["label_pad"])
+        # サイドバーの実装例（既存のスライダー群に追加）
+        st.sidebar.markdown("### 降水量・アイコン位置調整")
+        precip_y = st.sidebar.slider("降水量ラベル高さ", 
+                                   CONFIG["SLIDER_PRECIP_Y"]["min"], 
+                                   CONFIG["SLIDER_PRECIP_Y"]["max"], 
+                                   CONFIG["DEFAULT_PRECIP_Y"], 0.01)
+        
+        icon_margin = st.sidebar.slider("天気アイコン下余白", 
+                                      CONFIG["SLIDER_ICON_MARGIN"]["min"], 
+                                      CONFIG["SLIDER_ICON_MARGIN"]["max"], 
+                                      CONFIG["DEFAULT_ICON_MARGIN"], 5)
+        
+        # これらを design_params に入れて generate_high_res_graph に渡す
+        design_params["precip_y"] = precip_y
+        design_params["icon_margin"] = icon_margin
+
+        
         r = design_params["ratios"]
         r[0] = st.sidebar.number_input("比率:風向", 0.5, 10.0, r[0], step=0.1)
         r[1] = st.sidebar.number_input("比率:気温", 0.5, 5.0, r[1], step=0.1)
