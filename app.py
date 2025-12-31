@@ -523,7 +523,7 @@ def save_settings_to_browser():
 # 17. サイドバーの表示設定とデザイン調整を表示するサブルーチン
 #==========================================================================================
 def show_sidebar_controls():
-    is_beta = True 
+    is_beta = false 
 
     # --- 1. URLパラメータから mode=dev を取得するロジックを復活 ---
     # st.query_params を使用します
