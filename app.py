@@ -31,7 +31,7 @@ from streamlit_js_eval import streamlit_js_eval, get_geolocation
 CONFIG = {
     "TITLE_SIZE": 24,
     "SUBTITLE_SIZE": 18,
-    "GRAPH_FONT_SIZE": 12,
+    "GRAPH_FONT_SIZE": 11,
     "GRAPH_WIDTH": 15,
     "GRAPH_HIGHT": 2.0,
     "LABEL_SIZE": 9,
@@ -45,7 +45,7 @@ CONFIG = {
     "SHOW_TIDE": False,          # デフォルトOFF
     "SHOW_W_TEXT": False,        # デフォルトOFF
     "SHOW_DIR_NAME": False,      # デフォルトOFF
-    "HSPACE": 0.1,
+    "HSPACE": -0.1,
     "DEFAULT_LAT": 31.337,
     "DEFAULT_LON": 130.795,
     "DEFAULT_BASHO": "高須沖(鹿児島県)",
