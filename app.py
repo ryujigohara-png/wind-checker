@@ -301,8 +301,8 @@ def render_wind_bar_chart(ax, df, danger_v, wind_step, design_params=None):
 #==========================================================================================
 def render_temp_line_chart(ax, df):
     """
-    気温の折れ線グラフを描画し、各時刻（0時と3の倍数）のデータポイント上に気温数値を表示する。
-    数値のフォントサイズは軸ラベルの設定（CONFIG["LABEL_SIZE"]）に従う。
+    気温の折れ線グラフを描画し、各時刻（0時と3の倍数）の気温数値をグラフ枠外の上部に表示する。
+    数値のフォントサイズは軸ラベルの設定（CONFIG["LABEL_SIZE"]）に従い、単位「℃」を付与する。
     """
     # メインの折れ線描画
     ax.plot(df['time'], df['temperature_2m'], color=CONFIG["TEMP_COLOR"], linewidth=2, marker='o', markersize=3, markevery=3)
@@ -311,27 +311,31 @@ def render_temp_line_chart(ax, df):
     # フォントサイズは軸ラベルのサイズを取得
     label_fs = CONFIG["LABEL_SIZE"]
     
-    # グラフ上端に数値を表示するためのマージン設定（最大値の10%程度を上に確保）
+    # y軸の範囲設定（数値表示用に上部に少しだけ余白を持たせるが、数値自体は枠外へ飛ばす）
     t_max = df['temperature_2m'].max()
     t_min = df['temperature_2m'].min()
     y_range = t_max - t_min if t_max != t_min else 1.0
-    ax.set_ylim(t_min - (y_range * 0.1), t_max + (y_range * 0.2))
+    ax.set_ylim(t_min - (y_range * 0.1), t_max + (y_range * 0.1))
 
     # 各時刻の気温数値を描画
     for i in range(len(df)):
         dt = df['time'].iloc[i]
         temp = df['temperature_2m'].iloc[i]
         
-        # 0時、または3の倍数の時刻のみ数値を表示（pd.isnaチェック含む）
+        # 0時、または3の倍数の時刻のみ数値を表示
         if not pd.isna(temp) and (dt.hour % 3 == 0):
+            # transform=ax.get_xaxis_transform() を使用して、
+            # Xは時刻データ、Yは「グラフ枠のすぐ上(1.02)」に固定して描画
             ax.text(
                 dt, 
-                temp + (y_range * 0.05), # ポイントの少し上に表示
-                f"{temp:.1f}", 
+                1.02, 
+                f"{temp:.0f}", 
                 ha='center', 
                 va='bottom', 
                 fontsize=label_fs,
-                color=CONFIG["TEMP_COLOR"]
+                color=CONFIG["TEMP_COLOR"],
+                transform=ax.get_xaxis_transform(), # Y軸の値を0(下端)〜1(上端)の相対位置にする
+                clip_on=False                       # 枠外への描画を許可
             )
 #==========================================================================================
 # 11. 潮位曲線グラフを描画するサブルーチン
