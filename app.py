@@ -245,6 +245,11 @@ def apply_common_axis_settings(ax, df, formatter, now_jst, design_params):
 # 9. 風速棒グラフを描画するサブルーチン
 #==========================================================================================
 def render_wind_bar_chart(ax, df, danger_v, wind_step, design_params=None):
+    """
+    風速棒グラフを描画し、上部に風速数値、矢印、(設定により)風向名、天気テキストを表示する。
+    さらに、グラフ枠外の上部（天気アイコンの下）に降水量を表示する。
+    降水量は0mmの場合は表示せず、色はブルー、サイズは軸ラベルサイズに従う。
+    """
     bar_width = design_params.get("bar_width", 0.035) if design_params else 0.035
     bars = ax.bar(df['time'], df['wind_speed_10m'], color=df['color'], alpha=0.9, width=bar_width)
     ax.axhline(y=danger_v, color='red', linestyle='--', linewidth=CONFIG["HLINE_WIDTH"], alpha=0.8)
@@ -253,7 +258,7 @@ def render_wind_bar_chart(ax, df, danger_v, wind_step, design_params=None):
     fs = design_params.get("base_font_size", CONFIG["GRAPH_FONT_SIZE"]) if design_params else CONFIG["GRAPH_FONT_SIZE"]
     l_fs = design_params.get("label_font_size", CONFIG["LABEL_SIZE"]) if design_params else CONFIG["LABEL_SIZE"]
     
-    # テキストの間隔計算
+    # グラフ内要素（風速・矢印等）の間隔計算
     step = fs * 0.144 
     base = step * 0.5
     
@@ -261,10 +266,10 @@ def render_wind_bar_chart(ax, df, danger_v, wind_step, design_params=None):
     show_w = design_params.get("show_w_text", CONFIG["SHOW_W_TEXT"]) if design_params else CONFIG["SHOW_W_TEXT"]
     show_d = design_params.get("show_dir_name", CONFIG["SHOW_DIR_NAME"]) if design_params else CONFIG["SHOW_DIR_NAME"]
     
-    # 上部余白の計算：要素が増えたため element_count に降水量の段(+1)を加算
+    # グラフ内部のY軸上限計算
     max_speed = df['wind_speed_10m'].max()
-    element_count = 1 + 1 + 1 + (1 if show_d else 0) + (1 if show_w else 0) # 数値+矢印+降水量+風向+天気
-    required_top_space = element_count * step + 1.5
+    element_count = 1 + 1 + (1 if show_d else 0) + (1 if show_w else 0)
+    required_top_space = element_count * step + 1.0
     y_limit = max(max_speed + required_top_space, danger_v + 3.0)
     
     ax.set_ylim(0, y_limit)
@@ -277,6 +282,7 @@ def render_wind_bar_chart(ax, df, danger_v, wind_step, design_params=None):
             base_y = bar.get_height()
             x_pos = bar.get_x() + bar.get_width()/2.
             
+            # --- グラフエリア内の表示（風速数値、矢印、風向、天気） ---
             # 1段目：風速数値
             current_y = base_y + base
             ax.text(x_pos, current_y, f"{row['wind_speed_10m']:.0f}", ha='center', va='bottom', fontsize=fs-2)
@@ -286,22 +292,32 @@ def render_wind_bar_chart(ax, df, danger_v, wind_step, design_params=None):
             ax.text(x_pos, current_y, row['arrow'], ha='center', va='bottom', 
                     fontsize=fs+2, fontweight='bold', color=CONFIG["ARROW_COLOR"])
             
-            # 3段目：降水量 (文字サイズは軸ラベルサイズに従う)
-            current_y += step
-            precip = row['precipitation'] if not pd.isna(row['precipitation']) else 0
-            ax.text(x_pos, current_y, f"{precip:.0f}", ha='center', va='bottom', 
-                    fontsize=l_fs, color="blue", fontweight='normal')
-            
-            # 4段目：風向名
+            # 3段目：風向名
             if show_d:
                 current_y += step
                 ax.text(x_pos, current_y, row['dir_name'], ha='center', va='bottom', fontsize=fs-2)
             
-            # 5段目：天気文字
+            # 4段目：天気文字
             if show_w:
                 current_y += step
                 ax.text(x_pos, current_y, row['w_text'], ha='center', va='bottom', 
                         color=row['w_color'], fontweight='bold', fontsize=fs-1)
+
+            # --- グラフエリア外の表示（降水量） ---
+            precip = row.get('precipitation', 0)
+            # 降水量が0より大きい場合のみ、枠外上部（y=1.01）に表示
+            if not pd.isna(precip) and precip > 0:
+                ax.text(
+                    row['time'], 
+                    1.01, 
+                    f"{precip:.0f}", 
+                    ha='center', 
+                    va='bottom', 
+                    fontsize=l_fs,
+                    color="blue",
+                    transform=ax.get_xaxis_transform(), # Y軸を相対座標（0=下, 1=上）にする
+                    clip_on=False                       # 枠外描画を許可
+                )
                 
 #==========================================================================================
 # 10. 気温折れ線グラフを描画するサブルーチン
