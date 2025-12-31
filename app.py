@@ -32,8 +32,8 @@ CONFIG = {
     "TITLE_SIZE": 24,
     "SUBTITLE_SIZE": 18,
     "GRAPH_FONT_SIZE": 12,
-    "GRAPH_WIDTH": 20,
-    "GRAPH_HIGHT": 3.0,
+    "GRAPH_WIDTH": 15,
+    "GRAPH_HIGHT": 2.0,
     "LABEL_SIZE": 9,
     "LABEL_PAD": 0,
     "ANNOT_SIZE": 10,
@@ -61,9 +61,9 @@ CONFIG = {
     "HLINE_WIDTH": 1.0,
     "PX_PER_INCH": 200,
     # スライダーの範囲設定
-    "SLIDER_WIDTH": {"min": 15.0, "max": 30.0, "step": 1.0},
-    "SLIDER_HEIGHT": {"min": 2.0, "max": 5.0, "step": 0.5},
-    "SLIDER_FONT": {"min": 8, "max": 15, "step": 1},
+    "SLIDER_WIDTH": {"min": 13.0, "max": 30.0, "step": 1.0},
+    "SLIDER_HEIGHT": {"min": 1.5, "max": 5.0, "step": 0.5},
+    "SLIDER_FONT": {"min": 6, "max": 14, "step": 1},
     "LOCATION_MASTER": {
         "高須沖(鹿児島県)": (31.337, 130.795), 
         "柏原沖(鹿児島県)": (31.380, 131.020), 
