@@ -355,13 +355,12 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
     """
     指定されたパラメータに基づき、高解像度の気象グラフ画像を生成してBase64形式で返す。
     描画開始時刻を現在時刻の直前の3時間区切り（0,3,6,9,12,15,18,21時）に設定する。
+    hspaceの値を確実に反映させるため、自動レイアウト調整を無効化している。
     """
     df_raw = fetch_weather_data(lat, lon, 8)
     if df_raw is None: return None, (0, 0)
     
     # --- 描画開始基準時刻の計算 ---
-    # 現在時刻の「時」を3で割った商に3を掛けることで、直近の3時間区切りを求める
-    # 例: 17:20 -> 17 // 3 * 3 = 15時
     base_hour = (now_jst.hour // 3) * 3
     start_time = now_jst.replace(hour=base_hour, minute=0, second=0, microsecond=0)
     
@@ -369,7 +368,6 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
     df = df_raw[df_raw['time'] >= start_time].copy().reset_index(drop=True)
     
     # --- 左端の3時間空白（パディング）処理 ---
-    # 現在のコードの仕様通り、開始時刻のさらに3時間前からの空データを作成して結合
     padding_df = pd.DataFrame({'time': [df['time'].iloc[0] - timedelta(hours=i) for i in range(1, 4)][::-1]})
     df = pd.concat([padding_df, df], ignore_index=True)
     
@@ -400,8 +398,6 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
     
     if len(active_plots) == 1: axes = [axes]
     
-    plt.subplots_adjust(hspace=design_params.get("hspace", CONFIG["HSPACE"]))
-    
     formatter = get_x_axis_formatter()
     
     # 各チャートの描画
@@ -420,7 +416,15 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
     for ax in axes:
         apply_common_axis_settings(ax, df, formatter, now_jst, design_params)
 
-    fig.tight_layout(pad=1.0) 
+    # 【重要】tight_layoutを無効化し、手動のsubplots_adjustを優先させる
+    # fig.tight_layout(pad=1.0) # ← これをコメントアウト
+    
+    # サイドバーのhspaceを適用
+    plt.subplots_adjust(
+        left=0.05, right=0.95, top=0.95, bottom=0.15,
+        hspace=design_params.get("hspace", CONFIG["HSPACE"])
+    )
+
     pos = axes[0].get_position() 
     # HTMLアイコン配置用の比率情報を計算
     ratio_info = (pos.x0, pos.width / (len(df) - 1))
@@ -431,7 +435,8 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
     plt.close(fig) 
     
     img_b64 = base64.b64encode(buf.getvalue()).decode()
-    return img_b64, ratio_info    
+    return img_b64, ratio_info
+    
 #==========================================================================================
 # 13. お天気アイコンのHTMLを生成するサブルーチン
 #==========================================================================================
