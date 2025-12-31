@@ -249,23 +249,27 @@ def apply_common_axis_settings(ax, df, formatter, now_jst, design_params):
 #==========================================================================================
 def render_wind_bar_chart(ax, df, danger_v, wind_step, design_params=None):
     """
-    風速棒グラフを描画し、上部に風速数値、矢印を表示する。
-    さらに、グラフ枠外の上部に降水量を表示する。位置は design_params['precip_y'] で制御する。
+    風速棒グラフを描画し、上部に風速数値、矢印、(設定により)風向名、天気テキストを表示する。
+    さらに、グラフ枠外の上部（天気アイコンの下）に降水量を表示する。
+    降水量は0mmまたはデータ不在(NaN)の場合は表示せず、色はブルー、サイズは軸ラベルサイズに従う。
     """
     bar_width = design_params.get("bar_width", 0.035) if design_params else 0.035
     bars = ax.bar(df['time'], df['wind_speed_10m'], color=df['color'], alpha=0.9, width=bar_width)
     ax.axhline(y=danger_v, color='red', linestyle='--', linewidth=CONFIG["HLINE_WIDTH"], alpha=0.8)
     
+    # フォントサイズ取得
     fs = design_params.get("base_font_size", CONFIG["GRAPH_FONT_SIZE"]) if design_params else CONFIG["GRAPH_FONT_SIZE"]
     l_fs = design_params.get("label_font_size", CONFIG["LABEL_SIZE"]) if design_params else CONFIG["LABEL_SIZE"]
-    precip_y = design_params.get("precip_y", CONFIG["DEFAULT_PRECIP_Y"])
     
+    # グラフ内要素（風速・矢印等）の間隔計算
     step = fs * 0.144 
     base = step * 0.5
     
+    # 表示フラグ
     show_w = design_params.get("show_w_text", CONFIG["SHOW_W_TEXT"]) if design_params else CONFIG["SHOW_W_TEXT"]
     show_d = design_params.get("show_dir_name", CONFIG["SHOW_DIR_NAME"]) if design_params else CONFIG["SHOW_DIR_NAME"]
     
+    # グラフ内部のY軸上限計算
     max_speed = df['wind_speed_10m'].max() if not df['wind_speed_10m'].dropna().empty else 0
     element_count = 1 + 1 + (1 if show_d else 0) + (1 if show_w else 0)
     required_top_space = element_count * step + 1.0
@@ -278,35 +282,40 @@ def render_wind_bar_chart(ax, df, danger_v, wind_step, design_params=None):
         row = df.iloc[i]
         dt = row['time']
         
-        # グラフ内の風速・矢印表示
+        # --- 1. グラフエリア内の表示（3時間おき） ---
         if i % wind_step == 0:
             if pd.isna(row['wind_speed_10m']): continue
             base_y = bar.get_height()
             x_pos = bar.get_x() + bar.get_width()/2.
             
+            # 風速数値
             current_y = base_y + base
             ax.text(x_pos, current_y, f"{row['wind_speed_10m']:.0f}", ha='center', va='bottom', fontsize=fs-2)
             
+            # 矢印
             current_y += step
             ax.text(x_pos, current_y, row['arrow'], ha='center', va='bottom', 
                     fontsize=fs+2, fontweight='bold', color=CONFIG["ARROW_COLOR"])
             
+            # 風向名
             if show_d:
                 current_y += step
                 ax.text(x_pos, current_y, row['dir_name'], ha='center', va='bottom', fontsize=fs-2)
             
+            # 天気文字
             if show_w:
                 current_y += step
                 ax.text(x_pos, current_y, row['w_text'], ha='center', va='bottom', 
                         color=row['w_color'], fontweight='bold', fontsize=fs-1)
 
-        # グラフ外の降水量表示 (サイドバーの precip_y を使用)
+        # --- 2. グラフエリア外の表示（降水量：3時間おき、時刻基準） ---
         if dt.hour % 3 == 0:
+            # データの存在確認：実際のNaN、および文字列の'nan'を確実に排除
             precip = row.get('precipitation')
             if pd.notna(precip) and str(precip).lower() != 'nan' and precip > 0:
                 ax.text(
                     dt, 
-                    precip_y, 
+                    1.0, # 検証結果に基づき 1.0 に固定（グラフ枠の天辺）
                     f"{precip:.0f}", 
                     ha='center', 
                     va='bottom', 
