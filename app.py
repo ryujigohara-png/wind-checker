@@ -33,7 +33,7 @@ CONFIG = {
     "GRAPH_FONT_SIZE": 11,
     "GRAPH_WIDTH": 15,
     "GRAPH_HIGHT": 2.0,
-    "LABEL_SIZE": 9,
+    "LABEL_SIZE": 8,
     "LABEL_PAD": 0,
     "ANNOT_SIZE": 10,
     "DPI": 200,
