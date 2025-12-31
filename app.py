@@ -93,19 +93,38 @@ def setup_font(font_size=None):
 # 3. 気象データをAPIから取得するサブルーチン
 #==========================================================================================
 def fetch_weather_data(lat, lon, days):
+    """
+    Open-Meteo APIから気象データを取得し、詳細な天気アイコンを割り当てる。
+    WMO Weather interpretation codes (WW) に準拠。
+    """
     url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&hourly=temperature_2m,wind_speed_10m,wind_direction_10m,weather_code&timezone=Asia%2FTokyo&wind_speed_unit=ms&forecast_days={days}"
     try:
         data = requests.get(url).json()
         df = pd.DataFrame(data["hourly"])
         df['time'] = pd.to_datetime(df['time'])
+        
         def get_icon(code):
-            if code <= 2: return "☀️"
-            if code <= 48: return "☁️"
-            if code <= 99: return "☔"
+            # 0: 晴天, 1-3: 晴れ時々曇り
+            if code == 0: return "☀️"
+            if code <= 3: return "🌤️"
+            # 45, 48: 霧
+            if code == 45 or code == 48: return "🌫️"
+            # 51-67: 霧雨・雨
+            if code <= 67: return "☔"
+            # 71-77: 雪
+            if code <= 77: return "❄️"
+            # 80-82: 俄か雨
+            if code <= 82: return "🌦️"
+            # 85-86: 雪（にわか）
+            if code <= 86: return "🌨️"
+            # 95-99: 雷雨
+            if code <= 99: return "⛈️"
             return "❓"
+            
         df['weather_icon'] = df['weather_code'].apply(get_icon)
         return df
-    except: return None
+    except: 
+        return None
 
 #==========================================================================================
 # 4. 潮位レベルを計算するサブルーチン
@@ -127,10 +146,33 @@ def get_tide_level(times):
 # 5. 天気コードからテキストと色を取得するサブルーチン
 #==========================================================================================
 def get_weather_info(code):
+    """
+    WMO天気コードから表示用テキストと、文字色を決定して返す。
+    """
     if pd.isna(code): return "", "black"
-    if code <= 2: return "晴", "#FF4500"
-    if code <= 48: return "曇", "#696969"
-    if code <= 99: return "雨", "#00008B"
+    
+    # 0-3: 晴・薄曇
+    if code <= 3: 
+        return "晴", "#FF4500" # OrangeRed
+    # 45, 48: 霧
+    if code == 45 or code == 48: 
+        return "霧", "#708090" # SlateGray
+    # 51-67: 雨
+    if code <= 67: 
+        return "雨", "#00008B" # DarkBlue
+    # 71-77: 雪
+    if code <= 77: 
+        return "雪", "#00BFFF" # DeepSkyBlue
+    # 80-82: 俄か雨
+    if code <= 82: 
+        return "雨", "#00008B"
+    # 85-86: 激しい雪
+    if code <= 86: 
+        return "雪", "#00BFFF"
+    # 95-99: 雷雨
+    if code <= 99: 
+        return "雷", "#8B0000" # DarkRed
+        
     return "？", "black"
 
 #==========================================================================================
