@@ -429,6 +429,9 @@ def sync_all_settings():
     if stored_data == "EMPTY":
         # データがない場合は、何もせず初期化完了として進む
         st.session_state.initialized = True
+    elif stored_data == "":
+        # データが存在しない場合も初期化済みとする
+        st.session_state.initialized = True
     else:
     #-----------------------------------------------------------------------------------------    
         try:
@@ -467,9 +470,7 @@ def sync_all_settings():
         except Exception:
             # パース失敗時はデフォルト値で進む
             st.session_state.initialized = True
-    elif stored_data == "":
-        # データが存在しない場合も初期化済みとする
-        st.session_state.initialized = True
+
             
 #==========================================================================================
 # 16. 現在地を取得しセッション状態を更新するサブルーチン
