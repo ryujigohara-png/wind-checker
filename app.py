@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# 正規版　更新 2025.12.31 1550 （デザイン調整・ブラウザ保存対応）
+# 正規版　更新 2025.12.31 2345 （デザイン調整・ブラウザ保存対応）
 import streamlit as st
 import requests
 import pandas as pd
@@ -44,7 +44,7 @@ CONFIG = {
     "SHOW_TIDE": False,          # デフォルトOFF
     "SHOW_W_TEXT": False,        # デフォルトOFF
     "SHOW_DIR_NAME": False,      # デフォルトOFF
-    "HSPACE": 0.5,
+    "HSPACE": 1.0,
     "DEFAULT_LAT": 31.337,
     "DEFAULT_LON": 130.795,
     "DEFAULT_BASHO": "高須沖(鹿児島県)",
@@ -305,11 +305,11 @@ def render_wind_bar_chart(ax, df, danger_v, wind_step, design_params=None):
 
             # --- グラフエリア外の表示（降水量） ---
             precip = row.get('precipitation', 0)
-            # 降水量が0より大きい場合のみ、枠外上部（y=1.01）に表示
+            # 降水量が0より大きい場合のみ、枠外上部（y=1.02）に表示
             if not pd.isna(precip) and precip > 0:
                 ax.text(
                     row['time'], 
-                    1.01, 
+                    1.02, 
                     f"{precip:.0f}", 
                     ha='center', 
                     va='bottom', 
