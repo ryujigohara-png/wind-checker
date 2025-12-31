@@ -95,9 +95,10 @@ def setup_font(font_size=None):
 def fetch_weather_data(lat, lon, days):
     """
     Open-Meteo APIから気象データを取得し、詳細な天気アイコンを割り当てる。
+    降水量データ(precipitation)の取得を追加。
     WMO Weather interpretation codes (WW) に準拠。
     """
-    url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&hourly=temperature_2m,wind_speed_10m,wind_direction_10m,weather_code&timezone=Asia%2FTokyo&wind_speed_unit=ms&forecast_days={days}"
+    url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&hourly=temperature_2m,wind_speed_10m,wind_direction_10m,weather_code,precipitation&timezone=Asia%2FTokyo&wind_speed_unit=ms&forecast_days={days}"
     try:
         data = requests.get(url).json()
         df = pd.DataFrame(data["hourly"])
@@ -250,9 +251,9 @@ def render_wind_bar_chart(ax, df, danger_v, wind_step, design_params=None):
     
     # フォントサイズ取得
     fs = design_params.get("base_font_size", CONFIG["GRAPH_FONT_SIZE"]) if design_params else CONFIG["GRAPH_FONT_SIZE"]
+    l_fs = design_params.get("label_font_size", CONFIG["LABEL_SIZE"]) if design_params else CONFIG["LABEL_SIZE"]
     
-    # 矢印・文字の間隔を「文字サイズの20%」に固定（1ポイント≒0.35mmですが、グラフ単位系に換算）
-    # グラフのY軸単位に合わせて 0.144 * fs 程度で調整
+    # テキストの間隔計算
     step = fs * 0.144 
     base = step * 0.5
     
@@ -260,10 +261,10 @@ def render_wind_bar_chart(ax, df, danger_v, wind_step, design_params=None):
     show_w = design_params.get("show_w_text", CONFIG["SHOW_W_TEXT"]) if design_params else CONFIG["SHOW_W_TEXT"]
     show_d = design_params.get("show_dir_name", CONFIG["SHOW_DIR_NAME"]) if design_params else CONFIG["SHOW_DIR_NAME"]
     
-    # ２．上部余白の計算：max(最大風速 + 表示要素数に応じた高さ, 危険ライン + 余裕)
+    # 上部余白の計算：要素が増えたため element_count に降水量の段(+1)を加算
     max_speed = df['wind_speed_10m'].max()
-    element_count = 1 + 1 + (1 if show_d else 0) + (1 if show_w else 0) # 数値+矢印+風向+天気
-    required_top_space = element_count * step + 1.0
+    element_count = 1 + 1 + 1 + (1 if show_d else 0) + (1 if show_w else 0) # 数値+矢印+降水量+風向+天気
+    required_top_space = element_count * step + 1.5
     y_limit = max(max_speed + required_top_space, danger_v + 3.0)
     
     ax.set_ylim(0, y_limit)
@@ -285,12 +286,18 @@ def render_wind_bar_chart(ax, df, danger_v, wind_step, design_params=None):
             ax.text(x_pos, current_y, row['arrow'], ha='center', va='bottom', 
                     fontsize=fs+2, fontweight='bold', color=CONFIG["ARROW_COLOR"])
             
-            # 3段目：風向名
+            # 3段目：降水量 (文字サイズは軸ラベルサイズに従う)
+            current_y += step
+            precip = row['precipitation'] if not pd.isna(row['precipitation']) else 0
+            ax.text(x_pos, current_y, f"{precip:.0f}", ha='center', va='bottom', 
+                    fontsize=l_fs, color="blue", fontweight='normal')
+            
+            # 4段目：風向名
             if show_d:
                 current_y += step
                 ax.text(x_pos, current_y, row['dir_name'], ha='center', va='bottom', fontsize=fs-2)
             
-            # 4段目：天気文字
+            # 5段目：天気文字
             if show_w:
                 current_y += step
                 ax.text(x_pos, current_y, row['w_text'], ha='center', va='bottom', 
