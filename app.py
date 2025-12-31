@@ -690,7 +690,7 @@ def show_sidebar_controls():
         design_params["graph_dpi"] = st.sidebar.radio("解像度 (DPI)", options=[200, 300], index=(0 if design_params["graph_dpi"] == 200 else 1), horizontal=True)
         design_params["show_w_text"] = st.sidebar.toggle("天気詳細文字を表示", value=design_params["show_w_text"])
         design_params["show_dir_name"] = st.sidebar.toggle("風向名を表示", value=design_params["show_dir_name"])
-        design_params["hspace"] = st.sidebar.slider("グラフ間余白", 0, 1.5, design_params["hspace"], step=0.05)
+        design_params["hspace"] = st.sidebar.slider("グラフ間余白", -0.2, 1.5, design_params["hspace"], step=0.05)
         design_params["label_pad"] = st.sidebar.slider("ラベル距離", -5, 10, design_params["label_pad"])
         r = design_params["ratios"]
         r[0] = st.sidebar.number_input("比率:風向", 0.5, 10.0, r[0], step=0.1)
