@@ -407,16 +407,30 @@ def sync_all_settings():
     if st.session_state.get("initialized"):
         return
 
-    # 初回起動時のみブラウザからデータを読み込む
+    ## 初回起動時のみブラウザからデータを読み込む
+    ## stored_data = streamlit_js_eval(js_expressions=f"localStorage.getItem('{STORAGE_KEY}')", key="init_load_settings")
+    ## ブラウザからデータを取得
     # stored_data = streamlit_js_eval(js_expressions=f"localStorage.getItem('{STORAGE_KEY}')", key="init_load_settings")
-    # ブラウザからデータを取得
-    stored_data = streamlit_js_eval(js_expressions=f"localStorage.getItem('{STORAGE_KEY}')", key="init_load_settings")
 
-    # 【重要】データが取得できるまでここで止める（これが「戻ってしまう」現象の対策）
+    ## 【重要】データが取得できるまでここで止める（これが「戻ってしまう」現象の対策）
+    # if stored_data is None:
+    #     st.stop() 
+    # 
+    #if stored_data:
+
+    #--------------------------------------------------------------------------------------------
+    # JS側で、データがない場合に "EMPTY" という文字列を返すように細工する
+    js_query = f"localStorage.getItem('{STORAGE_KEY}') || 'EMPTY'"
+    stored_data = streamlit_js_eval(js_expressions=js_query, key="init_load_settings_v3")
+
     if stored_data is None:
-        st.stop() 
-    
-    if stored_data:
+        st.stop()  # 本当に通信待ちの間だけ止める
+
+    if stored_data == "EMPTY":
+        # データがない場合は、何もせず初期化完了として進む
+        st.session_state.initialized = True
+    else:
+    #-----------------------------------------------------------------------------------------    
         try:
             data = json.loads(stored_data)
             # 地点情報の復元
