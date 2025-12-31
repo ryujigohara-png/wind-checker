@@ -211,8 +211,8 @@ def render_wind_bar_chart(ax, df, danger_v, wind_step, design_params=None):
     fs = design_params.get("base_font_size", CONFIG["GRAPH_FONT_SIZE"]) if design_params else CONFIG["GRAPH_FONT_SIZE"]
     
     # 矢印・文字の間隔を「文字サイズの20%」に固定（1ポイント≒0.35mmですが、グラフ単位系に換算）
-    # グラフのY軸単位に合わせて 0.12 * fs 程度で調整
-    step = fs * 0.12 
+    # グラフのY軸単位に合わせて 0.144 * fs 程度で調整
+    step = fs * 0.144 
     base = step * 0.5
     
     # 表示フラグ
