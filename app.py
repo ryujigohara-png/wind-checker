@@ -282,41 +282,37 @@ def render_wind_bar_chart(ax, df, danger_v, wind_step, design_params=None):
             base_y = bar.get_height()
             x_pos = bar.get_x() + bar.get_width()/2.
             
-            # --- グラフエリア内の表示（風速数値、矢印、風向、天気） ---
-            # 1段目：風速数値
+            # --- 1. グラフエリア内の表示 ---
             current_y = base_y + base
             ax.text(x_pos, current_y, f"{row['wind_speed_10m']:.0f}", ha='center', va='bottom', fontsize=fs-2)
             
-            # 2段目：矢印
             current_y += step
             ax.text(x_pos, current_y, row['arrow'], ha='center', va='bottom', 
                     fontsize=fs+2, fontweight='bold', color=CONFIG["ARROW_COLOR"])
             
-            # 3段目：風向名
             if show_d:
                 current_y += step
                 ax.text(x_pos, current_y, row['dir_name'], ha='center', va='bottom', fontsize=fs-2)
             
-            # 4段目：天気文字
             if show_w:
                 current_y += step
                 ax.text(x_pos, current_y, row['w_text'], ha='center', va='bottom', 
                         color=row['w_color'], fontweight='bold', fontsize=fs-1)
 
-            # --- グラフエリア外の表示（降水量） ---
+            # --- 2. グラフエリア外の表示（降水量） ---
+            # 天気アイコン（HTML）が上にあるため、さらに位置を調整(1.12)
             precip = row.get('precipitation', 0)
-            # 降水量が0より大きい場合のみ、枠外上部（y=1.02）に表示
             if not pd.isna(precip) and precip > 0:
                 ax.text(
                     row['time'], 
-                    1.02, 
+                    1.12, 
                     f"{precip:.0f}", 
                     ha='center', 
                     va='bottom', 
                     fontsize=l_fs,
                     color="blue",
-                    transform=ax.get_xaxis_transform(), # Y軸を相対座標（0=下, 1=上）にする
-                    clip_on=False                       # 枠外描画を許可
+                    transform=ax.get_xaxis_transform(),
+                    clip_on=False
                 )
                 
 #==========================================================================================
@@ -464,26 +460,37 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
 # 13. お天気アイコンのHTMLを生成するサブルーチン
 #==========================================================================================
 def generate_weather_icons_html(df, ratio_info, display_width):
+    """
+    データフレームの時間軸に基づいて、お天気アイコンを正確な位置に配置するHTMLを生成する。
+    """
     start_x, hour_w = ratio_info
     icon_html = ""
-    # display_width（px）を基準に、各アイコンの絶対位置を計算
-    for i in range(3, len(df), 3):
-        row = df.iloc[i]
-        # (開始位置 + 時間経過幅) * 全体幅 = アイコンの左端からのpx位置
-        pos_left_px = (start_x + (i * hour_w)) * display_width
-        icon_html += f'''
-            <div style="
-                position: absolute; 
-                left: {pos_left_px}px; 
-                transform: translateX(-50%); 
-                width: 80px; 
-                text-align: center; 
-                font-size: 32px;
-                z-index: 10;">
-                {row["weather_icon"]}
-            </div>'''
     
-    return f'<div style="position: relative; width: {display_width}px; height: 45px; margin-bottom: -15px;">{icon_html}</div>'
+    # ズレを防ぐため、全行をスキャンして3時間おきの時刻を判定
+    for i in range(len(df)):
+        row = df.iloc[i]
+        dt = row['time']
+        
+        # 3時間おき（0, 3, 6, 9...時）のみアイコンを表示
+        if dt.hour % 3 == 0:
+            # display_width（px）を基準に、各アイコンの絶対位置を計算
+            # (開始位置 + インデックスに基づく幅) * 全体幅
+            pos_left_px = (start_x + (i * hour_w)) * display_width
+            
+            icon_html += f'''
+                <div style="
+                    position: absolute; 
+                    left: {pos_left_px}px; 
+                    transform: translateX(-50%); 
+                    width: 80px; 
+                    text-align: center; 
+                    font-size: 32px;
+                    z-index: 10;">
+                    {row["weather_icon"]}
+                </div>'''
+    
+    # margin-bottomを調整して、下のグラフ（降水量ラベル）との隙間を確保
+    return f'<div style="position: relative; width: {display_width}px; height: 50px; margin-bottom: -5px;">{icon_html}</div>'
 
 #==========================================================================================
 # 14. 地図UIを表示し地点を選択するサブルーチン
