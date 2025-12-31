@@ -300,9 +300,39 @@ def render_wind_bar_chart(ax, df, danger_v, wind_step, design_params=None):
 # 10. 気温折れ線グラフを描画するサブルーチン
 #==========================================================================================
 def render_temp_line_chart(ax, df):
+    """
+    気温の折れ線グラフを描画し、各時刻（0時と3の倍数）のデータポイント上に気温数値を表示する。
+    数値のフォントサイズは軸ラベルの設定（CONFIG["LABEL_SIZE"]）に従う。
+    """
+    # メインの折れ線描画
     ax.plot(df['time'], df['temperature_2m'], color=CONFIG["TEMP_COLOR"], linewidth=2, marker='o', markersize=3, markevery=3)
     ax.set_ylabel('気温 (℃)', fontsize=CONFIG["LABEL_SIZE"])
+    
+    # フォントサイズは軸ラベルのサイズを取得
+    label_fs = CONFIG["LABEL_SIZE"]
+    
+    # グラフ上端に数値を表示するためのマージン設定（最大値の10%程度を上に確保）
+    t_max = df['temperature_2m'].max()
+    t_min = df['temperature_2m'].min()
+    y_range = t_max - t_min if t_max != t_min else 1.0
+    ax.set_ylim(t_min - (y_range * 0.1), t_max + (y_range * 0.2))
 
+    # 各時刻の気温数値を描画
+    for i in range(len(df)):
+        dt = df['time'].iloc[i]
+        temp = df['temperature_2m'].iloc[i]
+        
+        # 0時、または3の倍数の時刻のみ数値を表示（pd.isnaチェック含む）
+        if not pd.isna(temp) and (dt.hour % 3 == 0):
+            ax.text(
+                dt, 
+                temp + (y_range * 0.05), # ポイントの少し上に表示
+                f"{temp:.1f}", 
+                ha='center', 
+                va='bottom', 
+                fontsize=label_fs,
+                color=CONFIG["TEMP_COLOR"]
+            )
 #==========================================================================================
 # 11. 潮位曲線グラフを描画するサブルーチン
 #==========================================================================================
