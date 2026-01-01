@@ -385,22 +385,22 @@ def render_tide_curve_chart(ax, df):
 def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_params, now_jst):
     """
     指定されたパラメータに基づき、高解像度の気象グラフ画像を生成してBase64形式で返す。
-    描画開始時刻を現在時刻の直前の3時間区切り（0,3,6,9,12,15,18,21時）に設定する。
-    hspaceの値を確実に反映させるため、自動レイアウト調整を無効化している。
+    左端の3時間パディングを含めた正確な開始時刻を算出し、データと描画のズレを解消する。
     """
-    df_raw = fetch_weather_data(lat, lon, 8)
+    df_raw = fetch_weather_data(lat, lon, 9) # 余裕を持って9日分取得
     if df_raw is None: return None, (0, 0)
     
-    # --- 描画開始基準時刻の計算 ---
-    base_hour = (now_jst.hour // 3) * 3
-    start_time = now_jst.replace(hour=base_hour, minute=0, second=0, microsecond=0)
+    # --- 描画開始基準時刻の厳密な計算 ---
+    # 14:20 の場合、実データの表示開始は 12:00。パディング開始はその3時間前の 09:00。
+    display_start_time = now_jst.replace(hour=(now_jst.hour // 3) * 3, minute=0, second=0, microsecond=0)
+    padding_start_time = display_start_time - timedelta(hours=3)
     
-    # 基準時刻以降のデータを抽出
-    df = df_raw[df_raw['time'] >= start_time].copy().reset_index(drop=True)
+    # パディング開始時刻以降のデータを抽出し、インデックスを振り直す
+    # これにより、df.iloc[0:3] がパディング区間、df.iloc[3] がグラフ左端（表示開始点）に固定される
+    df = df_raw[df_raw['time'] >= padding_start_time].copy().reset_index(drop=True)
     
-    # --- 左端の3時間空白（パディング）処理 ---
-    padding_df = pd.DataFrame({'time': [df['time'].iloc[0] - timedelta(hours=i) for i in range(1, 4)][::-1]})
-    df = pd.concat([padding_df, df], ignore_index=True)
+    # 8日分（24時間 * 8 = 192行）+ パディング3行 = 計195行に制限
+    df = df.head(195)
     
     # 風データ等の処理
     df = process_wind_data(df, list(selected_dirs_tuple))
@@ -447,17 +447,15 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
     for ax in axes:
         apply_common_axis_settings(ax, df, formatter, now_jst, design_params)
 
-    # 【重要】tight_layoutを無効化し、手動のsubplots_adjustを優先させる
-    # fig.tight_layout(pad=1.0) # ← これをコメントアウト
-    
     # サイドバーのhspaceを適用
     plt.subplots_adjust(
         left=0.05, right=0.95, top=0.95, bottom=0.15,
         hspace=design_params.get("hspace", CONFIG["HSPACE"])
     )
 
+    # HTML配置用の比率計算
     pos = axes[0].get_position() 
-    # HTMLアイコン配置用の比率情報を計算
+    # 全データ数（パディング込）に対する 1時間あたりの幅を正確に計算
     ratio_info = (pos.x0, pos.width / (len(df) - 1))
     
     # 画像のバイナリ化
@@ -467,7 +465,7 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
     
     img_b64 = base64.b64encode(buf.getvalue()).decode()
     return img_b64, ratio_info
-    
+
 # ======================================================================================
 # 13. お天気アイコンのHTMLを生成するサブルーチン
 # ======================================================================================
@@ -484,8 +482,7 @@ def generate_weather_icons_html(df, ratio_info, display_width, icon_margin=0):
     header_fs_px = l_size_pt * 1.33
     
     # --- 「天気」見出しの配置 ---
-    # グラフの実際の左端（i=3の位置）に合わせる
-    # (start_x + (3 * hour_w)) がMatplotlibにおけるi=3の座標に相当
+    # グラフの実際の左端（i=3の位置）に完全に合わせる
     label_pos_x = ((start_x + (3 * hour_w)) * display_width) - 10
     icon_html += f'''
         <div style="position: absolute; left: {label_pos_x}px; top: 22px; 
@@ -506,7 +503,7 @@ def generate_weather_icons_html(df, ratio_info, display_width, icon_margin=0):
             icon = row.get('weather_icon')
             if pd.isna(icon) or pd.isna(dt): continue
             
-            # i番目のデータの中心座標をpx換算
+            # データの中心座標をpx換算
             pos_left_px = (start_x + (i * hour_w)) * display_width
             icon_html += f'''
                 <div style="position: absolute; left: {pos_left_px}px; top: 10px; 
@@ -515,7 +512,6 @@ def generate_weather_icons_html(df, ratio_info, display_width, icon_margin=0):
                     {icon}
                 </div>'''
     
-    # 外枠のコンテナを返す
     return f'<div style="position: relative; width: {display_width}px; height: 35px; margin-bottom: {icon_margin}px; overflow: visible;">{icon_html}</div>'
     
 #==========================================================================================
