@@ -384,67 +384,61 @@ def render_tide_curve_chart(ax, df):
 @st.cache_data(show_spinner="グラフを生成中...", ttl=600)
 def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_params, now_jst):
     """
-    グラフ描画範囲の左端を特定し、そのインデックスを start_idx として返す。
-    末尾参照エラー(IndexError)を防ぐため、動的に最終行を特定する。
+    日付の色分け等の完成された描画ロジックを維持しつつ、
+    グラフの左端位置（start_idx）を後続のアイコン生成へ受け渡す。
     """
-    import pandas as pd
-    import io
-    import base64
-    from datetime import timedelta
-
     df_raw = fetch_weather_data(lat, lon, 9)
     if df_raw is None: return None, (0, 0), 0
     
-    # 1. グラフの左端（枠線）にすべき時刻を決定（例：22:40なら21:00）
+    # 1. 安定した時刻抽出ロジック（変更禁止）
     display_start_time = now_jst.replace(hour=(now_jst.hour // 3) * 3, minute=0, second=0, microsecond=0)
-    
-    # 2. パディングを含めて切り出し
     padding_start_time = display_start_time - timedelta(hours=3)
     df = df_raw[df_raw['time'] >= padding_start_time].copy().reset_index(drop=True)
+    df = df.head(195)
     
-    # 3. start_idx (左端位置) の特定
-    # 1時間1行なので padding があれば index=3。欠落時は時刻一致で検索。
+    # 2. アイコン同期のためのインデックス特定（1時間1行なので padding=3時間 なら通常 3）
     match_indices = df.index[df['time'] == display_start_time].tolist()
-    start_idx = match_indices[0] if match_indices else 0 
+    start_idx = match_indices[0] if match_indices else 3 
     
+    # 3. 風向・風速処理
     df = process_wind_data(df, list(selected_dirs_tuple))
     
+    # 4. 描画コンテキストの設定
     active_plots = []
     if design_params.get("show_wind", True): active_plots.append("wind")
     if design_params.get("show_temp", True): active_plots.append("temp")
     if design_params.get("show_tide", True): active_plots.append("tide")
-    
     if not active_plots: return None, (0, 0), start_idx
     
-    # 描画サイズの設定
-    fig_w = design_params.get("width", 15)
-    fig_h = design_params.get("height", 2.0)
+    ratios = design_params.get("ratios", CONFIG["DEFAULT_RATIOS"])
+    current_ratios = [ratios[i] for i, p in enumerate(["wind", "temp", "tide"]) if p in active_plots]
+    
+    fig_w, fig_h = design_params.get("width", 15), design_params.get("height", 2.0)
     dpi_value = design_params.get("graph_dpi", 200)
     
     fig, axes = plt.subplots(len(active_plots), 1, figsize=(fig_w, fig_h), dpi=dpi_value, 
-                             gridspec_kw={'height_ratios': [design_params.get("ratios", [1,1,1])[i] for i, p in enumerate(["wind", "temp", "tide"]) if p in active_plots]})
+                             gridspec_kw={'height_ratios': current_ratios})
     if len(active_plots) == 1: axes = [axes]
     
-    # 各チャートの描画
+    # 5. 各チャートのレンダリング（元の描画サブルーチンを呼び出す）
     idx = 0
     if "wind" in active_plots:
         render_wind_bar_chart(axes[idx], df, danger_v, start_idx, design_params)
         idx += 1
-    if "temp" in active_plots and len(axes) > idx:
+    if "temp" in active_plots and idx < len(axes):
         render_temp_line_chart(axes[idx], df)
         idx += 1
-    if "tide" in active_plots and len(axes) > idx:
+    if "tide" in active_plots and idx < len(axes):
         render_tide_curve_chart(axes[idx], df)
 
-    # 軸設定と表示範囲の固定
+    # 6. 共通軸設定（ここで日付の色分け等が行われる）
+    # 元の apply_common_axis_settings をそのまま使い、余計な set_xlim は行わない
     for ax in axes:
         apply_common_axis_settings(ax, df, get_x_axis_formatter(), now_jst, design_params)
-        # 安全な終了点指定：データの最後尾(iloc[-1])を使用し IndexError を回避
-        ax.set_xlim(df['time'].iloc[start_idx], df['time'].iloc[-1])
 
-    plt.subplots_adjust(left=0.05, right=0.95, top=0.95, bottom=0.15)
+    plt.subplots_adjust(left=0.05, right=0.95, top=0.95, bottom=0.15, hspace=design_params.get("hspace", 0.3))
     
-    # 比率計算
+    # 7. 比率計算（アイコン配置用）
     pos = axes[0].get_position() 
     ratio_info = (pos.x0, pos.width / 192.0)
     
@@ -452,6 +446,7 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
     fig.savefig(buf, format="png", bbox_inches=None, pad_inches=0, dpi=dpi_value)
     plt.close(fig) 
     
+    # 8. 画像、比率、そして特定した start_idx を返す
     return base64.b64encode(buf.getvalue()).decode(), ratio_info, start_idx
     
 # ======================================================================================
