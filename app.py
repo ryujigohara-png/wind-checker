@@ -260,7 +260,8 @@ def apply_common_axis_settings(ax, df, formatter, now_jst, design_params):
 def render_wind_bar_chart(ax, df, danger_v, wind_step, design_params=None):
     """
     風速棒グラフを描画し、上部に各種情報を配置する。
-    左端の3時間パディングを考慮し、グラフ枠の左端（4番目のデータ）から描画基準を合わせる。
+    左端の3時間パディングを考慮し、グラフ枠の左端（インデックス3）から描画基準を合わせる。
+    降水量は0より大きい場合のみ、小数点第1位まで表示する。
     """
     bar_width = design_params.get("bar_width", 0.035) if design_params else 0.035
     bars = ax.bar(df['time'], df['wind_speed_10m'], color=df['color'], alpha=0.9, width=bar_width)
@@ -283,26 +284,26 @@ def render_wind_bar_chart(ax, df, danger_v, wind_step, design_params=None):
     ax.set_ylabel('風速 (m/s)', fontsize=l_fs) 
 
     # --- ①「降水量mm」の見出し位置修正 ---
-    # パディング（3時間分）を飛ばした、実際のグラフ左端の時刻を取得
+    # グラフの左端（パディング直後の時刻）を取得
     graph_left_time = df['time'].iloc[3] 
     ax.text(graph_left_time, precip_y, "降水量mm", 
             ha='right', va='bottom', fontsize=l_fs, color="blue", 
             transform=ax.get_xaxis_transform(), clip_on=False)
     
     for i, bar in enumerate(bars):
-        # パディング期間（最初の3つ）は数値やテキストを描画しない
+        # 0, 1, 2番目のインデックス（パディング期間）は描画をスキップ
         if i < 3: continue
         
         row = df.iloc[i]
         dt = row['time']
+        x_pos = bar.get_x() + bar.get_width()/2.
         
-        # 風速数値・矢印の描画（3時間ステップごと）
+        # --- ② 風速数値・矢印の描画（3時間ステップごと） ---
         if (i - 3) % wind_step == 0:
             if pd.isna(row['wind_speed_10m']): continue
             base_y = bar.get_height()
-            x_pos = bar.get_x() + bar.get_width()/2.
             
-            # 数値
+            # 風速数値
             ax.text(x_pos, base_y + base, f"{row['wind_speed_10m']:.0f}", ha='center', va='bottom', fontsize=fs-2)
             # 矢印
             current_y = base_y + base + step
@@ -318,10 +319,11 @@ def render_wind_bar_chart(ax, df, danger_v, wind_step, design_params=None):
                 ax.text(x_pos, current_y, row['w_text'], ha='center', va='bottom', 
                         color=row['w_color'], fontweight='bold', fontsize=fs-1)
 
-        # --- ② 降水量数値の表示（0より大きい場合のみ、小数点1位まで） ---
-        if dt.hour % 3 == 0:
+        # --- ③ 降水量数値の表示（3時間ごと、0より大きい場合のみ） ---
+        if (i - 3) % 3 == 0:
             precip = row.get('precipitation', 0)
             if pd.notna(precip) and precip > 0:
+                # 棒グラフの中心(x_pos)を使用して、横ズレを完全に防ぐ
                 ax.text(dt, precip_y, f"{precip:.1f}", ha='center', va='bottom', 
                         fontsize=l_fs, color="blue", transform=ax.get_xaxis_transform(), clip_on=False)
                 
@@ -472,7 +474,7 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
 def generate_weather_icons_html(df, ratio_info, display_width, icon_margin=0):
     """
     お天気アイコンのHTMLを生成する。
-    左端の3時間パディングを考慮し、表示位置を3インデックス分シフトさせる。
+    左端の3時間パディングを考慮し、表示位置を3インデックス分シフトさせてグラフと同期する。
     """
     start_x, hour_w = ratio_info
     icon_html = ""
@@ -481,28 +483,30 @@ def generate_weather_icons_html(df, ratio_info, display_width, icon_margin=0):
     l_size_pt = CONFIG.get("LABEL_SIZE", 7)
     header_fs_px = l_size_pt * 1.33
     
-    # --- 「天気」見出し（3時間後の位置＝グラフ左端を基準に配置） ---
-    # start_x + (3 * hour_w) が実際のグラフ表示開始位置
+    # --- 「天気」見出しの配置 ---
+    # グラフの実際の左端（i=3の位置）に合わせる
+    # (start_x + (3 * hour_w)) がMatplotlibにおけるi=3の座標に相当
     label_pos_x = ((start_x + (3 * hour_w)) * display_width) - 10
     icon_html += f'''
         <div style="position: absolute; left: {label_pos_x}px; top: 22px; 
                     transform: translateX(-100%); font-size: {header_fs_px}px; 
-                    font-family: 'Noto Sans JP', sans-serif; color: #333; z-index: 5;">
+                    font-family: 'Noto Sans JP', sans-serif; color: #333; z-index: 5; white-space: nowrap;">
             天気
         </div>'''
     
     for i in range(len(df)):
-        # パディング期間はアイコンを表示しない
+        # 0, 1, 2番目のインデックス（パディング期間）は表示しない
         if i < 3: continue
         
         row = df.iloc[i]
         dt = row['time']
         
         # 3時間ごとにアイコンを配置
-        if dt.hour % 3 == 0:
+        if (i - 3) % 3 == 0:
             icon = row.get('weather_icon')
             if pd.isna(icon) or pd.isna(dt): continue
             
+            # i番目のデータの中心座標をpx換算
             pos_left_px = (start_x + (i * hour_w)) * display_width
             icon_html += f'''
                 <div style="position: absolute; left: {pos_left_px}px; top: 10px; 
@@ -511,6 +515,7 @@ def generate_weather_icons_html(df, ratio_info, display_width, icon_margin=0):
                     {icon}
                 </div>'''
     
+    # 外枠のコンテナを返す
     return f'<div style="position: relative; width: {display_width}px; height: 35px; margin-bottom: {icon_margin}px; overflow: visible;">{icon_html}</div>'
     
 #==========================================================================================
