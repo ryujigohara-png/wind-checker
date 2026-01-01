@@ -398,7 +398,8 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
     
     # 2. アイコン同期のためのインデックス特定（1時間1行なので padding=3時間 なら通常 3）
     match_indices = df.index[df['time'] == display_start_time].tolist()
-    start_idx = match_indices[0] if match_indices else 3 
+    ###start_idx = match_indices[0] if match_indices else 3 
+    start_idx =  (now_jst.hour // 3) * 3
     
     # 3. 風向・風速処理
     df = process_wind_data(df, list(selected_dirs_tuple))
