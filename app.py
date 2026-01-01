@@ -884,6 +884,9 @@ def main():
             dpi = design_params["graph_dpi"]
             display_width = int(design_params["width"] * dpi)
             min_w = design_params["min_container_width"]
+            # design_params から icon_margin を取得（なければ 0）
+            icon_margin = design_params.get("icon_margin", 0)
+        
             
             padding_df = pd.DataFrame({'time': [df_for_icons['time'].iloc[0] - timedelta(hours=i) for i in range(1, 4)][::-1]})
             df_full = pd.concat([padding_df, df_for_icons], ignore_index=True)
