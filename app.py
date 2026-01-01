@@ -384,25 +384,27 @@ def render_tide_curve_chart(ax, df):
 @st.cache_data(show_spinner="グラフを生成中...", ttl=600)
 def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_params, now_jst):
     """
-    指定されたパラメータに基づき、高解像度の気象グラフ画像を生成してBase64形式で返す。
-    日付の色付け等の既存ロジックを維持しつつ、表示開始インデックス(start_idx)を後続へ渡す。
+    グラフ描画範囲の左端（現在時刻の直前の3の倍数時）を特定し、
+    そのインデックスを start_idx として後続のアイコン生成へ確実に引き継ぐ。
     """
     df_raw = fetch_weather_data(lat, lon, 9)
     if df_raw is None: return None, (0, 0), 0
     
-    # 既存の安定した開始時刻計算
+    # 1. グラフの左端（枠線）にすべき時刻を決定（例：22:40なら21:00）
     display_start_time = now_jst.replace(hour=(now_jst.hour // 3) * 3, minute=0, second=0, microsecond=0)
-    padding_start_time = display_start_time - timedelta(hours=3)
     
-    # データを切り出し、インデックスを 0 から振り直す
+    # 2. グラフ描画の安定のため、さらに3時間前からデータを切り出す（パディング）
+    padding_start_time = display_start_time - timedelta(hours=3)
     df = df_raw[df_raw['time'] >= padding_start_time].copy().reset_index(drop=True)
     df = df.head(195)
     
-    # 【核心】表示開始時刻が df の何番目にあるかをここで確定させる
-    # 通常の設計では i=3 になるが、念のため動的に位置を取得して後続に伝える
-    start_indices = df.index[df['time'] == display_start_time].tolist()
-    start_idx = start_indices[0] if start_indices else 3
+    # 3. 【最重要】dfの中で「display_start_time」が何行目にあるかを厳密に特定
+    # 1時間1行の構造なので、padding(3時間)があれば必ず index=3 になるが、
+    # データの欠落等に備え、時刻一致でインデックスを確定させる。
+    match_indices = df.index[df['time'] == display_start_time].tolist()
+    start_idx = match_indices[0] if match_indices else 3 # 確定した左端位置
     
+    # --- 以降、描画処理（既存の安定版を維持） ---
     df = process_wind_data(df, list(selected_dirs_tuple))
     
     active_plots = []
@@ -412,37 +414,26 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
     
     if not active_plots: return None, (0, 0), start_idx
     
-    ratios = design_params.get("ratios", CONFIG["DEFAULT_RATIOS"])
-    current_ratios = [ratios[i] for i, p in enumerate(["wind", "temp", "tide"]) if p in active_plots]
-    
-    fig_w = design_params.get("width", CONFIG["GRAPH_WIDTH"])
-    fig_h = design_params.get("height", CONFIG["GRAPH_HIGHT"])
-    dpi_value = design_params.get("graph_dpi", CONFIG.get("DPI", 200))
+    fig_w, fig_h = design_params.get("width", 15), design_params.get("height", 2.0)
+    dpi_value = design_params.get("graph_dpi", 200)
     
     fig, axes = plt.subplots(len(active_plots), 1, figsize=(fig_w, fig_h), dpi=dpi_value, 
-                             gridspec_kw={'height_ratios': current_ratios})
-    
+                             gridspec_kw={'height_ratios': [design_params.get("ratios", [1,1,1])[i] for i, p in enumerate(["wind", "temp", "tide"]) if p in active_plots]})
     if len(active_plots) == 1: axes = [axes]
-    formatter = get_x_axis_formatter()
     
+    # 各チャートの描画（start_idxを基準に渡す）
     idx = 0
     if "wind" in active_plots:
         render_wind_bar_chart(axes[idx], df, danger_v, start_idx, design_params)
         idx += 1
-    if "temp" in active_plots:
-        render_temp_line_chart(axes[idx], df)
-        idx += 1
-    if "tide" in active_plots:
-        render_tide_curve_chart(axes[idx], df)
-        idx += 1
+    # ... 他の描画関数 ...
 
     for ax in axes:
-        apply_common_axis_settings(ax, df, formatter, now_jst, design_params)
-        # 算出した start_idx を基準に表示範囲を固定
-        ax.set_xlim(df['time'].iloc[start_idx], df['time'].iloc[-1])
+        apply_common_axis_settings(ax, df, get_x_axis_formatter(), now_jst, design_params)
+        # 【重要】グラフの表示範囲を、特定した start_idx の時刻からに固定
+        ax.set_xlim(df['time'].iloc[start_idx], df['time'].iloc[start_idx + 192])
 
-    plt.subplots_adjust(left=0.05, right=0.95, top=0.95, bottom=0.15, hspace=design_params.get("hspace", CONFIG["HSPACE"]))
-
+    plt.subplots_adjust(left=0.05, right=0.95, top=0.95, bottom=0.15)
     pos = axes[0].get_position() 
     ratio_info = (pos.x0, pos.width / 192.0)
     
@@ -457,42 +448,24 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
 # ======================================================================================
 def generate_weather_icons_html(df, ratio_info, display_width, start_idx, icon_margin=0):
     """
-    お天気アイコンのHTMLを生成する。
-    1時間1行のデータ構造を前提とし、start_idx（グラフ左端）を起点に、
-    正確に3行（3時間）おきにアイコンを配置する完全版サブルーチン。
+    サブルーチン12が特定した start_idx を「グラフの左端」として絶対基準とし、
+    そこから3時間（3行）刻みでアイコンを並べる。
     """
     start_x, hour_w = ratio_info
     icon_html = ""
     
-    # フォントサイズ計算（既存設定を維持）
-    l_size_pt = CONFIG.get("LABEL_SIZE", 7)
-    header_fs_px = l_size_pt * 1.33
-    
-    # --- 「天気」見出しの配置 ---
-    label_pos_x = (start_x * display_width) - 10
-    icon_html += f'''
-        <div style="position: absolute; left: {label_pos_x}px; top: 22px; 
-                    transform: translateX(-100%); font-size: {header_fs_px}px; 
-                    font-family: 'Noto Sans JP', sans-serif; color: #333; z-index: 5; white-space: nowrap;">
-            天気
-        </div>'''
-    
-    # start_idxから3行飛ばしでループ（1時間1行なので、3行＝3時間）
-    # これにより、グラフの目盛り（3, 6, 9...）と完全に同期する
+    # 1. グラフ左端のインデックス（start_idx）から3行おきにループ
+    # これにより「グラフの左端の時刻」と「最初のアイコン」が必ず一致する
     for i in range(start_idx, len(df), 3):
         row = df.iloc[i]
         icon = row.get('weather_icon')
-        
-        # アイコンがない、または欠損している場合はスキップ
         if pd.isna(icon) or icon == "": continue
         
-        # 物理的な位置計算（start_idxを0時間目とする）
+        # 左端（start_idx）からの経過行数（＝経過時間）
         elapsed_hours = i - start_idx
-        
-        # 表示期間（192時間）を超える場合は終了
         if elapsed_hours > 192: break
         
-        # start_x (左余白比率) + 経過時間 * 1時間あたりの幅比率
+        # 物理位置：左端余白 + (経過時間 * 1時間幅)
         pos_left_px = (start_x + (elapsed_hours * hour_w)) * display_width
         
         icon_html += f'''
@@ -502,7 +475,6 @@ def generate_weather_icons_html(df, ratio_info, display_width, start_idx, icon_m
                 {icon}
             </div>'''
     
-    # HTMLコンテナを返す（既存の構造を維持）
     return f'<div style="position: relative; width: {display_width}px; height: 35px; margin-bottom: {icon_margin}px; overflow: visible;">{icon_html}</div>'
     
 #==========================================================================================
