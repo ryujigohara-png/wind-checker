@@ -458,7 +458,7 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
 def generate_weather_icons_html(df, ratio_info, display_width, icon_margin=0):
     """
     お天気アイコンのHTMLを生成する。
-    i=3 (表示開始時刻) を物理的な基準点として、全インデックスに対して座標を計算する。
+    i=3 (表示開始時刻) を物理的なグラフ左端（start_x）として、座標を正確に計算する。
     """
     start_x, hour_w = ratio_info
     icon_html = ""
@@ -467,8 +467,9 @@ def generate_weather_icons_html(df, ratio_info, display_width, icon_margin=0):
     header_fs_px = l_size_pt * 1.33
     
     # --- 「天気」見出しの配置 ---
-    # インデックス i=3 (表示開始点) の X座標を計算
-    label_pos_x = ((start_x + (3 * hour_w)) * display_width) - 10
+    # グラフの左端枠線（表示開始点）のX座標を計算
+    # start_x はグラフ領域の左端の割合(0.0〜1.0)
+    label_pos_x = (start_x * display_width) - 10
     icon_html += f'''
         <div style="position: absolute; left: {label_pos_x}px; top: 22px; 
                     transform: translateX(-100%); font-size: {header_fs_px}px; 
@@ -477,7 +478,7 @@ def generate_weather_icons_html(df, ratio_info, display_width, icon_margin=0):
         </div>'''
     
     for i in range(len(df)):
-        # パディング期間(0,1,2)はスキップ
+        # パディング期間(0,1,2)はグラフ描画範囲外のためスキップ
         if i < 3: continue
         
         # 3時間ごとにアイコンを配置 (i=3, 6, 9...)
@@ -486,8 +487,11 @@ def generate_weather_icons_html(df, ratio_info, display_width, icon_margin=0):
             icon = row.get('weather_icon')
             if pd.isna(icon): continue
             
-            # 物理的なX座標を i に基づいて算出
-            pos_left_px = (start_x + (i * hour_w)) * display_width
+            # 【修正点】
+            # i=3 のときにグラフの左端（start_x）に位置するように計算
+            # 経過時間（時）は (i - 3) となる
+            elapsed_hours = i - 3
+            pos_left_px = (start_x + (elapsed_hours * hour_w)) * display_width
             
             icon_html += f'''
                 <div style="position: absolute; left: {pos_left_px}px; top: 10px; 
