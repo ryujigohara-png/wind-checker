@@ -425,8 +425,7 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
     # 5. 各チャートのレンダリング
     idx = 0
     if "wind" in active_plots:
-        # ここで渡す start_idx が内部の (i - start_idx) 等の計算の基準になります
-        render_wind_bar_chart(axes[idx], df, danger_v, start_idx, design_params)
+        render_wind_bar_chart(axes[idx], df, danger_v, 3, design_params)
         idx += 1
     if "temp" in active_plots and idx < len(axes):
         render_temp_line_chart(axes[idx], df)
