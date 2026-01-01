@@ -271,7 +271,7 @@ def render_wind_bar_chart(ax, df, danger_v, wind_step, design_params=None):
     fs = design_params.get("base_font_size", CONFIG["GRAPH_FONT_SIZE"]) if design_params else CONFIG["GRAPH_FONT_SIZE"]
     l_fs = design_params.get("label_font_size", CONFIG["LABEL_SIZE"]) if design_params else CONFIG["LABEL_SIZE"]
     
-    # サイドバーからの位置設定（なければデフォルト 1.0）
+    # サイドバーからの位置設定
     precip_y = design_params.get("precip_y", 1.0) if design_params else 1.0
     
     step = fs * 0.144 
@@ -286,11 +286,12 @@ def render_wind_bar_chart(ax, df, danger_v, wind_step, design_params=None):
     y_limit = max(max_speed + required_top_space, danger_v + 3.0)
     
     ax.set_ylim(0, y_limit)
-    ax.set_ylabel('風速 (m/s)', fontsize=l_fs) # 軸ラベルサイズを適用
+    ax.set_ylabel('風速 (m/s)', fontsize=l_fs) 
     
-    # --- 「降水量mm」の見出しを表示（軸ラベルと同じサイズ、同じ高さ） ---
-    ax.text(0, precip_y, "降水量mm", 
-            ha='right', va='bottom', fontsize=l_fs, color="blue", fontweight='bold',
+    # --- ①「降水量mm」の見出しを表示（数値描画と同じ precip_y を使用） ---
+    # 数値と同じ transform(xaxis) を使い、左端(x=0相当)に配置
+    ax.text(-0.01, precip_y, "降水量mm", 
+            ha='right', va='bottom', fontsize=l_fs, color="blue", 
             transform=ax.get_yaxis_transform(), clip_on=False)
     
     for i, bar in enumerate(bars):
@@ -302,30 +303,23 @@ def render_wind_bar_chart(ax, df, danger_v, wind_step, design_params=None):
             if pd.isna(row['wind_speed_10m']): continue
             base_y = bar.get_height()
             x_pos = bar.get_x() + bar.get_width()/2.
-            
-            # 風速数値
             ax.text(x_pos, base_y + base, f"{row['wind_speed_10m']:.0f}", ha='center', va='bottom', fontsize=fs-2)
-            
-            # 風向き矢印
             current_y = base_y + base + step
             ax.text(x_pos, current_y, row['arrow'], ha='center', va='bottom', 
                     fontsize=fs+2, fontweight='bold', color=CONFIG["ARROW_COLOR"])
-            
-            # 風向き名
             if show_d:
                 current_y += step
                 ax.text(x_pos, current_y, row['dir_name'], ha='center', va='bottom', fontsize=fs-2)
-            
-            # 天気テキスト
             if show_w:
                 current_y += step
                 ax.text(x_pos, current_y, row['w_text'], ha='center', va='bottom', 
                         color=row['w_color'], fontweight='bold', fontsize=fs-1)
 
-        # --- 降水量表示（軸ラベルサイズ l_fs と同一に設定） ---
+        # --- 降水量数値の表示（軸ラベルサイズ l_fs と同一に設定） ---
         if dt.hour % 3 == 0:
             precip = row.get('precipitation')
-            if pd.notna(precip) and str(precip).lower() != 'nan' and precip > 0:
+            # 0mmでも表示位置を確認できるよう pd.notna のみで判定（お好みで > 0 に戻してください）
+            if pd.notna(precip):
                 ax.text(
                     dt, 
                     precip_y, 
@@ -334,7 +328,6 @@ def render_wind_bar_chart(ax, df, danger_v, wind_step, design_params=None):
                     va='bottom', 
                     fontsize=l_fs, 
                     color="blue",
-                    fontweight='bold',
                     transform=ax.get_xaxis_transform(),
                     clip_on=False
                 )
@@ -485,24 +478,24 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
 #==========================================================================================
 def generate_weather_icons_html(df, ratio_info, display_width, icon_margin=0):
     """
-    お天気アイコンのHTMLを生成し、下のグラフとの余白を icon_margin で調整する。
-    左端に「天気」という見出しを表示する。サイズは軸ラベル設定(CONFIG)を参照。
+    お天気アイコンのHTMLを生成する。
+    左端に「天気」という見出しを表示する。サイズは軸ラベルサイズ(LABEL_SIZE)に準拠。
     """
     start_x, hour_w = ratio_info
     icon_html = ""
     
-    # 軸ラベルのフォントサイズ設定を取得（HTMLのpx指定用）
-    # ※ design_paramsが渡せない構造のため、CONFIGから直接参照
-    l_fs = CONFIG.get("LABEL_SIZE", 7)
-    # matplotlibのサイズ感をHTML(px)に合わせるため微調整
-    header_fs_px = l_fs + 4 
+    # --- ②「天気」の文字サイズを軸ラベル(LABEL_SIZE)と同じにする ---
+    l_size_pt = CONFIG.get("LABEL_SIZE", 7)
+    # ブラウザ表示用に pt を px に変換 (1pt ≒ 1.33px)
+    header_fs_px = l_size_pt * 1.33
     
-    # --- 「天気」の見出しを左端に配置 ---
+    # 「天気」の見出し配置
     label_pos_x = (start_x * display_width) - 10
     icon_html += f'''
-        <div style="position: absolute; left: {label_pos_x}px; top: 18px; 
+        <div style="position: absolute; left: {label_pos_x}px; top: 22px; 
                     transform: translateX(-100%); font-size: {header_fs_px}px; 
-                    font-weight: bold; color: #333; z-index: 5;">
+                    font-family: 'Noto Sans JP', sans-serif; font-weight: normal; 
+                    color: #333; z-index: 5; white-space: nowrap;">
             天気
         </div>'''
     
@@ -519,7 +512,6 @@ def generate_weather_icons_html(df, ratio_info, display_width, icon_margin=0):
                     {row["weather_icon"]}
                 </div>'''
     
-    # 調整用の margin-bottom を適用
     return f'<div style="position: relative; width: {display_width}px; height: 35px; margin-bottom: {icon_margin}px; overflow: visible;">{icon_html}</div>'
     
 #==========================================================================================
