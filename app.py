@@ -385,21 +385,23 @@ def render_tide_curve_chart(ax, df):
 def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_params, now_jst):
     """
     指定されたパラメータに基づき、高解像度の気象グラフ画像を生成してBase64形式で返す。
-    既存の安定した描画ロジック（日付の色付け、軸設定）を維持し、HTML用の比率情報を返す。
+    日付の色付け等の既存ロジックを維持しつつ、表示開始インデックス(start_idx)を後続へ渡す。
     """
-    # 既存の安定したデータ取得（9日分）
     df_raw = fetch_weather_data(lat, lon, 9)
-    if df_raw is None: return None, (0, 0)
+    if df_raw is None: return None, (0, 0), 0
     
-    # 【重要】描画開始時刻の計算（ここをグラフの左端とする）
+    # 既存の安定した開始時刻計算
     display_start_time = now_jst.replace(hour=(now_jst.hour // 3) * 3, minute=0, second=0, microsecond=0)
-    
-    # 既存のロジック：パディング3時間を確保するため、display_start_timeの3時間前からデータを切り出す
     padding_start_time = display_start_time - timedelta(hours=3)
-    df = df_raw[df_raw['time'] >= padding_start_time].copy().reset_index(drop=True)
     
-    # 表示期間を 192時間(8日) + パディング3時間 = 195行に固定（既存の安定構造）
+    # データを切り出し、インデックスを 0 から振り直す
+    df = df_raw[df_raw['time'] >= padding_start_time].copy().reset_index(drop=True)
     df = df.head(195)
+    
+    # 【核心】表示開始時刻が df の何番目にあるかをここで確定させる
+    # 通常の設計では i=3 になるが、念のため動的に位置を取得して後続に伝える
+    start_indices = df.index[df['time'] == display_start_time].tolist()
+    start_idx = start_indices[0] if start_indices else 3
     
     df = process_wind_data(df, list(selected_dirs_tuple))
     
@@ -408,7 +410,7 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
     if design_params.get("show_temp", True): active_plots.append("temp")
     if design_params.get("show_tide", True): active_plots.append("tide")
     
-    if not active_plots: return None, (0, 0)
+    if not active_plots: return None, (0, 0), start_idx
     
     ratios = design_params.get("ratios", CONFIG["DEFAULT_RATIOS"])
     current_ratios = [ratios[i] for i, p in enumerate(["wind", "temp", "tide"]) if p in active_plots]
@@ -421,12 +423,11 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
                              gridspec_kw={'height_ratios': current_ratios})
     
     if len(active_plots) == 1: axes = [axes]
-    
     formatter = get_x_axis_formatter()
     
     idx = 0
     if "wind" in active_plots:
-        render_wind_bar_chart(axes[idx], df, danger_v, 3, design_params)
+        render_wind_bar_chart(axes[idx], df, danger_v, start_idx, design_params)
         idx += 1
     if "temp" in active_plots:
         render_temp_line_chart(axes[idx], df)
@@ -436,15 +437,12 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
         idx += 1
 
     for ax in axes:
-        # 既存の安定した軸設定を適用
         apply_common_axis_settings(ax, df, formatter, now_jst, design_params)
-        # グラフの左端を df[3] (display_start_time) に確実に固定
-        ax.set_xlim(df['time'].iloc[3], df['time'].iloc[-1])
+        # 算出した start_idx を基準に表示範囲を固定
+        ax.set_xlim(df['time'].iloc[start_idx], df['time'].iloc[-1])
 
-    plt.subplots_adjust(left=0.05, right=0.95, top=0.95, bottom=0.15,
-                        hspace=design_params.get("hspace", CONFIG["HSPACE"]))
+    plt.subplots_adjust(left=0.05, right=0.95, top=0.95, bottom=0.15, hspace=design_params.get("hspace", CONFIG["HSPACE"]))
 
-    # 比率計算：表示されている192時間区間に対する1時間あたりの幅
     pos = axes[0].get_position() 
     ratio_info = (pos.x0, pos.width / 192.0)
     
@@ -452,15 +450,15 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
     fig.savefig(buf, format="png", bbox_inches=None, pad_inches=0, dpi=dpi_value)
     plt.close(fig) 
     
-    return base64.b64encode(buf.getvalue()).decode(), ratio_info
+    return base64.b64encode(buf.getvalue()).decode(), ratio_info, start_idx
     
 # ======================================================================================
 # 13. お天気アイコンのHTMLを生成するサブルーチン
 # ======================================================================================
-def generate_weather_icons_html(df, ratio_info, display_width, icon_margin=0):
+def generate_weather_icons_html(df, ratio_info, display_width, start_idx, icon_margin=0):
     """
     お天気アイコンのHTMLを生成する。
-    i=3 (グラフ左端) を基準点とし、そこから3時間おきにアイコンを配置する。
+    サブルーチン12から渡された start_idx を起点に、3時間おきにアイコンを配置する。
     """
     start_x, hour_w = ratio_info
     icon_html = ""
@@ -477,21 +475,18 @@ def generate_weather_icons_html(df, ratio_info, display_width, icon_margin=0):
             天気
         </div>'''
     
-    # 常に i=3（サブルーチン12で設定した表示開始点）を起点にする
-    # これにより、dfの中身が何時であっても、グラフの左端の時刻からアイコンが並ぶ
-    for i in range(len(df)):
-        # 表示領域（グラフ枠内）は i=3 から
-        if i < 3: continue
-        
-        # 3時間ごとにアイコンを配置 (i=3, 6, 9...)
-        if (i - 3) % 3 == 0:
+    # 受け取った start_idx を基準時刻 (0時間目) として配置を開始
+    base_time = df['time'].iloc[start_idx]
+    
+    for i in range(start_idx, len(df)):
+        # 3時間ステップの判定
+        if (i - start_idx) % 3 == 0:
             row = df.iloc[i]
             icon = row.get('weather_icon')
             if pd.isna(icon): continue
             
-            # 経過時間（時）は i=3 からの差分
-            elapsed_hours = i - 3
-            # 192時間を超えるデータ（右端以降）は表示しない
+            # 物理的な位置計算（開始インデックスからの経過時間）
+            elapsed_hours = (row['time'] - base_time).total_seconds() / 3600
             if elapsed_hours > 192: break
             
             pos_left_px = (start_x + (elapsed_hours * hour_w)) * display_width
