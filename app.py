@@ -241,20 +241,19 @@ def apply_common_axis_settings(ax, df, formatter, now_jst, design_params):
     
     ax.tick_params(axis='x', which='major', labelsize=l_size, pad=l_pad)
     ax.tick_params(axis='y', labelsize=l_size)
-    
-    # X軸のラベル（曜日）の色を個別に設定
+
+    # --- 曜日の色分け設定（平日: 青, 土日: 赤） ---
     fig = ax.figure
-    fig.canvas.draw() # ラベルを確定させるために一度描画
+    fig.canvas.draw()  # ラベルを確定させるために一度描画計算を行う
     labels = ax.get_xticklabels()
     for label in labels:
         text = label.get_text()
-        if '(' in text: # 日付ラベル（曜日が含まれるもの）を特定
-            # 土(5)または日(6)が含まれるか判定
+        if '(' in text:  # 曜日が含まれるラベル（0時）を特定
             if '土' in text or '日' in text:
                 label.set_color('red')
             else:
                 label.set_color('blue')
-    
+                
 #==========================================================================================
 # 9. 風速棒グラフを描画するサブルーチン
 #==========================================================================================
@@ -262,17 +261,17 @@ def render_wind_bar_chart(ax, df, danger_v, wind_step, design_params=None):
     """
     風速棒グラフを描画し、上部に風速数値、矢印を表示する。
     さらに、グラフ枠外の上部に降水量を表示する。
-    「降水量mm」の見出しと数値のサイズは、軸ラベルサイズ(l_fs)に統一する。
+    文字サイズは軸ラベルサイズ(l_fs)と同一にし、位置は design_params['precip_y'] で制御する。
     """
     bar_width = design_params.get("bar_width", 0.035) if design_params else 0.035
     bars = ax.bar(df['time'], df['wind_speed_10m'], color=df['color'], alpha=0.9, width=bar_width)
     ax.axhline(y=danger_v, color='red', linestyle='--', linewidth=CONFIG["HLINE_WIDTH"], alpha=0.8)
     
-    # フォントサイズ設定（l_fs = 軸ラベルサイズ）
+    # フォントサイズ設定
     fs = design_params.get("base_font_size", CONFIG["GRAPH_FONT_SIZE"]) if design_params else CONFIG["GRAPH_FONT_SIZE"]
     l_fs = design_params.get("label_font_size", CONFIG["LABEL_SIZE"]) if design_params else CONFIG["LABEL_SIZE"]
     
-    # サイドバーからの位置設定
+    # サイドバーからの位置設定（なければデフォルト 1.0）
     precip_y = design_params.get("precip_y", 1.0) if design_params else 1.0
     
     step = fs * 0.144 
@@ -287,9 +286,9 @@ def render_wind_bar_chart(ax, df, danger_v, wind_step, design_params=None):
     y_limit = max(max_speed + required_top_space, danger_v + 3.0)
     
     ax.set_ylim(0, y_limit)
-    ax.set_ylabel('風速 (m/s)', fontsize=l_fs)
+    ax.set_ylabel('風速 (m/s)', fontsize=l_fs) # 軸ラベルサイズを適用
     
-    # --- 「降水量mm」の見出しを表示（サイズを軸ラベルに統一） ---
+    # --- 「降水量mm」の見出しを表示（軸ラベルと同じサイズ、同じ高さ） ---
     ax.text(0, precip_y, "降水量mm", 
             ha='right', va='bottom', fontsize=l_fs, color="blue", fontweight='bold',
             transform=ax.get_yaxis_transform(), clip_on=False)
@@ -298,31 +297,47 @@ def render_wind_bar_chart(ax, df, danger_v, wind_step, design_params=None):
         row = df.iloc[i]
         dt = row['time']
         
-        # グラフ内部（風速・矢印）の描画ロジック
+        # グラフ内部の描画（風速・矢印）
         if i % wind_step == 0:
             if pd.isna(row['wind_speed_10m']): continue
             base_y = bar.get_height()
             x_pos = bar.get_x() + bar.get_width()/2.
             
+            # 風速数値
             ax.text(x_pos, base_y + base, f"{row['wind_speed_10m']:.0f}", ha='center', va='bottom', fontsize=fs-2)
+            
+            # 風向き矢印
             current_y = base_y + base + step
             ax.text(x_pos, current_y, row['arrow'], ha='center', va='bottom', 
                     fontsize=fs+2, fontweight='bold', color=CONFIG["ARROW_COLOR"])
+            
+            # 風向き名
             if show_d:
                 current_y += step
                 ax.text(x_pos, current_y, row['dir_name'], ha='center', va='bottom', fontsize=fs-2)
+            
+            # 天気テキスト
             if show_w:
                 current_y += step
                 ax.text(x_pos, current_y, row['w_text'], ha='center', va='bottom', 
                         color=row['w_color'], fontweight='bold', fontsize=fs-1)
 
-        # --- 各時刻の降水量数値表示（サイズを軸ラベルに統一） ---
+        # --- 降水量表示（軸ラベルサイズ l_fs と同一に設定） ---
         if dt.hour % 3 == 0:
             precip = row.get('precipitation')
             if pd.notna(precip) and str(precip).lower() != 'nan' and precip > 0:
-                ax.text(dt, precip_y, f"{precip:.0f}", ha='center', va='bottom', 
-                        fontsize=l_fs, color="blue", fontweight='bold',
-                        transform=ax.get_xaxis_transform(), clip_on=False)
+                ax.text(
+                    dt, 
+                    precip_y, 
+                    f"{precip:.0f}", 
+                    ha='center', 
+                    va='bottom', 
+                    fontsize=l_fs, 
+                    color="blue",
+                    fontweight='bold',
+                    transform=ax.get_xaxis_transform(),
+                    clip_on=False
+                )
                 
 #==========================================================================================
 # 10. 気温折れ線グラフを描画するサブルーチン
@@ -466,36 +481,47 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
     return img_b64, ratio_info
     
 #==========================================================================================
-# 13. 天気アイコンを描画するサブルーチン
+# 13. お天気アイコンのHTMLを生成するサブルーチン
 #==========================================================================================
-def render_weather_icons(ax, df, design_params=None):
+def generate_weather_icons_html(df, ratio_info, display_width, icon_margin=0):
     """
-    グラフ上部に天気アイコンを描画する。
-    「天気」の見出しサイズは、軸ラベルサイズ(l_fs)に統一する。
+    お天気アイコンのHTMLを生成し、下のグラフとの余白を icon_margin で調整する。
+    左端に「天気」という見出しを表示する。サイズは軸ラベル設定(CONFIG)を参照。
     """
-    # フォントサイズ設定（l_fs = 軸ラベルサイズ）
-    l_fs = design_params.get("label_font_size", CONFIG["LABEL_SIZE"]) if design_params else CONFIG["LABEL_SIZE"]
+    start_x, hour_w = ratio_info
+    icon_html = ""
     
-    # サイドバーからの位置設定（天気アイコンの高さ）
-    icon_y = design_params.get("weather_icon_y", 1.15) if design_params else 1.15
+    # 軸ラベルのフォントサイズ設定を取得（HTMLのpx指定用）
+    # ※ design_paramsが渡せない構造のため、CONFIGから直接参照
+    l_fs = CONFIG.get("LABEL_SIZE", 7)
+    # matplotlibのサイズ感をHTML(px)に合わせるため微調整
+    header_fs_px = l_fs + 4 
     
-    # --- 「天気」の見出しを表示（サイズを軸ラベルに統一） ---
-    ax.text(0, icon_y, "天気", 
-            ha='right', va='center', fontsize=l_fs, color="black", fontweight='bold',
-            transform=ax.get_yaxis_transform(), clip_on=False)
+    # --- 「天気」の見出しを左端に配置 ---
+    label_pos_x = (start_x * display_width) - 10
+    icon_html += f'''
+        <div style="position: absolute; left: {label_pos_x}px; top: 18px; 
+                    transform: translateX(-100%); font-size: {header_fs_px}px; 
+                    font-weight: bold; color: #333; z-index: 5;">
+            天気
+        </div>'''
     
-    # 天気アイコンの描画（3時間ごと）
-    for i, row in df.iterrows():
-        if row['time'].hour % 3 == 0:
-            icon_path = row.get('weather_icon_path')
-            if icon_path and os.path.exists(icon_path):
-                img = plt.imread(icon_path)
-                imagebox = OffsetImage(img, zoom=design_params.get("icon_zoom", 0.5))
-                ab = AnnotationBbox(imagebox, (row['time'], icon_y),
-                                    xycoords=ax.get_xaxis_transform(),
-                                    frameon=False, box_alignment=(0.5, 0.5))
-                ax.add_artist(ab)
-                
+    for i in range(len(df)):
+        row = df.iloc[i]
+        dt = row['time']
+        if dt.hour % 3 == 0:
+            if pd.isna(row.get('weather_icon')) or pd.isna(dt): continue
+            pos_left_px = (start_x + (i * hour_w)) * display_width
+            icon_html += f'''
+                <div style="position: absolute; left: {pos_left_px}px; top: 10px; 
+                            transform: translateX(-50%); width: 80px; text-align: center; 
+                            font-size: 32px; line-height: 1; z-index: 5;">
+                    {row["weather_icon"]}
+                </div>'''
+    
+    # 調整用の margin-bottom を適用
+    return f'<div style="position: relative; width: {display_width}px; height: 35px; margin-bottom: {icon_margin}px; overflow: visible;">{icon_html}</div>'
+    
 #==========================================================================================
 # 14. 地図UIを表示し地点を選択するサブルーチン
 #==========================================================================================
