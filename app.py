@@ -458,11 +458,13 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
 def generate_weather_icons_html(df, ratio_info, display_width, start_idx, icon_margin=0):
     """
     お天気アイコンのHTMLを生成する。
-    サブルーチン12から渡された start_idx を起点に、3時間おきにアイコンを配置する。
+    1時間1行のデータ構造を前提とし、start_idx（グラフ左端）を起点に、
+    正確に3行（3時間）おきにアイコンを配置する完全版サブルーチン。
     """
     start_x, hour_w = ratio_info
     icon_html = ""
     
+    # フォントサイズ計算（既存設定を維持）
     l_size_pt = CONFIG.get("LABEL_SIZE", 7)
     header_fs_px = l_size_pt * 1.33
     
@@ -475,29 +477,32 @@ def generate_weather_icons_html(df, ratio_info, display_width, start_idx, icon_m
             天気
         </div>'''
     
-    # 受け取った start_idx を基準時刻 (0時間目) として配置を開始
-    base_time = df['time'].iloc[start_idx]
+    # start_idxから3行飛ばしでループ（1時間1行なので、3行＝3時間）
+    # これにより、グラフの目盛り（3, 6, 9...）と完全に同期する
+    for i in range(start_idx, len(df), 3):
+        row = df.iloc[i]
+        icon = row.get('weather_icon')
+        
+        # アイコンがない、または欠損している場合はスキップ
+        if pd.isna(icon) or icon == "": continue
+        
+        # 物理的な位置計算（start_idxを0時間目とする）
+        elapsed_hours = i - start_idx
+        
+        # 表示期間（192時間）を超える場合は終了
+        if elapsed_hours > 192: break
+        
+        # start_x (左余白比率) + 経過時間 * 1時間あたりの幅比率
+        pos_left_px = (start_x + (elapsed_hours * hour_w)) * display_width
+        
+        icon_html += f'''
+            <div style="position: absolute; left: {pos_left_px}px; top: 10px; 
+                        transform: translateX(-50%); width: 80px; text-align: center; 
+                        font-size: 32px; line-height: 1; z-index: 5;">
+                {icon}
+            </div>'''
     
-    for i in range(start_idx, len(df)):
-        # 3時間ステップの判定
-        if (i - start_idx) % 3 == 0:
-            row = df.iloc[i]
-            icon = row.get('weather_icon')
-            if pd.isna(icon): continue
-            
-            # 物理的な位置計算（開始インデックスからの経過時間）
-            elapsed_hours = (row['time'] - base_time).total_seconds() / 3600
-            if elapsed_hours > 192: break
-            
-            pos_left_px = (start_x + (elapsed_hours * hour_w)) * display_width
-            
-            icon_html += f'''
-                <div style="position: absolute; left: {pos_left_px}px; top: 10px; 
-                            transform: translateX(-50%); width: 80px; text-align: center; 
-                            font-size: 32px; line-height: 1; z-index: 5;">
-                    {icon}
-                </div>'''
-    
+    # HTMLコンテナを返す（既存の構造を維持）
     return f'<div style="position: relative; width: {display_width}px; height: 35px; margin-bottom: {icon_margin}px; overflow: visible;">{icon_html}</div>'
     
 #==========================================================================================
