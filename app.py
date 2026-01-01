@@ -384,8 +384,8 @@ def render_tide_curve_chart(ax, df):
 @st.cache_data(show_spinner="グラフを生成中...", ttl=600)
 def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_params, now_jst):
     """
-    日付の色分け等の完成された描画ロジックを維持しつつ、
-    グラフの左端位置（start_idx）を後続のアイコン生成へ受け渡す。
+    日付の色分けロジックを維持しつつ、抽出したdf内での正確な開始位置を特定し、
+    内部の描画ルーチンおよび外部のアイコン生成へ引き渡す。
     """
     df_raw = fetch_weather_data(lat, lon, 9)
     if df_raw is None: return None, (0, 0), 0
@@ -396,10 +396,11 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
     df = df_raw[df_raw['time'] >= padding_start_time].copy().reset_index(drop=True)
     df = df.head(195)
     
-    # 2. アイコン同期のためのインデックス特定（1時間1行なので padding=3時間 なら通常 3）
+    # 2. 【核心】dfの中での「表示上の起点」を動的に特定
+    # 3時間パディングがある場合は 3 になり、データ欠落時はその時点の先頭(0)になります。
+    # これにより render_wind_bar_chart 内部の (i - 3) 等の計算と同期します。
     match_indices = df.index[df['time'] == display_start_time].tolist()
-    ###start_idx = match_indices[0] if match_indices else 3 
-    start_idx =  (now_jst.hour // 3) * 3
+    start_idx = match_indices[0] if match_indices else 0
     
     # 3. 風向・風速処理
     df = process_wind_data(df, list(selected_dirs_tuple))
@@ -411,7 +412,7 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
     if design_params.get("show_tide", True): active_plots.append("tide")
     if not active_plots: return None, (0, 0), start_idx
     
-    ratios = design_params.get("ratios", CONFIG["DEFAULT_RATIOS"])
+    ratios = design_params.get("ratios", CONFIG.get("DEFAULT_RATIOS", [1,1,1]))
     current_ratios = [ratios[i] for i, p in enumerate(["wind", "temp", "tide"]) if p in active_plots]
     
     fig_w, fig_h = design_params.get("width", 15), design_params.get("height", 2.0)
@@ -421,9 +422,10 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
                              gridspec_kw={'height_ratios': current_ratios})
     if len(active_plots) == 1: axes = [axes]
     
-    # 5. 各チャートのレンダリング（元の描画サブルーチンを呼び出す）
+    # 5. 各チャートのレンダリング
     idx = 0
     if "wind" in active_plots:
+        # ここで渡す start_idx が内部の (i - start_idx) 等の計算の基準になります
         render_wind_bar_chart(axes[idx], df, danger_v, start_idx, design_params)
         idx += 1
     if "temp" in active_plots and idx < len(axes):
@@ -432,8 +434,7 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
     if "tide" in active_plots and idx < len(axes):
         render_tide_curve_chart(axes[idx], df)
 
-    # 6. 共通軸設定（ここで日付の色分け等が行われる）
-    # 元の apply_common_axis_settings をそのまま使い、余計な set_xlim は行わない
+    # 6. 共通軸設定
     for ax in axes:
         apply_common_axis_settings(ax, df, get_x_axis_formatter(), now_jst, design_params)
 
@@ -447,8 +448,8 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
     fig.savefig(buf, format="png", bbox_inches=None, pad_inches=0, dpi=dpi_value)
     plt.close(fig) 
     
-    # 8. 画像、比率、そして特定した start_idx を返す
-    return base64.b64encode(buf.getvalue()).decode(), ratio_info, start_idx
+    # 8. 画像、比率、そして特定した正確な start_idx を返す
+    return base64.b64encode(buf.getvalue()).decode(), ratio_info, int(start_idx)
     
 # ======================================================================================
 # 13. お天気アイコンのHTMLを生成するサブルーチン
