@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# ベータ版　更新 2026.1.1 0040 （デザイン調整・ブラウザ保存対応）
+# ベータ版　更新 2026.1.1 0930 （デザイン調整・ブラウザ保存対応）
 import streamlit as st
 import requests
 import pandas as pd
@@ -54,9 +54,9 @@ CONFIG = {
     "VLINE_WIDTH": 1.25,
     "HLINE_WIDTH": 1.0,
     "PX_PER_INCH": 200,
-    "DEFAULT_PRECIP_Y": 1.06,      # 降水量の表示高さ（グラフ枠を1.0とした相対値）
+    "DEFAULT_PRECIP_Y": 1.00,      # 降水量の表示高さ（グラフ枠を1.0とした相対値）
     "DEFAULT_ICON_MARGIN": 10,     # アイコンHTMLの下マージン(px)
-    "SLIDER_PRECIP_Y": {"min": 1.00, "max": 1.30, "step": 0.01},
+    "SLIDER_PRECIP_Y": {"min": 0.95, "max": 1.30, "step": 0.01},
     "SLIDER_ICON_MARGIN": {"min": -20, "max": 50, "step": 5},
     # スライダーの範囲設定
     "SLIDER_WIDTH": {"min": 13.0, "max": 30.0, "step": 1.0},
