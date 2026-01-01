@@ -254,14 +254,13 @@ def apply_common_axis_settings(ax, df, formatter, now_jst, design_params):
             else:
                 label.set_color('blue')
                 
-#==========================================================================================
+# ======================================================================================
 # 9. 風速棒グラフを描画するサブルーチン
-#==========================================================================================
+# ======================================================================================
 def render_wind_bar_chart(ax, df, danger_v, wind_step, design_params=None):
     """
     風速棒グラフを描画し、上部に風速数値、矢印を表示する。
     さらに、グラフ枠外の上部に降水量を表示する。
-    文字サイズは軸ラベルサイズ(l_fs)と同一にし、位置は design_params['precip_y'] で制御する。
     """
     bar_width = design_params.get("bar_width", 0.035) if design_params else 0.035
     bars = ax.bar(df['time'], df['wind_speed_10m'], color=df['color'], alpha=0.9, width=bar_width)
@@ -271,12 +270,12 @@ def render_wind_bar_chart(ax, df, danger_v, wind_step, design_params=None):
     fs = design_params.get("base_font_size", CONFIG["GRAPH_FONT_SIZE"]) if design_params else CONFIG["GRAPH_FONT_SIZE"]
     l_fs = design_params.get("label_font_size", CONFIG["LABEL_SIZE"]) if design_params else CONFIG["LABEL_SIZE"]
     
-    # サイドバーからの位置設定
+    # 降水量表示の高さ
     precip_y = design_params.get("precip_y", 1.0) if design_params else 1.0
     
+    # レイアウト計算
     step = fs * 0.144 
     base = step * 0.5
-    
     show_w = design_params.get("show_w_text", CONFIG["SHOW_W_TEXT"]) if design_params else CONFIG["SHOW_W_TEXT"]
     show_d = design_params.get("show_dir_name", CONFIG["SHOW_DIR_NAME"]) if design_params else CONFIG["SHOW_DIR_NAME"]
     
@@ -288,17 +287,18 @@ def render_wind_bar_chart(ax, df, danger_v, wind_step, design_params=None):
     ax.set_ylim(0, y_limit)
     ax.set_ylabel('風速 (m/s)', fontsize=l_fs) 
     
-    # --- ①「降水量mm」の見出しを表示（数値描画と同じ precip_y を使用） ---
-    # 数値と同じ transform(xaxis) を使い、左端(x=0相当)に配置
-    ax.text(-0.01, precip_y, "降水量mm", 
+    # --- ①「降水量mm」の見出し描画（数値と完全に同期） ---
+    # 数値の描画(ax.get_xaxis_transform)と同じ座標系を使用するため、x座標には「データの開始時刻」を指定
+    first_time = df['time'].iloc[0]
+    ax.text(first_time, precip_y, "降水量mm", 
             ha='right', va='bottom', fontsize=l_fs, color="blue", 
-            transform=ax.get_yaxis_transform(), clip_on=False)
+            transform=ax.get_xaxis_transform(), clip_on=False)
     
     for i, bar in enumerate(bars):
         row = df.iloc[i]
         dt = row['time']
         
-        # グラフ内部の描画（風速・矢印）
+        # 風速・矢印等の描画（既存ロジック維持）
         if i % wind_step == 0:
             if pd.isna(row['wind_speed_10m']): continue
             base_y = bar.get_height()
@@ -315,15 +315,15 @@ def render_wind_bar_chart(ax, df, danger_v, wind_step, design_params=None):
                 ax.text(x_pos, current_y, row['w_text'], ha='center', va='bottom', 
                         color=row['w_color'], fontweight='bold', fontsize=fs-1)
 
-        # --- 降水量数値の表示（軸ラベルサイズ l_fs と同一に設定） ---
+        # --- ② 降水量数値の表示（条件と書式を修正） ---
         if dt.hour % 3 == 0:
-            precip = row.get('precipitation')
-            # 0mmでも表示位置を確認できるよう pd.notna のみで判定（お好みで > 0 に戻してください）
-            if pd.notna(precip):
+            precip = row.get('precipitation', 0)
+            # 値が0より大きい場合のみ小数点第1位まで表示
+            if pd.notna(precip) and precip > 0:
                 ax.text(
                     dt, 
                     precip_y, 
-                    f"{precip:.0f}", 
+                    f"{precip:.1f}", # 小数点第1位まで表示
                     ha='center', 
                     va='bottom', 
                     fontsize=l_fs, 
