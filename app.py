@@ -213,7 +213,10 @@ def get_x_axis_formatter():
     def formatter(x, p):
         dt = mdates.num2date(x)
         if dt.hour == 0:
-            # 0時の場合：時刻を表示せず、日付の下に曜日を表示
+            # 曜日によって色を決定 (月-金: 青, 土日: 赤)
+            # Matplotlibのテキスト内での色指定は、描画側(apply_common_axis_settings)で
+            # 個別に制御するため、ここでは情報のみ保持。
+            # または、描画時に判定するためここでは文字列のみ返す
             return dt.strftime('%m/%d') + f'\n({jp_weeks[dt.weekday()]})'
         else:
             # 時刻から :00 を排除（時のみ表示）し、高さを合わせる空行を追加
@@ -239,6 +242,19 @@ def apply_common_axis_settings(ax, df, formatter, now_jst, design_params):
     ax.tick_params(axis='x', which='major', labelsize=l_size, pad=l_pad)
     ax.tick_params(axis='y', labelsize=l_size)
     
+    # X軸のラベル（曜日）の色を個別に設定
+    fig = ax.figure
+    fig.canvas.draw() # ラベルを確定させるために一度描画
+    labels = ax.get_xticklabels()
+    for label in labels:
+        text = label.get_text()
+        if '(' in text: # 日付ラベル（曜日が含まれるもの）を特定
+            # 土(5)または日(6)が含まれるか判定
+            if '土' in text or '日' in text:
+                label.set_color('red')
+            else:
+                label.set_color('blue')
+    
 #==========================================================================================
 # 9. 風速棒グラフを描画するサブルーチン
 #==========================================================================================
@@ -247,6 +263,7 @@ def render_wind_bar_chart(ax, df, danger_v, wind_step, design_params=None):
     風速棒グラフを描画し、上部に風速数値、矢印を表示する。
     さらに、グラフ枠外の上部に降水量を表示する。
     文字サイズは軸ラベルサイズ(l_fs)と同一にし、位置は design_params['precip_y'] で制御する。
+    左端に「降水量mm」という見出しを表示する。
     """
     bar_width = design_params.get("bar_width", 0.035) if design_params else 0.035
     bars = ax.bar(df['time'], df['wind_speed_10m'], color=df['color'], alpha=0.9, width=bar_width)
@@ -273,6 +290,12 @@ def render_wind_bar_chart(ax, df, danger_v, wind_step, design_params=None):
     ax.set_ylim(0, y_limit)
     ax.set_ylabel('風速 (m/s)', fontsize=l_fs) # 軸ラベルサイズを適用
     
+    # --- 「降水量mm」の見出しを表示 ---
+    # グラフの左端（時刻データの最小値）の少し左側に配置
+    ax.text(0, precip_y, "降水量mm", 
+            ha='right', va='bottom', fontsize=l_fs, color="blue", fontweight='bold',
+            transform=ax.get_yaxis_transform(), clip_on=False)
+    
     for i, bar in enumerate(bars):
         row = df.iloc[i]
         dt = row['time']
@@ -283,11 +306,26 @@ def render_wind_bar_chart(ax, df, danger_v, wind_step, design_params=None):
             base_y = bar.get_height()
             x_pos = bar.get_x() + bar.get_width()/2.
             
-            # 数値・矢印等の描画は以前のロジックを維持
+            # 数値の描画
             ax.text(x_pos, base_y + base, f"{row['wind_speed_10m']:.0f}", ha='center', va='bottom', fontsize=fs-2)
-            # ... (矢印・風向・天気文字の描画は省略) ...
+            
+            # 矢印の描画
+            current_y = base_y + base + step
+            ax.text(x_pos, current_y, row['arrow'], ha='center', va='bottom', 
+                    fontsize=fs+2, fontweight='bold', color=CONFIG["ARROW_COLOR"])
+            
+            # 風向名の描画
+            if show_d:
+                current_y += step
+                ax.text(x_pos, current_y, row['dir_name'], ha='center', va='bottom', fontsize=fs-2)
+            
+            # 天気文字の描画
+            if show_w:
+                current_y += step
+                ax.text(x_pos, current_y, row['w_text'], ha='center', va='bottom', 
+                        color=row['w_color'], fontweight='bold', fontsize=fs-1)
 
-        # --- 降水量表示（軸ラベルサイズ l_fs と同一に設定） ---
+        # --- 各時刻の降水量数値表示 ---
         if dt.hour % 3 == 0:
             precip = row.get('precipitation')
             if pd.notna(precip) and str(precip).lower() != 'nan' and precip > 0:
@@ -297,7 +335,7 @@ def render_wind_bar_chart(ax, df, danger_v, wind_step, design_params=None):
                     f"{precip:.0f}", 
                     ha='center', 
                     va='bottom', 
-                    fontsize=l_fs,  # 軸ラベルと同じサイズに変更
+                    fontsize=l_fs,
                     color="blue",
                     fontweight='bold',
                     transform=ax.get_xaxis_transform(),
@@ -451,9 +489,26 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
 def generate_weather_icons_html(df, ratio_info, display_width, icon_margin=0):
     """
     お天気アイコンのHTMLを生成し、下のグラフとの余白を icon_margin で調整する。
+    左端に「天気」という見出しを固定配置する。
     """
     start_x, hour_w = ratio_info
     icon_html = ""
+    
+    # --- 「天気」の見出しを左端に配置 ---
+    # start_x (グラフ描画エリアの開始比率) を利用して位置を決定
+    label_pos_x = (start_x * display_width) - 10 # グラフ左端から10px左
+    icon_html += f'''
+        <div style="
+            position: absolute; 
+            left: {label_pos_x}px; 
+            top: 18px; 
+            transform: translateX(-100%); 
+            font-size: 14px; 
+            font-weight: bold; 
+            color: #333; 
+            z-index: 5;">
+            天気
+        </div>'''
     
     for i in range(len(df)):
         row = df.iloc[i]
@@ -462,9 +517,16 @@ def generate_weather_icons_html(df, ratio_info, display_width, icon_margin=0):
             if pd.isna(row.get('weather_icon')) or pd.isna(dt): continue
             pos_left_px = (start_x + (i * hour_w)) * display_width
             icon_html += f'''
-                <div style="position: absolute; left: {pos_left_px}px; top: 10px; 
-                            transform: translateX(-50%); width: 80px; text-align: center; 
-                            font-size: 32px; line-height: 1; z-index: 5;">
+                <div style="
+                    position: absolute; 
+                    left: {pos_left_px}px; 
+                    top: 10px; 
+                    transform: translateX(-50%); 
+                    width: 80px; 
+                    text-align: center; 
+                    font-size: 32px; 
+                    line-height: 1; 
+                    z-index: 5;">
                     {row["weather_icon"]}
                 </div>'''
     
