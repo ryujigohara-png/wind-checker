@@ -384,71 +384,81 @@ def render_tide_curve_chart(ax, df):
 @st.cache_data(show_spinner="グラフを生成中...", ttl=600)
 def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_params, now_jst):
     """
-    日付の色分けロジックを維持しつつ、抽出したdf内での正確な開始位置を特定し、
-    内部の描画ルーチンおよび外部のアイコン生成へ引き渡す。
+    指定されたパラメータに基づき、高解像度の気象グラフ画像を生成してBase64形式で返す。
+    データの抽出範囲をパディングを含めて厳密に定義し、HTML配置用の比率を正確に算出する。
     """
+    import pandas as pd
+    import io
+    import base64
+    from datetime import timedelta
+
     df_raw = fetch_weather_data(lat, lon, 9)
     if df_raw is None: return None, (0, 0), 0
     
-    # 1. 安定した時刻抽出ロジック（変更禁止）
+    # 描画開始（グラフ左端）は現在時刻の直前の3の倍数時
     display_start_time = now_jst.replace(hour=(now_jst.hour // 3) * 3, minute=0, second=0, microsecond=0)
+    # パディング開始はその3時間前
     padding_start_time = display_start_time - timedelta(hours=3)
+    
+    # データを切り出し、インデックスを 0 から振り直す
+    # これにより i=3 が必ず display_start_time になる（左端の空白を確保）
     df = df_raw[df_raw['time'] >= padding_start_time].copy().reset_index(drop=True)
+    
+    # 表示期間を 192時間(8日) + パディング3時間 = 195行に固定
     df = df.head(195)
     
-    # 2. 【核心】dfの中での「表示上の起点」を動的に特定
-    # 3時間パディングがある場合は 3 になり、データ欠落時はその時点の先頭(0)になります。
-    # これにより render_wind_bar_chart 内部の (i - 3) 等の計算と同期します。
-    match_indices = df.index[df['time'] == display_start_time].tolist()
-    start_idx = match_indices[0] if match_indices else 0
+    # アイコン同期用：パディングを含めたこの構造では、グラフの左端（青い線）は常に 3番目
+    start_idx = 3
     
-    # 3. 風向・風速処理
     df = process_wind_data(df, list(selected_dirs_tuple))
     
-    # 4. 描画コンテキストの設定
     active_plots = []
     if design_params.get("show_wind", True): active_plots.append("wind")
     if design_params.get("show_temp", True): active_plots.append("temp")
     if design_params.get("show_tide", True): active_plots.append("tide")
+    
     if not active_plots: return None, (0, 0), start_idx
     
-    ratios = design_params.get("ratios", CONFIG.get("DEFAULT_RATIOS", [1,1,1]))
+    ratios = design_params.get("ratios", CONFIG["DEFAULT_RATIOS"])
     current_ratios = [ratios[i] for i, p in enumerate(["wind", "temp", "tide"]) if p in active_plots]
     
-    fig_w, fig_h = design_params.get("width", 15), design_params.get("height", 2.0)
-    dpi_value = design_params.get("graph_dpi", 200)
+    fig_w = design_params.get("width", CONFIG["GRAPH_WIDTH"])
+    fig_h = design_params.get("height", CONFIG["GRAPH_HIGHT"])
+    dpi_value = design_params.get("graph_dpi", CONFIG.get("DPI", 200))
     
     fig, axes = plt.subplots(len(active_plots), 1, figsize=(fig_w, fig_h), dpi=dpi_value, 
                              gridspec_kw={'height_ratios': current_ratios})
+    
     if len(active_plots) == 1: axes = [axes]
     
-    # 5. 各チャートのレンダリング
+    formatter = get_x_axis_formatter()
+    
     idx = 0
     if "wind" in active_plots:
-        render_wind_bar_chart(axes[idx], df, danger_v, 3, design_params)
+        render_wind_bar_chart(axes[idx], df, danger_v, start_idx, design_params)
         idx += 1
-    if "temp" in active_plots and idx < len(axes):
+    if "temp" in active_plots:
         render_temp_line_chart(axes[idx], df)
         idx += 1
-    if "tide" in active_plots and idx < len(axes):
+    if "tide" in active_plots:
         render_tide_curve_chart(axes[idx], df)
+        idx += 1
 
-    # 6. 共通軸設定
     for ax in axes:
-        apply_common_axis_settings(ax, df, get_x_axis_formatter(), now_jst, design_params)
+        apply_common_axis_settings(ax, df, formatter, now_jst, design_params)
 
-    plt.subplots_adjust(left=0.05, right=0.95, top=0.95, bottom=0.15, hspace=design_params.get("hspace", 0.3))
-    
-    # 7. 比率計算（アイコン配置用）
+    plt.subplots_adjust(left=0.05, right=0.95, top=0.95, bottom=0.15,
+                        hspace=design_params.get("hspace", CONFIG["HSPACE"]))
+
+    # 比率計算の修正: 全データ区間(len(df)-1)に対する1時間幅
     pos = axes[0].get_position() 
-    ratio_info = (pos.x0, pos.width / 192.0)
+    ratio_info = (pos.x0, pos.width / (len(df) - 1))
     
     buf = io.BytesIO()
     fig.savefig(buf, format="png", bbox_inches=None, pad_inches=0, dpi=dpi_value)
     plt.close(fig) 
     
-    # 8. 画像、比率、そして特定した正確な start_idx を返す
-    return base64.b64encode(buf.getvalue()).decode(), ratio_info, int(start_idx)
+    return base64.b64encode(buf.getvalue()).decode(), ratio_info, start_idx
     
 # ======================================================================================
 # 13. お天気アイコンのHTMLを生成するサブルーチン
