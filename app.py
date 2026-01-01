@@ -873,7 +873,8 @@ def main():
     
     # ..................................................................... 
 
-    img_b64, ratio_info = generate_high_res_graph(
+    # --- グラフ生成の呼び出し (戻り値に start_idx を追加) ---
+    img_b64, ratio_info, start_idx = generate_high_res_graph(
         st.session_state.lat, st.session_state.lon, danger_v, tuple(sel_dirs), design_params, now_jst
     )
     
@@ -887,7 +888,10 @@ def main():
             padding_df = pd.DataFrame({'time': [df_for_icons['time'].iloc[0] - timedelta(hours=i) for i in range(1, 4)][::-1]})
             df_full = pd.concat([padding_df, df_for_icons], ignore_index=True)
             
-            icons_html = generate_weather_icons_html(df_full, ratio_info, display_width)
+            icons_html = generate_weather_icons_html(
+                df_full, ratio_info, display_width, start_idx, icon_margin
+            )
+            
             graph_html = f'<img src="data:image/png;base64,{img_b64}" style="width: {display_width}px; display: block;">'
             
             st.markdown(
