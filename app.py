@@ -384,27 +384,29 @@ def render_tide_curve_chart(ax, df):
 @st.cache_data(show_spinner="グラフを生成中...", ttl=600)
 def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_params, now_jst):
     """
-    グラフ描画範囲の左端（現在時刻の直前の3の倍数時）を特定し、
-    そのインデックスを start_idx として後続のアイコン生成へ確実に引き継ぐ。
+    グラフ描画範囲の左端を特定し、そのインデックスを start_idx として返す。
+    末尾参照エラー(IndexError)を防ぐため、動的に最終行を特定する。
     """
+    import pandas as pd
+    import io
+    import base64
+    from datetime import timedelta
+
     df_raw = fetch_weather_data(lat, lon, 9)
     if df_raw is None: return None, (0, 0), 0
     
     # 1. グラフの左端（枠線）にすべき時刻を決定（例：22:40なら21:00）
     display_start_time = now_jst.replace(hour=(now_jst.hour // 3) * 3, minute=0, second=0, microsecond=0)
     
-    # 2. グラフ描画の安定のため、さらに3時間前からデータを切り出す（パディング）
+    # 2. パディングを含めて切り出し
     padding_start_time = display_start_time - timedelta(hours=3)
     df = df_raw[df_raw['time'] >= padding_start_time].copy().reset_index(drop=True)
-    df = df.head(195)
     
-    # 3. 【最重要】dfの中で「display_start_time」が何行目にあるかを厳密に特定
-    # 1時間1行の構造なので、padding(3時間)があれば必ず index=3 になるが、
-    # データの欠落等に備え、時刻一致でインデックスを確定させる。
+    # 3. start_idx (左端位置) の特定
+    # 1時間1行なので padding があれば index=3。欠落時は時刻一致で検索。
     match_indices = df.index[df['time'] == display_start_time].tolist()
-    start_idx = match_indices[0] if match_indices else 3 # 確定した左端位置
+    start_idx = match_indices[0] if match_indices else 0 
     
-    # --- 以降、描画処理（既存の安定版を維持） ---
     df = process_wind_data(df, list(selected_dirs_tuple))
     
     active_plots = []
@@ -414,26 +416,35 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
     
     if not active_plots: return None, (0, 0), start_idx
     
-    fig_w, fig_h = design_params.get("width", 15), design_params.get("height", 2.0)
+    # 描画サイズの設定
+    fig_w = design_params.get("width", 15)
+    fig_h = design_params.get("height", 2.0)
     dpi_value = design_params.get("graph_dpi", 200)
     
     fig, axes = plt.subplots(len(active_plots), 1, figsize=(fig_w, fig_h), dpi=dpi_value, 
                              gridspec_kw={'height_ratios': [design_params.get("ratios", [1,1,1])[i] for i, p in enumerate(["wind", "temp", "tide"]) if p in active_plots]})
     if len(active_plots) == 1: axes = [axes]
     
-    # 各チャートの描画（start_idxを基準に渡す）
+    # 各チャートの描画
     idx = 0
     if "wind" in active_plots:
         render_wind_bar_chart(axes[idx], df, danger_v, start_idx, design_params)
         idx += 1
-    # ... 他の描画関数 ...
+    if "temp" in active_plots and len(axes) > idx:
+        render_temp_line_chart(axes[idx], df)
+        idx += 1
+    if "tide" in active_plots and len(axes) > idx:
+        render_tide_curve_chart(axes[idx], df)
 
+    # 軸設定と表示範囲の固定
     for ax in axes:
         apply_common_axis_settings(ax, df, get_x_axis_formatter(), now_jst, design_params)
-        # 【重要】グラフの表示範囲を、特定した start_idx の時刻からに固定
-        ax.set_xlim(df['time'].iloc[start_idx], df['time'].iloc[start_idx + 192])
+        # 安全な終了点指定：データの最後尾(iloc[-1])を使用し IndexError を回避
+        ax.set_xlim(df['time'].iloc[start_idx], df['time'].iloc[-1])
 
     plt.subplots_adjust(left=0.05, right=0.95, top=0.95, bottom=0.15)
+    
+    # 比率計算
     pos = axes[0].get_position() 
     ratio_info = (pos.x0, pos.width / 192.0)
     
@@ -448,24 +459,34 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
 # ======================================================================================
 def generate_weather_icons_html(df, ratio_info, display_width, start_idx, icon_margin=0):
     """
-    サブルーチン12が特定した start_idx を「グラフの左端」として絶対基準とし、
-    そこから3時間（3行）刻みでアイコンを並べる。
+    1時間1行のデータ構造を利用し、start_idxから3行(3時間)おきに
+    物理的な描画pxを算出してアイコンを配置する。
     """
     start_x, hour_w = ratio_info
     icon_html = ""
     
-    # 1. グラフ左端のインデックス（start_idx）から3行おきにループ
-    # これにより「グラフの左端の時刻」と「最初のアイコン」が必ず一致する
+    l_size_pt = CONFIG.get("LABEL_SIZE", 7)
+    header_fs_px = l_size_pt * 1.33
+    
+    # 「天気」見出しの配置
+    label_pos_x = (start_x * display_width) - 10
+    icon_html += f'''
+        <div style="position: absolute; left: {label_pos_x}px; top: 22px; 
+                    transform: translateX(-100%); font-size: {header_fs_px}px; 
+                    font-family: 'Noto Sans JP', sans-serif; color: #333; z-index: 5; white-space: nowrap;">
+            天気
+        </div>'''
+    
+    # start_idxから3行飛ばし。末尾を超えないよう range で制御
     for i in range(start_idx, len(df), 3):
         row = df.iloc[i]
         icon = row.get('weather_icon')
-        if pd.isna(icon) or icon == "": continue
+        if not icon or pd.isna(icon): continue
         
-        # 左端（start_idx）からの経過行数（＝経過時間）
+        # 物理位置：(左端余白 + 経過時間 * 1時間幅比率) * 全体幅
         elapsed_hours = i - start_idx
         if elapsed_hours > 192: break
         
-        # 物理位置：左端余白 + (経過時間 * 1時間幅)
         pos_left_px = (start_x + (elapsed_hours * hour_w)) * display_width
         
         icon_html += f'''
