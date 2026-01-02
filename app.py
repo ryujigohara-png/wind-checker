@@ -1033,20 +1033,20 @@ def main():
         
     # ==================================================================================
     
-    # --- 4. 地点リストの構築 ---
+# --- 4. 地点リストの構築 ---
+    # get_combined_location_list: お気に入りとプリセットを統合するサブルーチン19
     display_list, total_master = get_combined_location_list(master)
 
-    # --- 5. 現在の座標から「逆引き地名」を先に特定する ---
-    # ※既存の逆引きサブルーチン（例: get_reverse_geocoding）をここで呼び出します
-    # ここで target_name を確定させることで、下の引数として安全に渡せます
+    # --- 5. 地名の特定（サブルーチン14を実行） ---
+    # 選択中の地点が「地図で指定」の場合のみ、現在の緯度経度から住所を取得
     if st.session_state.last_basho == "地図で指定":
-        target_name = get_reverse_geocoding(st.session_state.lat, st.session_state.lon)
+        target_name = fetch_location_name(st.session_state.lat, st.session_state.lon)
     else:
-        # プリセット地点の場合は、その名称をそのまま使用
+        # プリセット地点やお気に入り地点の場合は、その名称をそのまま使用
         target_name = st.session_state.last_basho
 
-    # --- 6. セレクトボックスとお気に入りボタンの表示（1行レイアウト） ---
-    # target_name が確定した後なので、NameError は発生しません
+    # --- 6. セレクトボックスとお気に入りボタンの表示（サブルーチン18） ---
+    # 事前に特定した target_name を渡すことで NameError を確実に回避します
     selected_display = show_favorite_control_bar(
         location_options=display_list,
         current_name=target_name, 
@@ -1057,12 +1057,15 @@ def main():
     basho = selected_display
 
     # --- 7. 逆引き地名の表示復活 ---
+    # コンボボックスの下に 📍地名 を表示
     if basho == "地図で指定" and target_name:
         st.write(f"📍 {target_name}")
 
-    # --- 8. 選択変更時の制御（既存ロジック） ---
+    # --- 8. 選択変更時の制御（既存ロジックを完全維持） ---
     if basho != st.session_state.last_basho:
         st.session_state.last_basho = basho
+        
+        # total_master（統合辞書）から座標を取得
         if basho in total_master:
             st.session_state.lat, st.session_state.lon = total_master[basho]
             if basho != "地図で指定":
