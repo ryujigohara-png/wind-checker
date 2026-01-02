@@ -690,12 +690,11 @@ def handle_current_location_update():
                 st.rerun()
 
 # ======================================================================================
-# 18. 地点選択とお気に入り保存を1行に集約するサブルーチン（確定版）
+# 18. 地点選択とお気に入り保存を1行に集約するサブルーチン
 # ======================================================================================
 def show_favorite_control_bar(location_options, current_display_label, current_lat, current_lon, raw_name):
     """
-    3列構成で1行を死守。ボタンは白背景。
-    raw_name: 重複判定や保存に使用する「座標や記号を含まない純粋な地名」
+    3列構成で1行を死守。正規版 main から呼び出されることを前提とした設計。
     """
     import streamlit as st
 
@@ -709,11 +708,11 @@ def show_favorite_control_bar(location_options, current_display_label, current_l
            abs(saved_data['lon'] - current_lon) < 0.0001:
             is_saved = True
 
-    # --- 2. レイアウト ---
+    # --- 2. レイアウト（1行集約） ---
     c1, c2, c3 = st.columns([0.88, 0.07, 0.05])
     with c1:
         selected = st.selectbox(
-            "地点選択", options=location_options, 
+            "地点を選択してください", options=location_options, 
             index=location_options.index(current_display_label) if current_display_label in location_options else 0,
             label_visibility="collapsed"
         )
@@ -729,8 +728,6 @@ def show_favorite_control_bar(location_options, current_display_label, current_l
                 else:
                     favorites.append(new_entry)
                     st.session_state["LOCATION_MASTER"] = favorites
-                
-                # ブラウザ保存サブルーチンの呼び出し
                 save_settings_to_browser()
                 st.rerun()
     with c3:
@@ -738,40 +735,41 @@ def show_favorite_control_bar(location_options, current_display_label, current_l
     return selected
     
 # ======================================================================================
-# 19. お気に入り・プリセット・動的地名を統合するサブルーチン（確定版）
+# 19. お気に入り地点と正規版プリセットを統合するサブルーチン
 # ======================================================================================
 def get_combined_location_list(preset_master, current_lat, current_lon, current_address):
+    """
+    正規版の「📍現在地」「🗺️地図で指定」仕様を維持しつつ、お気に入りを統合。
+    """
     import streamlit as st
     favorites = st.session_state.get("LOCATION_MASTER", [])
-    total_data = {}
+    
+    full_master = {}
     display_list = []
 
-    # 1. お気に入り地点
+    # 1. お気に入り地点を追加（最上部）
     for fav in favorites:
         label = f"⭐ {fav['name']} ({fav['lat']:.4f}, {fav['lon']:.4f})"
         display_list.append(label)
-        total_data[label] = (fav['lat'], fav['lon'], fav['name'])
+        full_master[label] = (fav['lat'], fav['lon'], fav['name'])
 
-    # 2. マスター（固定の場所）
+    # 2. マスター（固定の場所）を登録
     for name, coords in preset_master.items():
-        if name != "地図で指定":
-            label = f"{name} ({coords[0]:.4f}, {coords[1]:.4f})"
-            display_list.append(label)
-            total_data[label] = (coords[0], coords[1], name)
+        label = f"{name} ({coords[0]:.4f}, {coords[1]:.4f})"
+        display_list.append(label)
+        full_master[label] = (coords[0], coords[1], name)
 
-    # 3. 📍 地図の詳細地名
-    if current_address not in preset_master and current_address != "地図で指定":
-        dynamic_label = f"📍 {current_address} ({current_lat:.4f}, {current_lon:.4f})"
-        if dynamic_label not in display_list:
-            display_list.append(dynamic_label)
-        total_data[dynamic_label] = (current_lat, current_lon, current_address)
-
-    # 4. 🗺️ 地図で指定スイッチ
-    map_label = "🗺️ 地図で指定"
+    # 3. 正規版の仕様（現在地と地図で指定）を統合
+    current_label = f"📍 現在地 ({current_lat:.4f}, {current_lon:.4f})  "
+    map_label = f"🗺️ 地図で指定 ({current_lat:.4f}, {current_lon:.4f})    "
+    
+    display_list.append(current_label)
+    full_master[current_label] = (current_lat, current_lon, "現在地")
+    
     display_list.append(map_label)
-    total_data[map_label] = (current_lat, current_lon, "地図で指定")
+    full_master[map_label] = (current_lat, current_lon, "地図で指定")
 
-    return display_list, total_data
+    return display_list, full_master
     
 #==========================================================================================
 # 16_x. ブラウザへの保存を実行するサブルーチン（隠し要素）
@@ -976,67 +974,85 @@ def render_header_info(current_basho_name):
         st.rerun()
 
 
-# ======================================================================================
-# 19. アプリのメインフローを制御するメインルーチン（お気に入り統合・1行集約版）
-# ======================================================================================
+# ==========================================================================================
+# 19. アプリのメインフローを制御するメインルーチン（お気に入り統合・正規版互換）
+# ==========================================================================================
 def main():
-    # --- 省略：初期化・サイドバー・タイトル表示 ---
     if 'lat' not in st.session_state: st.session_state.lat = CONFIG["DEFAULT_LAT"]
     if 'lon' not in st.session_state: st.session_state.lon = CONFIG["DEFAULT_LON"]
     if 'last_basho' not in st.session_state: st.session_state.last_basho = CONFIG["DEFAULT_BASHO"]
+    
     sync_all_settings()
     danger_v, sel_dirs, design_params = show_sidebar_controls()
     setup_font(design_params["base_font_size"])
+
     raw_now = datetime.now(timezone(timedelta(hours=9))).replace(tzinfo=None)
     now_jst = raw_now.replace(minute=(raw_now.minute // 10) * 10, second=0, microsecond=0)
-    st.markdown('<h1 style="font-size:24px;">⛵ Wind_Checker! </h1>', unsafe_allow_html=True)
 
-    # --- 1. 住所取得とリスト構築 ---
+    st.markdown(f"""
+        <style>
+            .block-container {{ padding-top: 2rem !important; padding-bottom: 0rem !important; }}
+            .scroll-container {{ overflow-x: auto; background: white; border: 1px solid #ddd; width: 100%; }}
+        </style>
+    """, unsafe_allow_html=True)
+
+    st.markdown(f'<h1 style="font-size:{CONFIG["TITLE_SIZE"]}px;">⛵ Wind_Checker! </h1>', unsafe_allow_html=True)
+    
+    # --- A. 地点選択ロジック（お気に入り統合版） ---
+    master = CONFIG["LOCATION_MASTER"].copy()
+    
+    # 現在の逆引き住所を取得
     current_address = fetch_location_name(st.session_state.lat, st.session_state.lon)
+
+    # サブルーチン19によりリスト生成
     display_list, total_data = get_combined_location_list(
-        CONFIG["LOCATION_MASTER"].copy(), st.session_state.lat, st.session_state.lon, current_address
+        master, st.session_state.lat, st.session_state.lon, current_address
     )
 
-    # --- 2. 1行レイアウト表示（ここが TypeError の原因箇所でした） ---
-    current_label = st.session_state.get("last_display_label", display_list[0])
-    _, _, raw_name_for_fav = total_data.get(current_label, (st.session_state.lat, st.session_state.lon, "地図で指定"))
+    # 前回表示ラベルの取得
+    current_label = st.session_state.get("last_display_label", display_list[-2]) # デフォルトは「現在地」
+    
+    # 重複判定用の内部名を特定
+    _, _, raw_name_for_fav = total_data.get(current_label, (st.session_state.lat, st.session_state.lon, "現在地"))
 
-    # サブルーチン18の定義に合わせ、引数名を「current_display_label」に修正
+    # サブルーチン18による表示（3列アンカー）
     selected_label = show_favorite_control_bar(
         location_options=display_list,
-        current_display_label=current_label, # 引数名を定義側に合わせました
+        current_display_label=current_label,
         current_lat=st.session_state.lat,
         current_lon=st.session_state.lon,
         raw_name=raw_name_for_fav
     )
-
-    # --- 3. 変数確定と状態更新 ---
-    new_lat, new_lon, basho = total_data.get(selected_label, (st.session_state.lat, st.session_state.lon, "地図で指定"))
+    
+    # 選択肢から basho（内部地名）と座標を確定（NameError回避）
+    new_lat, new_lon, basho = total_data[selected_label]
 
     if selected_label != st.session_state.get("last_display_label"):
         st.session_state.last_display_label = selected_label
-        st.session_state.lat = new_lat
-        st.session_state.lon = new_lon
         st.session_state.last_basho = basho
-        st.session_state.show_map_state = True if any(x in selected_label for x in ["🗺️", "📍"]) else False
+        if basho not in ["地図で指定", "現在地"]:
+            st.session_state.lat = new_lat
+            st.session_state.lon = new_lon
+        if basho == "地図で指定":
+            st.session_state.show_map_state = True
         st.cache_data.clear() 
         st.rerun()
 
-    # --- 4. 地図・ボタン・ヘッダー描画 ---
+    # --- B. 地図および操作ボタン（正規版の配置を維持） ---
     show_map = st.checkbox("地図表示", value=st.session_state.get('show_map_state', False))
     st.session_state.show_map_state = show_map
-    if show_map: show_location_map()
+    if show_map:
+        show_location_map()
 
-    c1, c2 = st.columns([1, 1])
-    with c1: handle_current_location_update()
-    with c2: render_header_info(basho)
+    col1, col2 = st.columns([1, 1]) 
+    with col1:
+        # ここに正規版の「グラフ描画地点確定」ボタンが入る
+        handle_current_location_update()
+    with col2:
+        render_header_info(basho) 
 
-    # --- 省略：グラフ生成・描画ロジック ---
-    # (既存の generate_high_res_graph 以降の処理をそのまま続けてください)
-    # ----------------------------------------------------------------------------------
-    # E. グラフ生成・描画（これ以降のロジックは一切変更なし）
-    # ----------------------------------------------------------------------------------
-    img_b64, ratio_info, start_idx, df_from_graph = generate_high_res_graph(
+    # --- C. グラフ生成（正規版のコードをそのまま維持） ---
+    img_b64, ratio_info, start_idx = generate_high_res_graph(
         st.session_state.lat, st.session_state.lon, danger_v, tuple(sel_dirs), design_params, now_jst
     )
     
@@ -1048,8 +1064,11 @@ def main():
             min_w = design_params["min_container_width"]
             icon_margin = design_params.get("icon_margin", 0)
             
+            padding_df = pd.DataFrame({'time': [df_for_icons['time'].iloc[0] - timedelta(hours=i) for i in range(1, 4)][::-1]})
+            df_full = pd.concat([padding_df, df_for_icons], ignore_index=True)
+            
             icons_html = generate_weather_icons_html(
-                df_from_graph, ratio_info, display_width, start_idx, icon_margin
+                df_full, ratio_info, display_width, start_idx, icon_margin
             )
             
             graph_html = f'<img src="data:image/png;base64,{img_b64}" style="width: {display_width}px; display: block;">'
