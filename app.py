@@ -546,16 +546,16 @@ def show_location_map():
             st.rerun()
 
 # ======================================================================================
-# 14. 逆ジオコーディングにより緯度経度から詳細地名を取得するサブルーチン（高精度版）
+# 14. 逆ジオコーディングにより緯度経度から地名を取得するサブルーチン（市町村名連結版）
 # ======================================================================================
 def fetch_location_name(lat, lon):
     """
-    OpenStreetMapのNominatim APIを使用し、可能な限り詳細な地名（町名・地区名）を返す。
+    OpenStreetMapのNominatim APIを使用し、「市町村名 + 町名」の形式で地名を返す。
     """
     import requests
     
     headers = {
-        "User-Agent": "WindChecker_App_v2_HighPrecision",
+        "User-Agent": "WindChecker_App_v2_PreciseName",
         "Accept-Language": "ja"
     }
     url = f"https://nominatim.openstreetmap.org/reverse?lat={lat}&lon={lon}&format=json"
@@ -566,26 +566,24 @@ def fetch_location_name(lat, lon):
             data = response.json()
             address = data.get("address", {})
             
-            # --- 抽出ロジック：より詳細な階層から順にチェック ---
-            # neighbourhood: 近隣住区 (例: 〇〇1丁目)
-            # suburb: 町名・大字 (例: 国分中央, 隼人町)
-            # city_district: 行政区
-            # town/village/city: 市町村
+            # 1. 市町村レベルを取得 (霧島市など)
+            city = address.get("city") or address.get("town") or address.get("village") or ""
             
-            loc_name = (
-                address.get("neighbourhood") or 
-                address.get("suburb") or 
-                address.get("city_district") or 
-                address.get("town") or 
-                address.get("village") or 
-                address.get("city") or 
-                address.get("province") or
-                "地図で指定地点"
-            )
+            # 2. 町名・街区レベルを取得 (国分広瀬二丁目など)
+            # neighbourhood(丁目レベル) > suburb(町名レベル)
+            suburb = address.get("neighbourhood") or address.get("suburb") or address.get("city_district") or ""
             
-            # 「霧島市」という広域な名前しか取れなかった場合に備え、
-            # もし suburb などが取れていればそれを優先する構造になっています。
-            return loc_name
+            # 3. 組み合わせ処理
+            # 市町村名と町名が同じ（例：垂水市垂水）場合は重複させない
+            if city and suburb:
+                if suburb in city:
+                    full_name = city
+                else:
+                    full_name = f"{city}{suburb}"
+            else:
+                full_name = suburb or city or "地図で指定地点"
+                
+            return full_name
             
     except:
         pass
@@ -885,7 +883,7 @@ def main():
     st.markdown(f'<h1 style="font-size:{CONFIG["TITLE_SIZE"]}px;">⛵ Wind_Checker! </h1>', unsafe_allow_html=True)
     
     # ==================================================================================
-    # 地点選択ロジック（修正版）：取得した詳細地名をリストに反映
+    # 地点選択ロジック（最終安定版）：詳細地名と「地図で指定」を共存
     # ==================================================================================
     master = CONFIG["LOCATION_MASTER"].copy()
     display_options = {}
@@ -894,43 +892,45 @@ def main():
     for name, coords in master.items():
         display_options[f"{name} ({coords[0]:.4f}, {coords[1]:.4f})"] = name
 
-    # 2. 現在の状態（last_basho）がマスターにない場合（＝地図で選んだ地名の場合）
-    #    その地名をドロップダウンの選択肢に「📍」マーク付きで追加する
+    # 2. 地図で取得した詳細地名を登録（マスターにない場合のみ）
     current_name = st.session_state.last_basho
-    if current_name not in master:
-        # 地名が取得できていればそれを使用し、座標もラベルに付与する
+    if current_name not in master and current_name != "地図で指定":
         dynamic_label = f"📍 {current_name} ({st.session_state.lat:.4f}, {st.session_state.lon:.4f})"
         display_options[dynamic_label] = current_name
 
-    # 3. 表示用ラベルから内部用の名前を引くための逆引き辞書を作成
+    # 3. 「地図で指定」スイッチを必ずリストに含める
+    # これにより、地図表示がOFFでもこれを選べば地図が開く機能を維持します
+    map_label = f"🗺️ 地図で指定"
+    display_options[map_label] = "地図で指定"
+
+    # 4. 逆引き辞書と現在の選択位置の特定
     reverse_display = {v: k for k, v in display_options.items()}
-    
-    # 4. 現在選択されているべき表示ラベルを決定
-    current_display_val = reverse_display.get(current_name)
+    current_display_val = reverse_display.get(current_name, map_label)
     
     options_list = list(display_options.keys())
-    
-    # デフォルトのインデックスを特定（見つからなければ0番目）
     try:
         default_idx = options_list.index(current_display_val)
     except ValueError:
         default_idx = 0
 
-    # 5. セレクトボックスの表示
+    # 5. セレクトボックス表示
     selected_display = st.selectbox("地点を選択してください", options_list, index=default_idx)
     basho = display_options[selected_display]
 
-    # 6. 選択が変更された場合の処理
+    # 6. 選択変更時の制御（既存の自動地図表示ロジックを維持）
     if basho != st.session_state.last_basho:
         st.session_state.last_basho = basho
-        # マスターにある場所が選ばれたら座標を更新
         if basho in master:
             st.session_state.lat, st.session_state.lon = master[basho]
-            st.session_state.show_map_state = False # マスター選択時は地図を閉じる（任意）
+            st.session_state.show_map_state = False # 固定地点なら地図を閉じる
+        elif basho == "地図で指定":
+            st.session_state.show_map_state = True  # 【重要】地図を自動表示
         
         st.cache_data.clear() 
         st.rerun()
 
+        
+    # ==================================================================================
     show_map = st.checkbox("地図表示", value=st.session_state.get('show_map_state', False))
     st.session_state.show_map_state = show_map
     if show_map:
