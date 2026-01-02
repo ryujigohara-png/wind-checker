@@ -728,12 +728,12 @@ def save_settings_to_browser():
     )
 
 # ======================================================================================
-# 17. サイドバーの表示設定とデザイン調整を表示するサブルーチン
+# 17. サイドバーの表示設定とデザイン調整を表示するサブルーチン（安全版）
 # ======================================================================================
 def show_sidebar_controls():
     """
-    st.formを使用して設定変更を一時保留し、「適用」で一括反映させる。
-    URLパラメータによる開発者モード制御も含む。
+    st.formを使用して設定変更を一時保留する。
+    未初期化の変数を自動補完することで AttributeError を防止する。
     """
     import streamlit as st
 
@@ -758,8 +758,7 @@ def show_sidebar_controls():
         base_font_size = st.slider("グラフ内文字", f_cfg["min"], f_cfg["max"], st.session_state.get("base_font_size", CONFIG["GRAPH_FONT_SIZE"]), step=f_cfg["step"])
         label_font_size = st.slider("軸ラベル文字", f_cfg["min"], f_cfg["max"], st.session_state.get("label_font_size", CONFIG["LABEL_SIZE"]), step=f_cfg["step"])
 
-        # C. 開発者用マイクロ調整（URLパラメータがある時のみ表示）
-        is_dev = False
+        # C. 開発者用マイクロ調整用の変数を準備（取得できない場合はCONFIGや規定値を使用）
         dev_params = {
             "min_container_width": st.session_state.get("min_container_width", 2500),
             "graph_dpi": st.session_state.get("graph_dpi", 200),
@@ -767,11 +766,12 @@ def show_sidebar_controls():
             "show_dir_name": st.session_state.get("show_dir_name", CONFIG["SHOW_DIR_NAME"]),
             "hspace": st.session_state.get("hspace", CONFIG["HSPACE"]),
             "label_pad": st.session_state.get("label_pad", CONFIG["LABEL_PAD"]),
-            "precip_y": st.session_state.get("precip_y", CONFIG["DEFAULT_PRECIP_Y"]),
-            "icon_margin": st.session_state.get("icon_margin", CONFIG["DEFAULT_ICON_MARGIN"]),
+            "precip_y": st.session_state.get("precip_y", CONFIG.get("DEFAULT_PRECIP_Y", 0.5)),
+            "icon_margin": st.session_state.get("icon_margin", CONFIG.get("DEFAULT_ICON_MARGIN", 0)),
             "ratios": list(st.session_state.get("ratios", CONFIG["DEFAULT_RATIOS"]))
         }
 
+        is_dev = False
         if is_dev_url:
             st.markdown("---")
             is_dev = st.checkbox("🔧 開発者用マイクロ調整", value=st.session_state.get("is_dev_mode", False))
@@ -803,48 +803,44 @@ def show_sidebar_controls():
                 if st.checkbox(d, value=(d in saved_dirs), key=f"chk_{d}"):
                     sel_dirs.append(d)
 
-        # 適用ボタン
         submitted = st.form_submit_button("設定を適用してグラフ更新", use_container_width=True)
 
-    # --- 3. 更新処理（ボタン押下時のみ実行） ---
-    if submitted:
-        st.session_state.update({
+    # --- 3. 更新処理（ボタン押下時、またはセッションに値がない場合） ---
+    # 初回起動時に session_state に値がない場合を考慮し、デフォルト値を書き込む
+    initial_setup = "width" not in st.session_state
+    
+    if submitted or initial_setup:
+        new_data = {
             "show_wind": show_wind, "show_temp": show_temp, "show_tide": show_tide,
             "width": width, "base_height": base_height, "base_font_size": base_font_size,
             "label_font_size": label_font_size, "danger_v": danger_v, "sel_dirs": sel_dirs,
             "is_dev_mode": is_dev, **dev_params
-        })
-        st.cache_data.clear()
-        st.rerun()
+        }
+        st.session_state.update(new_data)
+        if submitted:
+            st.cache_data.clear()
+            st.rerun()
 
     # --- 4. パラメータの組み立て（戻り値） ---
-    # サブルーチン20を呼び出して高さを計算
+    # 必ず session_state から取得することで Attribute Error を回避
     current_height = calculate_graph_height(
-        st.session_state.base_height, st.session_state.ratios, 
-        st.session_state.show_wind, st.session_state.show_temp, st.session_state.show_tide
+        st.session_state.get("base_height", CONFIG["GRAPH_HIGHT"]),
+        st.session_state.get("ratios", CONFIG["DEFAULT_RATIOS"]),
+        st.session_state.get("show_wind", CONFIG["SHOW_WIND"]),
+        st.session_state.get("show_temp", CONFIG["SHOW_TEMP"]),
+        st.session_state.get("show_tide", CONFIG["SHOW_TIDE"])
     )
 
     design_params = {
-        "width": st.session_state.width,
-        "height": current_height,
-        "base_font_size": st.session_state.base_font_size,
-        "label_font_size": st.session_state.label_font_size,
-        "label_pad": st.session_state.label_pad,
-        "hspace": st.session_state.hspace,
-        "show_wind": st.session_state.show_wind,
-        "show_temp": st.session_state.show_temp,
-        "show_tide": st.session_state.show_tide,
-        "show_w_text": st.session_state.show_w_text,
-        "show_dir_name": st.session_state.show_dir_name,
-        "ratios": st.session_state.ratios,
-        "min_container_width": st.session_state.min_container_width,
-        "graph_dpi": st.session_state.graph_dpi,
-        "precip_y": st.session_state.precip_y,
-        "icon_margin": st.session_state.icon_margin
+        "width": st.session_state.width, "height": current_height,
+        "base_font_size": st.session_state.base_font_size, "label_font_size": st.session_state.label_font_size,
+        "label_pad": st.session_state.label_pad, "hspace": st.session_state.hspace,
+        "show_wind": st.session_state.show_wind, "show_temp": st.session_state.show_temp, "show_tide": st.session_state.show_tide,
+        "show_w_text": st.session_state.show_w_text, "show_dir_name": st.session_state.show_dir_name,
+        "ratios": st.session_state.ratios, "min_container_width": st.session_state.min_container_width,
+        "graph_dpi": st.session_state.graph_dpi, "precip_y": st.session_state.precip_y, "icon_margin": st.session_state.icon_margin
     }
 
-    # セッション同期
-    save_settings_to_browser()
     return st.session_state.danger_v, st.session_state.sel_dirs, design_params
 
 # ======================================================================================
