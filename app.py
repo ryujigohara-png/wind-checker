@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# ベータ版　更新 2026.1.2 0115 （デザイン調整・ブラウザ保存対応）
+# ベータ版　更新 2026.1.2 1130 コンプリート版
 import streamlit as st
 import requests
 import pandas as pd
