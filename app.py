@@ -809,7 +809,7 @@ def save_settings_to_browser():
         # --- 今回追加する地点管理用データ ---
         "location_master": st.session_state.get("LOCATION_MASTER", []),
         "map_lat": st.session_state.get("map_lat", st.session_state.lat),
-        "map_lon": st.session_state.get("map_lon", st.session_state.lon)
+        "map_lon": st.session_state.get("map_lon", st.session_state.lon),
         "temp_label": st.session_state.get("temp_label", None)
     }
     
