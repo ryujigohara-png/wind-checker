@@ -749,29 +749,37 @@ def show_favorite_control_bar(location_options, current_name, current_lat, curre
 # ======================================================================================
 # 19. お気に入り地点とプリセット地点を統合してリストを生成するサブルーチン
 # ======================================================================================
-def get_combined_location_list(preset_master):
+def get_combined_location_list(preset_master, current_lat, current_lon, current_address):
     """
-    localStorageのお気に入りを先頭に結合し、選択肢リストと座標辞書を返す。
+    お気に入りリストとプリセット地点を統合し、
+    セレクトボックス表示用の「地名 (緯度, 経度)」リストを作成する。
     """
     import streamlit as st
     favorites = st.session_state.get("LOCATION_MASTER", [])
     
-    # 統合用辞書の作成
-    full_master = preset_master.copy()
-    display_options = ["地図で指定"]
-    
-    # お気に入り地点を「⭐ 名称」として追加
+    full_master = {}
+    display_options = []
+
+    # 1. 「地図で指定」をフォーマット（現在の逆引き住所と座標を付与）
+    map_label = f"📍 {current_address} ({current_lat:.4f}, {current_lon:.4f})"
+    display_options.append(map_label)
+    full_master[map_label] = (current_lat, current_lon, "地図で指定")
+
+    # 2. お気に入り地点を追加
     for fav in favorites:
-        name = f"⭐ {fav['name']}"
-        full_master[name] = (fav['lat'], fav['lon'])
-        display_options.append(name)
+        label = f"⭐ {fav['name']} ({fav['lat']:.4f}, {fav['lon']:.4f})"
+        display_options.append(label)
+        full_master[label] = (fav['lat'], fav['lon'], fav['name'])
     
-    # プリセット地点を追加（重複回避）
-    for name in preset_master.keys():
-        if name != "地図で指定" and name not in display_options:
-            display_options.append(name)
+    # 3. プリセット地点を追加
+    for name, coords in preset_master.items():
+        if name != "地図で指定":
+            label = f"{name} ({coords[0]:.4f}, {coords[1]:.4f})"
+            display_options.append(label)
+            full_master[label] = (coords[0], coords[1], name)
 
     return display_options, full_master
+    
     
 #==========================================================================================
 # 16_x. ブラウザへの保存を実行するサブルーチン（隠し要素）
@@ -1033,45 +1041,41 @@ def main():
         
     # ==================================================================================
     
-# --- 4. 地点リストの構築 ---
-    # get_combined_location_list: お気に入りとプリセットを統合するサブルーチン19
-    display_list, total_master = get_combined_location_list(master)
+    # --- 5. 現在の逆引き地名を特定（サブルーチン14） ---
+    # セレクトボックスを表示する前に、最新の住所を取得しておく
+    current_address = fetch_location_name(st.session_state.lat, st.session_state.lon)
 
-    # --- 5. 地名の特定（サブルーチン14を実行） ---
-    # 選択中の地点が「地図で指定」の場合のみ、現在の緯度経度から住所を取得
-    if st.session_state.last_basho == "地図で指定":
-        target_name = fetch_location_name(st.session_state.lat, st.session_state.lon)
-    else:
-        # プリセット地点やお気に入り地点の場合は、その名称をそのまま使用
-        target_name = st.session_state.last_basho
+    # --- 6. 地点リストの構築（サブルーチン19） ---
+    # 表示用のリスト(display_list)と、選択時に座標・地名を引くための辞書(total_data)
+    display_list, total_data = get_combined_location_list(
+        master, st.session_state.lat, st.session_state.lon, current_address
+    )
 
-    # --- 6. セレクトボックスとお気に入りボタンの表示（サブルーチン18） ---
-    # 事前に特定した target_name を渡すことで NameError を確実に回避します
-    selected_display = show_favorite_control_bar(
+    # --- 7. セレクトボックスとお気に入りボタンの表示（サブルーチン18） ---
+    # 3列アンカー方式で1行を死守。current_nameには「現在選択中のラベル」を渡す。
+    # ここでは session_state に保存されている前回の表示ラベルを参照。
+    selected_label = show_favorite_control_bar(
         location_options=display_list,
-        current_name=target_name, 
+        current_name=st.session_state.get("last_display_label", display_list[0]),
         current_lat=st.session_state.lat,
         current_lon=st.session_state.lon
     )
-    
-    basho = selected_display
 
-    # --- 7. 逆引き地名の表示復活 ---
-    # コンボボックスの下に 📍地名 を表示
-    if basho == "地図で指定" and target_name:
-        st.write(f"📍 {target_name}")
+    # --- 8. 選択変更時の制御 ---
+    if selected_label != st.session_state.get("last_display_label"):
+        st.session_state.last_display_label = selected_label
+        
+        # 選択されたラベルから (緯度, 経度, 元の地名) を取得
+        new_lat, new_lon, raw_name = total_data[selected_label]
+        
+        st.session_state.lat = new_lat
+        st.session_state.lon = new_lon
+        st.session_state.last_basho = raw_name # 内部処理用の純粋な地名
 
-    # --- 8. 選択変更時の制御（既存ロジックを完全維持） ---
-    if basho != st.session_state.last_basho:
-        st.session_state.last_basho = basho
-        
-        # total_master（統合辞書）から座標を取得
-        if basho in total_master:
-            st.session_state.lat, st.session_state.lon = total_master[basho]
-            if basho != "地図で指定":
-                st.session_state.show_map_state = False 
-        
-        if basho == "地図で指定":
+        # 「地図で指定」系ラベル以外なら地図を閉じる
+        if "📍" not in selected_label:
+            st.session_state.show_map_state = False
+        else:
             st.session_state.show_map_state = True
         
         st.cache_data.clear() 
