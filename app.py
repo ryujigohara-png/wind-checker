@@ -532,57 +532,62 @@ def show_location_map():
     
     if map_out and map_out.get("center"):
         if st.button("グラフ描画地点確定", use_container_width=True):
-            st.session_state.lat = map_out["center"]["lat"]
-            st.session_state.lon = map_out["center"]["lng"]
-            # st.session_state.last_basho = "地図で指定"
-            # 修正後（サブルーチン14を呼び出す）
-            st.session_state.last_basho = fetch_location_name(map_out["center"]["lat"], map_out["center"]["lng"])
+            new_lat = map_out["center"]["lat"]
+            new_lon = map_out["center"]["lng"]
+            
+            # 1. 強化したサブルーチン14を呼び出す
+            detail_name = fetch_location_name(new_lat, new_lon)
+            
+            # 2. セッションに代入（ここで "現在地" と書かずに detail_name を使う）
+            st.session_state.lat = new_lat
+            st.session_state.lon = new_lon
+            st.session_state.last_basho = detail_name  # ← ここが重要です
+            
             st.rerun()
 
 # ======================================================================================
-# 14. 逆ジオコーディングにより緯度経度から地名を取得するサブルーチン
+# 14. 逆ジオコーディングにより緯度経度から詳細地名を取得するサブルーチン（高精度版）
 # ======================================================================================
 def fetch_location_name(lat, lon):
     """
-    OpenStreetMapのNominatim APIを使用し、緯度経度を日本語の地名に変換する。
-    通信エラーやタイムアウトが発生した場合でも、アプリを停止させず安全な値を返す。
+    OpenStreetMapのNominatim APIを使用し、可能な限り詳細な地名（町名・地区名）を返す。
     """
     import requests
-    import time
-
-    # Nominatim APIの利用規約(Usage Policy)に従い、識別可能なUser-Agentを設定
-    headers = {
-        "User-Agent": "WindChecker_App_v2_UserLocal",
-        "Accept-Language": "ja"  # 日本語での結果を要求
-    }
     
-    # 地点特定のためのパラメータ
+    headers = {
+        "User-Agent": "WindChecker_App_v2_HighPrecision",
+        "Accept-Language": "ja"
+    }
     url = f"https://nominatim.openstreetmap.org/reverse?lat={lat}&lon={lon}&format=json"
     
     try:
-        # タイムアウトを5秒に設定（応答が遅い場合にアプリが固まるのを防ぐ）
         response = requests.get(url, headers=headers, timeout=5)
-        
         if response.status_code == 200:
             data = response.json()
             address = data.get("address", {})
             
-            # 住所の粒度を優先順位をつけて抽出（日本の住所体系に適合させる）
-            # 1. suburb(町丁), 2. city_district(区), 3. town/village(町村), 4. city(市), 5. province(都道県)
+            # --- 抽出ロジック：より詳細な階層から順にチェック ---
+            # neighbourhood: 近隣住区 (例: 〇〇1丁目)
+            # suburb: 町名・大字 (例: 国分中央, 隼人町)
+            # city_district: 行政区
+            # town/village/city: 市町村
+            
             loc_name = (
+                address.get("neighbourhood") or 
                 address.get("suburb") or 
                 address.get("city_district") or 
-                address.get("village") or 
                 address.get("town") or 
+                address.get("village") or 
                 address.get("city") or 
                 address.get("province") or
                 "地図で指定地点"
             )
+            
+            # 「霧島市」という広域な名前しか取れなかった場合に備え、
+            # もし suburb などが取れていればそれを優先する構造になっています。
             return loc_name
             
-    except Exception as e:
-        # 通信エラー時はログを出力せず（またはprintのみ）、安全な代替名を返す
-        # これにより、オフライン時でもアプリ全体がクラッシュするのを防ぐ
+    except:
         pass
     
     return "地図で指定地点"
