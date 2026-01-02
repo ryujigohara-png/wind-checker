@@ -690,12 +690,12 @@ def handle_current_location_update():
                 st.rerun()
 
 # ======================================================================================
-# 18. 地点選択とお気に入り保存を1行に集約するサブルーチン（3列グリッド1行死守版）
+# 18. 地点選択とお気に入り保存を1行に集約するサブルーチン（1行死守・デザイン整合版）
 # ======================================================================================
 def show_favorite_control_bar(location_options, current_name, current_lat, current_lon):
     """
-    3列構成（80:15:5）を利用し、スマホでもコンボボックスとボタンを1行に収める。
-    3列目に微小要素を置くことで、スマホでの自動改行（2行化）を物理的に阻止する。
+    3列構成を利用し、スマホでも1行を死守。
+    ボタンは背景白、幅は最小限に抑え、既存の逆引き地名表示に干渉しない。
     """
     import streamlit as st
 
@@ -705,16 +705,15 @@ def show_favorite_control_bar(location_options, current_name, current_lat, curre
     
     is_saved = False
     if saved_data:
-        # 緯度経度が0.0001度以内の差なら「保存済み」とみなす
         if abs(saved_data['lat'] - current_lat) < 0.0001 and \
            abs(saved_data['lon'] - current_lon) < 0.0001:
             is_saved = True
 
-    # --- 2. 3列レイアウト（PC/スマホ共通で1行を死守） ---
-    c1, c2, c3 = st.columns([0.80, 0.15, 0.05])
+    # --- 2. 3列レイアウト（比率を微調整しボタンをさらにコンパクト化） ---
+    # ボタン側の比率を下げ、コンボボックスの視認性を優先します
+    c1, c2, c3 = st.columns([0.88, 0.07, 0.05])
 
     with c1:
-        # 地点選択コンボボックス（ラベルを消して縦幅を圧縮）
         selected = st.selectbox(
             "地点選択", 
             options=location_options, 
@@ -724,12 +723,12 @@ def show_favorite_control_bar(location_options, current_name, current_lat, curre
         )
 
     with c2:
-        # お気に入り保存・更新ボタン（アイコンのみ）
+        # type="secondary" で白背景を指定。use_container_widthは使わず自然な幅に。
         if is_saved:
-            st.button("✅", key="fav_saved_icon", help="保存済み", disabled=True, use_container_width=True)
+            st.button("✅", key="fav_saved_icon", help="保存済み", disabled=True)
         else:
             icon = "🆙" if saved_data else "⭐"
-            if st.button(icon, key="fav_save_action", type="primary", use_container_width=True):
+            if st.button(icon, key="fav_save_action", type="secondary", help="現在の座標を保存"):
                 new_entry = {"name": current_name, "lat": current_lat, "lon": current_lon}
                 if saved_data:
                     st.session_state["LOCATION_MASTER"] = [new_entry if f['name'] == current_name else f for f in favorites]
@@ -737,17 +736,16 @@ def show_favorite_control_bar(location_options, current_name, current_lat, curre
                     favorites.append(new_entry)
                     st.session_state["LOCATION_MASTER"] = favorites
                 
-                # 外部サブルーチンでブラウザ保存
                 save_settings_to_browser()
-                st.toast(f"「{current_name}」の座標を保存しました")
+                st.toast(f"「{current_name}」を保存しました")
                 st.rerun()
 
     with c3:
-        # 3列目アンカー：スマホで列が崩れるのを防ぐための微小要素
+        # 3列目アンカー（1pxの空白）
         st.write('<div style="width:1px;"></div>', unsafe_allow_html=True)
 
     return selected
-
+    
 # ======================================================================================
 # 19. お気に入り地点とプリセット地点を統合してリストを生成するサブルーチン
 # ======================================================================================
@@ -1038,18 +1036,23 @@ def main():
     # master: 既存のプリセット辞書
     display_list, total_master = get_combined_location_list(master)
 
-    # --- 5. セレクトボックス表示（1行レイアウト） ---
-    # selected_display に戻り値（選ばれた名称）を格納
+# --- 5. セレクトボックス表示 ---
     selected_display = show_favorite_control_bar(
         location_options=display_list,
-        current_name=st.session_state.last_basho if st.session_state.last_basho in display_list else display_list[0],
+        current_name=target_name, # 逆引きされた地名を渡す
         current_lat=st.session_state.lat,
         current_lon=st.session_state.lon
     )
     
-    # basho を確定
     basho = selected_display
 
+    # --- 6. 逆引き地名表示の復活（ここが重要です） ---
+    # show_favorite_control_barの直後に配置することで、セレクトボックスの下に表示されます
+    if basho == "地図で指定" and target_name:
+        # 以前ユーザー様が調整された📍表示をそのまま記述
+        st.write(f"📍 {target_name}")
+
+        
     # --- 6. 選択変更時の制御（既存ロジックを完全維持） ---
     if basho != st.session_state.last_basho:
         st.session_state.last_basho = basho
