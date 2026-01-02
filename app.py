@@ -1030,41 +1030,44 @@ def main():
         default_idx = options_list.index(current_display_val)
     except ValueError:
         default_idx = 0
-
-    # --- main 内の処理 ---
+        
+    # ==================================================================================
+    
     # --- 4. 地点リストの構築 ---
-    # master: 既存のプリセット辞書
     display_list, total_master = get_combined_location_list(master)
 
-# --- 5. セレクトボックス表示 ---
+    # --- 5. 現在の座標から「逆引き地名」を先に特定する ---
+    # ※既存の逆引きサブルーチン（例: get_reverse_geocoding）をここで呼び出します
+    # ここで target_name を確定させることで、下の引数として安全に渡せます
+    if st.session_state.last_basho == "地図で指定":
+        target_name = get_reverse_geocoding(st.session_state.lat, st.session_state.lon)
+    else:
+        # プリセット地点の場合は、その名称をそのまま使用
+        target_name = st.session_state.last_basho
+
+    # --- 6. セレクトボックスとお気に入りボタンの表示（1行レイアウト） ---
+    # target_name が確定した後なので、NameError は発生しません
     selected_display = show_favorite_control_bar(
         location_options=display_list,
-        current_name=target_name, # 逆引きされた地名を渡す
+        current_name=target_name, 
         current_lat=st.session_state.lat,
         current_lon=st.session_state.lon
     )
     
     basho = selected_display
 
-    # --- 6. 逆引き地名表示の復活（ここが重要です） ---
-    # show_favorite_control_barの直後に配置することで、セレクトボックスの下に表示されます
+    # --- 7. 逆引き地名の表示復活 ---
     if basho == "地図で指定" and target_name:
-        # 以前ユーザー様が調整された📍表示をそのまま記述
         st.write(f"📍 {target_name}")
 
-        
-    # --- 6. 選択変更時の制御（既存ロジックを完全維持） ---
+    # --- 8. 選択変更時の制御（既存ロジック） ---
     if basho != st.session_state.last_basho:
         st.session_state.last_basho = basho
-        
-        # total_master（統合辞書）から座標を取得
         if basho in total_master:
             st.session_state.lat, st.session_state.lon = total_master[basho]
-            # 「地図で指定」以外なら地図を閉じる（既存仕様）
             if basho != "地図で指定":
                 st.session_state.show_map_state = False 
         
-        # 「地図で指定」が選ばれたら地図を開く
         if basho == "地図で指定":
             st.session_state.show_map_state = True
         
