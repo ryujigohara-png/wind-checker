@@ -738,13 +738,9 @@ def show_favorite_control_bar(location_options, current_display_label, current_l
     return selected
     
 # ======================================================================================
-# 19. お気に入り・プリセット・地図指定を統合するサブルーチン（一時地名対応版）
+# 19. お気に入り・プリセット・地図指定を統合するサブルーチン（配置固定版）
 # ======================================================================================
 def get_combined_location_list(preset_master, current_lat, current_lon, current_address):
-    """
-    お気に入り(最上部) -> プリセット -> (もしあれば一時地点) -> 地図で指定(最下部)
-    の順でリストを生成する。引数は main の呼び出し（4つ）に完全に合わせる。
-    """
     import streamlit as st
     favorites = st.session_state.get("LOCATION_MASTER", [])
     total_data = {}
@@ -763,15 +759,15 @@ def get_combined_location_list(preset_master, current_lat, current_lon, current_
             display_list.append(label)
             total_data[label] = (coords[0], coords[1], name)
 
-    # 3. 一時的な確定地点（⭐保存されるまでの間だけ表示される）
+    # 3. 一時的な確定地点（「地図で指定」のすぐ上）
+    # ボタン押下時に st.session_state.temp_label に格納された値を表示
     temp_label = st.session_state.get("temp_label")
-    if temp_label:
-        # すでにお気に入りに同じラベルがない場合のみ追加
-        if temp_label not in total_data:
-            display_list.append(temp_label)
-            total_data[temp_label] = (current_lat, current_lon, "一時地点")
+    if temp_label and temp_label not in total_data:
+        display_list.append(temp_label)
+        # キー（temp_label）と basho名（temp_label）を一致させることが重要
+        total_data[temp_label] = (current_lat, current_lon, temp_label)
 
-    # 4. 地図で指定（常に一番下）
+    # 4. 地図で指定（常に最下部）
     m_lat = st.session_state.get('map_lat', current_lat)
     m_lon = st.session_state.get('map_lon', current_lon)
     map_label = f"地図で指定 ({m_lat:.4f}, {m_lon:.4f})"
@@ -1053,21 +1049,26 @@ def main():
     
     col1, col2 = st.columns([1, 1]) 
     with col1:
+with col1:
         if st.button("🗺️ グラフ描画地点を確定", use_container_width=True):
-            # 1. 地図上の現在の座標を「確定座標」として記憶
+            # 座標の固定
             st.session_state.map_lat = st.session_state.lat
             st.session_state.map_lon = st.session_state.lon
             
-            # 2. 逆ジオコーディングで地名を取得し、一時的なラベルを作成
+            # 逆ジオコーディングで取得した地名を使ってラベルを作成
             addr = fetch_location_name(st.session_state.lat, st.session_state.lon)
-            st.session_state.temp_label = f"{addr} ({st.session_state.lat:.4f}, {st.session_state.lon:.4f})"
+            t_label = f"{addr} ({st.session_state.lat:.4f}, {st.session_state.lon:.4f})"
             
-            # 3. コンボボックスがこの一時ラベルを選択するようにセット
-            st.session_state.last_basho = "一時地点"
+            # サブルーチン19が参照する「一時ラベル」を保存
+            st.session_state.temp_label = t_label
             
-            # 4. ブラウザに保存してリフレッシュ
+            # 【重要】コンボボックスがこのラベルを選択するようにセット
+            # これにより「一番上」に戻る現象を防ぎます
+            st.session_state.last_basho = t_label 
+            
             save_settings_to_browser()
             st.rerun()
+            
     with col2:
         render_header_info(basho)
 
