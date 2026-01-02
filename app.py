@@ -493,7 +493,7 @@ def generate_weather_icons_html(df, ratio_info, display_width, start_idx, icon_m
         # 物理位置：(左端余白 + 経過時間 * 1時間幅比率) * 全体幅
         # elapsed_hours = i - start_idx
         # elapsed_hours = i - int(start_idx) # これで左端(3行目)が 0時間目 となる
-        if elapsed_hours > 192: break
+        # if elapsed_hours > 192: break
         
         # pos_left_px = (start_x + (elapsed_hours * hour_w)) * display_width
         pos_left_px = (start_x + (i * hour_w)) * display_width
