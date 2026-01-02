@@ -689,6 +689,92 @@ def handle_current_location_update():
                 st.session_state.waiting_loc = False
                 st.rerun()
 
+# ======================================================================================
+# 18. 地点選択とお気に入り保存を1行に集約するサブルーチン（3列グリッド1行死守版）
+# ======================================================================================
+def show_favorite_control_bar(location_options, current_name, current_lat, current_lon):
+    """
+    3列構成（80:15:5）を利用し、スマホでもコンボボックスとボタンを1行に収める。
+    3列目に微小要素を置くことで、スマホでの自動改行（2行化）を物理的に阻止する。
+    """
+    import streamlit as st
+
+    # --- 1. 状態判定（現在の座標が保存済みかチェック） ---
+    favorites = st.session_state.get("LOCATION_MASTER", [])
+    saved_data = next((f for f in favorites if f['name'] == current_name), None)
+    
+    is_saved = False
+    if saved_data:
+        # 緯度経度が0.0001度以内の差なら「保存済み」とみなす
+        if abs(saved_data['lat'] - current_lat) < 0.0001 and \
+           abs(saved_data['lon'] - current_lon) < 0.0001:
+            is_saved = True
+
+    # --- 2. 3列レイアウト（PC/スマホ共通で1行を死守） ---
+    c1, c2, c3 = st.columns([0.80, 0.15, 0.05])
+
+    with c1:
+        # 地点選択コンボボックス（ラベルを消して縦幅を圧縮）
+        selected = st.selectbox(
+            "地点選択", 
+            options=location_options, 
+            index=location_options.index(current_name) if current_name in location_options else 0,
+            label_visibility="collapsed",
+            key="main_location_selector"
+        )
+
+    with c2:
+        # お気に入り保存・更新ボタン（アイコンのみ）
+        if is_saved:
+            st.button("✅", key="fav_saved_icon", help="保存済み", disabled=True, use_container_width=True)
+        else:
+            icon = "🆙" if saved_data else "⭐"
+            if st.button(icon, key="fav_save_action", type="primary", use_container_width=True):
+                new_entry = {"name": current_name, "lat": current_lat, "lon": current_lon}
+                if saved_data:
+                    st.session_state["LOCATION_MASTER"] = [new_entry if f['name'] == current_name else f for f in favorites]
+                else:
+                    favorites.append(new_entry)
+                    st.session_state["LOCATION_MASTER"] = favorites
+                
+                # 外部サブルーチンでブラウザ保存
+                save_settings_to_browser()
+                st.toast(f"「{current_name}」の座標を保存しました")
+                st.rerun()
+
+    with c3:
+        # 3列目アンカー：スマホで列が崩れるのを防ぐための微小要素
+        st.write('<div style="width:1px;"></div>', unsafe_allow_html=True)
+
+    return selected
+
+# ======================================================================================
+# 19. お気に入り地点とプリセット地点を統合してリストを生成するサブルーチン
+# ======================================================================================
+def get_combined_location_list(preset_master):
+    """
+    localStorageのお気に入りを先頭に結合し、選択肢リストと座標辞書を返す。
+    """
+    import streamlit as st
+    favorites = st.session_state.get("LOCATION_MASTER", [])
+    
+    # 統合用辞書の作成
+    full_master = preset_master.copy()
+    display_options = ["地図で指定"]
+    
+    # お気に入り地点を「⭐ 名称」として追加
+    for fav in favorites:
+        name = f"⭐ {fav['name']}"
+        full_master[name] = (fav['lat'], fav['lon'])
+        display_options.append(name)
+    
+    # プリセット地点を追加（重複回避）
+    for name in preset_master.keys():
+        if name != "地図で指定" and name not in display_options:
+            display_options.append(name)
+
+    return display_options, full_master
+    
 #==========================================================================================
 # 16_x. ブラウザへの保存を実行するサブルーチン（隠し要素）
 #==========================================================================================
@@ -947,18 +1033,37 @@ def main():
     except ValueError:
         default_idx = 0
 
-    # 5. セレクトボックス表示
-    selected_display = st.selectbox("地点を選択してください", options_list, index=default_idx)
-    basho = display_options[selected_display]
+    # --- main 内の処理 ---
+    # --- 4. 地点リストの構築 ---
+    # master: 既存のプリセット辞書
+    display_list, total_master = get_combined_location_list(master)
 
-    # 6. 選択変更時の制御（既存の自動地図表示ロジックを維持）
+    # --- 5. セレクトボックス表示（1行レイアウト） ---
+    # selected_display に戻り値（選ばれた名称）を格納
+    selected_display = show_favorite_control_bar(
+        location_options=display_list,
+        current_name=st.session_state.last_basho if st.session_state.last_basho in display_list else display_list[0],
+        current_lat=st.session_state.lat,
+        current_lon=st.session_state.lon
+    )
+    
+    # basho を確定
+    basho = selected_display
+
+    # --- 6. 選択変更時の制御（既存ロジックを完全維持） ---
     if basho != st.session_state.last_basho:
         st.session_state.last_basho = basho
-        if basho in master:
-            st.session_state.lat, st.session_state.lon = master[basho]
-            st.session_state.show_map_state = False # 固定地点なら地図を閉じる
-        elif basho == "地図で指定":
-            st.session_state.show_map_state = True  # 【重要】地図を自動表示
+        
+        # total_master（統合辞書）から座標を取得
+        if basho in total_master:
+            st.session_state.lat, st.session_state.lon = total_master[basho]
+            # 「地図で指定」以外なら地図を閉じる（既存仕様）
+            if basho != "地図で指定":
+                st.session_state.show_map_state = False 
+        
+        # 「地図で指定」が選ばれたら地図を開く
+        if basho == "地図で指定":
+            st.session_state.show_map_state = True
         
         st.cache_data.clear() 
         st.rerun()
