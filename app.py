@@ -728,143 +728,124 @@ def save_settings_to_browser():
     )
 
 # ======================================================================================
-# 17. サイドバーの表示設定とデザイン調整を表示するサブルーチン
+# 17. サイドバーの表示設定とデザイン調整を表示するサブルーチン（同期整合版）
 # ======================================================================================
 def show_sidebar_controls():
     """
-    ユーザー設定と開発者設定を分離して表示。
-    リロード時に値がリセットされないよう、初期化ロジックを最上段に配置。
+    サブルーチン15(sync_all_settings)で復元された値を優先し、
+    適用ボタン押下時に確実に同期保存を行う。
     """
     import streamlit as st
 
-    # --- 1. セッションの完全初期化（未定義の場合のみ実行） ---
-    # ここで初期化することで、リロード後も既存の値が保持される
-    default_vals = {
-        "show_wind": CONFIG["SHOW_WIND"],
-        "show_temp": CONFIG["SHOW_TEMP"],
-        "show_tide": CONFIG["SHOW_TIDE"],
-        "width": CONFIG["GRAPH_WIDTH"],
-        "base_height": CONFIG["GRAPH_HIGHT"],
-        "base_font_size": CONFIG["GRAPH_FONT_SIZE"],
-        "label_font_size": CONFIG["LABEL_SIZE"],
-        "danger_v": CONFIG["DEFAULT_DANGER_V"],
-        "sel_dirs": list(CONFIG["DEFAULT_DIRS"]),
-        "min_container_width": 2500,
-        "graph_dpi": 200,
-        "show_w_text": CONFIG["SHOW_W_TEXT"],
-        "show_dir_name": CONFIG["SHOW_DIR_NAME"],
-        "hspace": CONFIG["HSPACE"],
-        "label_pad": CONFIG["LABEL_PAD"],
-        "precip_y": CONFIG.get("DEFAULT_PRECIP_Y", 0.5),
-        "icon_margin": CONFIG.get("DEFAULT_ICON_MARGIN", 0),
-        "ratios": list(CONFIG["DEFAULT_RATIOS"])
-    }
-    
-    for key, val in default_vals.items():
-        if key not in st.session_state:
-            st.session_state[key] = val
-
-    # --- 2. 開発者モード判定 ---
+    # --- 1. 開発者モード判定 ---
     is_dev_url = st.query_params.get("mode") == "dev"
 
-    # --- 3. サイドバーフォーム ---
+    # --- 2. サイドバーフォーム ---
     with st.sidebar.form("sidebar_setting_form"):
         st.header("表示設定")
         
-        f_show_wind = st.toggle("風向・風速", value=st.session_state.show_wind)
-        f_show_temp = st.toggle("気温", value=st.session_state.show_temp)
-        f_show_tide = st.toggle("潮位", value=st.session_state.show_tide)
+        # サブルーチン15が管理している変数名を正確に使用
+        f_show_wind = st.toggle("風向・風速", value=st.session_state.get("show_wind", CONFIG["SHOW_WIND"]))
+        f_show_temp = st.toggle("気温", value=st.session_state.get("show_temp", CONFIG["SHOW_TEMP"]))
+        f_show_tide = st.toggle("潮位", value=st.session_state.get("show_tide", CONFIG["SHOW_TIDE"]))
         
         st.markdown("---")
         
         w_cfg, h_cfg, f_cfg = CONFIG["SLIDER_WIDTH"], CONFIG["SLIDER_HEIGHT"], CONFIG["SLIDER_FONT"]
-        f_width = st.slider("横幅 (inch)", w_cfg["min"], w_cfg["max"], float(st.session_state.width), step=w_cfg["step"])
-        f_base_h = st.slider("基準縦幅 (inch)", h_cfg["min"], h_cfg["max"], float(st.session_state.base_height), step=h_cfg["step"])
-        f_base_f = st.slider("グラフ内文字", f_cfg["min"], f_cfg["max"], st.session_state.base_font_size, step=f_cfg["step"])
-        f_label_f = st.slider("軸ラベル文字", f_cfg["min"], f_cfg["max"], st.session_state.label_font_size, step=f_cfg["step"])
+        f_width = st.slider("横幅 (inch)", w_cfg["min"], w_cfg["max"], float(st.session_state.get("width", CONFIG["GRAPH_WIDTH"])), step=w_cfg["step"])
+        f_base_h = st.slider("基準縦幅 (inch)", h_cfg["min"], h_cfg["max"], float(st.session_state.get("base_height", CONFIG["GRAPH_HIGHT"])), step=h_cfg["step"])
+        f_base_f = st.slider("グラフ内文字", f_cfg["min"], f_cfg["max"], int(st.session_state.get("base_font_size", CONFIG["GRAPH_FONT_SIZE"])), step=f_cfg["step"])
+        f_label_f = st.slider("軸ラベル文字", f_cfg["min"], f_cfg["max"], int(st.session_state.get("label_font_size", CONFIG["LABEL_SIZE"])), step=f_cfg["step"])
 
         st.markdown("---")
-        f_danger_v = st.number_input("危険風速ライン(m/s)", value=st.session_state.danger_v, step=0.5)
+        f_danger_v = st.number_input("危険風速ライン(m/s)", value=float(st.session_state.get("danger_v", CONFIG["DEFAULT_DANGER_V"])), step=0.5)
         
         st.write("色付風向選択")
         f_new_sel_dirs = []
+        # ここが重要：セッションに保存された最新のリストを基準にチェック状態を作る
+        current_saved_dirs = st.session_state.get("sel_dirs", CONFIG["DEFAULT_DIRS"])
         cols = st.columns(2)
         for i, d in enumerate(ALL_DIRECTIONS):
             with cols[i % 2]:
-                # セッション内の現在のリストに含まれているかを確認
-                if st.checkbox(d, value=(d in st.session_state.sel_dirs), key=f"form_chk_{d}"):
+                # valueを明示的に指定することで、リロード時のリセットを防ぐ
+                if st.checkbox(d, value=(d in current_saved_dirs), key=f"f_chk_{d}"):
                     f_new_sel_dirs.append(d)
 
-        # 開発者設定（ローカル変数に一旦退避）
+        # 開発者設定セクション
         d_params = {
-            "min_container_width": st.session_state.min_container_width,
-            "graph_dpi": st.session_state.graph_dpi,
-            "show_w_text": st.session_state.show_w_text,
-            "show_dir_name": st.session_state.show_dir_name,
-            "hspace": st.session_state.hspace,
-            "label_pad": st.session_state.label_pad,
-            "precip_y": st.session_state.precip_y,
-            "icon_margin": st.session_state.icon_margin,
-            "ratios": list(st.session_state.ratios)
+            "label_pad": st.session_state.get("label_pad", CONFIG["LABEL_PAD"]),
+            "hspace": st.session_state.get("hspace", CONFIG["HSPACE"]),
+            "show_w_text": st.session_state.get("show_w_text", CONFIG["SHOW_W_TEXT"]),
+            "show_dir_name": st.session_state.get("show_dir_name", CONFIG["SHOW_DIR_NAME"]),
+            "ratios": list(st.session_state.get("ratios", CONFIG["DEFAULT_RATIOS"])),
+            "min_container_width": st.session_state.get("min_container_width", 2500), # 15には無いが保護
+            "graph_dpi": st.session_state.get("graph_dpi", 200)                      # 15には無いが保護
         }
 
         if is_dev_url:
             st.markdown("---")
             st.warning("🔧 開発者用マイクロ調整")
-            d_params["min_container_width"] = st.select_slider("コンテナ最小幅 (px)", options=[500, 1000, 1500, 2000, 2500, 3000], value=d_params["min_container_width"])
-            d_params["graph_dpi"] = st.radio("解像度 (DPI)", options=[200, 300], index=(0 if d_params["graph_dpi"] == 200 else 1), horizontal=True)
-            d_params["show_w_text"] = st.toggle("天気詳細文字を表示", value=d_params["show_w_text"])
+            d_params["hspace"] = st.slider("グラフ間余白", -0.2, 1.5, float(d_params["hspace"]), step=0.05)
+            d_params["label_pad"] = st.slider("ラベル距離", -5, 10, int(d_params["label_pad"]))
+            d_params["show_w_text"] = st.toggle("天気詳細文字", value=d_params["show_w_text"])
             d_params["show_dir_name"] = st.toggle("風向名を表示", value=d_params["show_dir_name"])
-            d_params["hspace"] = st.slider("グラフ間余白", -0.2, 1.5, d_params["hspace"], step=0.05)
-            d_params["label_pad"] = st.slider("ラベル距離", -5, 10, d_params["label_pad"])
-            d_params["precip_y"] = st.slider("降水量高さ", 0.0, 1.0, d_params["precip_y"], 0.01)
-            d_params["icon_margin"] = st.slider("アイコン下余白", 0, 100, d_params["icon_margin"], 5)
+            
+            st.write("各グラフ比率")
             r = d_params["ratios"]
-            r[0] = st.number_input("比率:風向", 0.5, 10.0, r[0], step=0.1)
-            r[1] = st.number_input("比率:気温", 0.5, 5.0, r[1], step=0.1)
-            r[2] = st.number_input("比率:潮位", 0.5, 5.0, r[2], step=0.1)
+            r[0] = st.number_input("比率:風向", 0.5, 10.0, float(r[0]), step=0.1)
+            r[1] = st.number_input("比率:気温", 0.5, 5.0, float(r[1]), step=0.1)
+            r[2] = st.number_input("比率:潮位", 0.5, 5.0, float(r[2]), step=0.1)
             d_params["ratios"] = r
 
         submitted = st.form_submit_button("設定を適用してグラフ更新", use_container_width=True)
 
-    # --- 4. 適用ボタン押下時の確定処理 ---
+    # --- 3. 適用時の処理 ---
     if submitted:
+        # セッションを更新
         st.session_state.update({
             "show_wind": f_show_wind, "show_temp": f_show_temp, "show_tide": f_show_tide,
             "width": f_width, "base_height": f_base_h, 
             "base_font_size": f_base_f, "label_font_size": f_label_f,
             "danger_v": f_danger_v, "sel_dirs": f_new_sel_dirs, **d_params
         })
+        
+        # 【重要】リロード前に即時保存。これにより次回の sync_all_settings でも最新値が読み込まれる
+        save_settings_to_browser()
+        
         st.cache_data.clear()
         st.rerun()
 
-    # --- 5. 最終的な戻り値の構築 ---
-    # セッションから最新値を参照する
-    h = calculate_graph_height(
-        st.session_state.base_height, st.session_state.ratios, 
-        st.session_state.show_wind, st.session_state.show_temp, st.session_state.show_tide
+    # --- 4. 戻り値の作成 ---
+    # 高さは動的に計算
+    current_h = calculate_graph_height(
+        st.session_state.get("base_height", CONFIG["GRAPH_HIGHT"]),
+        st.session_state.get("ratios", CONFIG["DEFAULT_RATIOS"]),
+        st.session_state.get("show_wind", CONFIG["SHOW_WIND"]),
+        st.session_state.get("show_temp", CONFIG["SHOW_TEMP"]),
+        st.session_state.get("show_tide", CONFIG["SHOW_TIDE"])
     )
-    
+
     design_params = {
-        "width": st.session_state.width, "height": h,
-        "base_font_size": st.session_state.base_font_size,
-        "label_font_size": st.session_state.label_font_size,
-        "label_pad": st.session_state.label_pad,
-        "hspace": st.session_state.hspace,
-        "show_wind": st.session_state.show_wind,
-        "show_temp": st.session_state.show_temp,
-        "show_tide": st.session_state.show_tide,
-        "show_w_text": st.session_state.show_w_text,
-        "show_dir_name": st.session_state.show_dir_name,
-        "ratios": st.session_state.ratios,
-        "min_container_width": st.session_state.min_container_width,
-        "graph_dpi": st.session_state.graph_dpi,
-        "precip_y": st.session_state.precip_y,
-        "icon_margin": st.session_state.icon_margin
+        "width": st.session_state.get("width", CONFIG["GRAPH_WIDTH"]),
+        "height": current_h,
+        "base_font_size": st.session_state.get("base_font_size", CONFIG["GRAPH_FONT_SIZE"]),
+        "label_font_size": st.session_state.get("label_font_size", CONFIG["LABEL_SIZE"]),
+        "label_pad": st.session_state.get("label_pad", CONFIG["LABEL_PAD"]),
+        "hspace": st.session_state.get("hspace", CONFIG["HSPACE"]),
+        "show_wind": st.session_state.get("show_wind", CONFIG["SHOW_WIND"]),
+        "show_temp": st.session_state.get("show_temp", CONFIG["SHOW_TEMP"]),
+        "show_tide": st.session_state.get("show_tide", CONFIG["SHOW_TIDE"]),
+        "show_w_text": st.session_state.get("show_w_text", CONFIG["SHOW_W_TEXT"]),
+        "show_dir_name": st.session_state.get("show_dir_name", CONFIG["SHOW_DIR_NAME"]),
+        "ratios": st.session_state.get("ratios", CONFIG["DEFAULT_RATIOS"]),
+        "min_container_width": st.session_state.get("min_container_width", 2500),
+        "graph_dpi": st.session_state.get("graph_dpi", 200)
     }
-    
-    return st.session_state.danger_v, st.session_state.sel_dirs, design_params
-    
+
+    return st.session_state.get("danger_v", CONFIG["DEFAULT_DANGER_V"]), \
+           st.session_state.get("sel_dirs", CONFIG["DEFAULT_DIRS"]), \
+           design_params
+           
 # ======================================================================================
 # 20. グラフの表示高さを一括計算するサブルーチン
 # ======================================================================================
