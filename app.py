@@ -974,9 +974,9 @@ def render_header_info(current_basho_name):
         st.rerun()
 
 
-# ==========================================================================================
-# 19. アプリのメインフローを制御するメインルーチン（お気に入り統合・正規版互換）
-# ==========================================================================================
+# ======================================================================================
+# 19. アプリのメインフローを制御するメインルーチン
+# ======================================================================================
 def main():
     if 'lat' not in st.session_state: st.session_state.lat = CONFIG["DEFAULT_LAT"]
     if 'lon' not in st.session_state: st.session_state.lon = CONFIG["DEFAULT_LON"]
@@ -989,7 +989,7 @@ def main():
     raw_now = datetime.now(timezone(timedelta(hours=9))).replace(tzinfo=None)
     now_jst = raw_now.replace(minute=(raw_now.minute // 10) * 10, second=0, microsecond=0)
 
-    # 【正規版維持】CSSレイアウト：オーバーレイを防ぎ、スクロールを制御
+    # 【レイアウト維持】オーバーレイを防ぐためのCSS
     st.markdown(f"""
         <style>
             .block-container {{ padding-top: 2rem !important; padding-bottom: 0rem !important; }}
@@ -999,31 +999,31 @@ def main():
 
     st.markdown(f'<h1 style="font-size:{CONFIG["TITLE_SIZE"]}px;">⛵ Wind_Checker! </h1>', unsafe_allow_html=True)
     
-    # --- 1. 地点選択ロジック（サブルーチン19でリスト構築） ---
+    # --- 1. 地点リスト構築（サブルーチン19） ---
     master = CONFIG["LOCATION_MASTER"].copy()
     current_address = fetch_location_name(st.session_state.lat, st.session_state.lon)
     
-    # お気に入り（⭐）を最上部へ、現在地（📍）や地図（🗺️）を統合したリストを取得
+    # お気に入り（⭐）をトップに、現在地（📍）と地図指定（🗺️）を統合
     display_list, total_data = get_combined_location_list(
         master, st.session_state.lat, st.session_state.lon, current_address
     )
 
-    # 逆引き辞書でお気に入り等のラベルを特定
+    # 現在の選択位置を特定
     reverse_dict = {v[2]: k for k, v in total_data.items()}
-    current_display_val = reverse_dict.get(st.session_state.last_basho, display_list[-2]) # 📍をデフォルト
+    current_label = reverse_dict.get(st.session_state.last_basho, display_list[-2])
     
-    # --- 2. お気に入りボタン付きコンボボックス表示（サブルーチン18） ---
-    # 保存用の内部名（raw_name）を特定
-    _, _, raw_name = total_data.get(current_display_val, (st.session_state.lat, st.session_state.lon, "現在地"))
+    # お気に入り保存用の内部名を特定（raw_name）
+    _, _, raw_name = total_data.get(current_label, (st.session_state.lat, st.session_state.lon, "現在地"))
 
-    selected_display = show_favorite_control_bar(
-        display_list, current_display_val, st.session_state.lat, st.session_state.lon, raw_name
+    # --- 2. 1行地点選択コントロール（サブルーチン18） ---
+    selected_label = show_favorite_control_bar(
+        display_list, current_label, st.session_state.lat, st.session_state.lon, raw_name
     )
     
-    # 選択結果から内部名（basho）を確定
-    new_lat, new_lon, basho = total_data[selected_display]
+    # 選択結果から変数を確定（bashoを定義）
+    new_lat, new_lon, basho = total_data[selected_label]
 
-    if selected_display != current_display_val:
+    if selected_label != current_label:
         st.session_state.last_basho = basho
         if basho not in ["地図で指定", "現在地"]:
             st.session_state.lat, st.session_state.lon = new_lat, new_lon
@@ -1032,51 +1032,45 @@ def main():
         st.cache_data.clear()
         st.rerun()
 
-    # --- 3. 地図表示（正規版配置：オーバーレイさせない独立セクション） ---
+    # --- 3. 地図・操作ボタン表示（正規版レイアウト：オーバーレイを回避） ---
     show_map = st.checkbox("地図表示", value=st.session_state.get('show_map_state', False))
     st.session_state.show_map_state = show_map
     if show_map:
         show_location_map()
 
-    # --- 4. 操作ボタン・ヘッダー（正規版配置） ---
     col1, col2 = st.columns([1, 1]) 
     with col1:
-        handle_current_location_update() # 「グラフ描画地点確定」ボタン
+        handle_current_location_update() # グラフ描画地点を確定ボタン
     with col2:
         render_header_info(basho) 
 
-    # --- 5. グラフ生成・描画（正規版ロジックを完全維持） ---
-    # 戻り値は正規版の 3つ (img_b64, ratio_info, start_idx)
-    img_b64, ratio_info, start_idx = generate_high_res_graph(
+    # --- 4. グラフ生成（サブルーチン12の定義に厳密に準拠した4つの戻り値） ---
+    img_b64, ratio_info, start_idx, df_from_graph = generate_high_res_graph(
         st.session_state.lat, st.session_state.lon, danger_v, tuple(sel_dirs), design_params, now_jst
     )
     
+    # --- 5. アイコン・グラフ描画（正規版ロジック） ---
     if img_b64:
-        df_for_icons = fetch_weather_data(st.session_state.lat, st.session_state.lon, 8)
-        if df_for_icons is not None:
-            import pandas as pd
-            # 正規版の padding ロジックをそのまま使用
-            padding_df = pd.DataFrame({'time': [df_for_icons['time'].iloc[0] - timedelta(hours=i) for i in range(1, 4)][::-1]})
-            df_full = pd.concat([padding_df, df_for_icons], ignore_index=True)
-            
-            dpi = design_params["graph_dpi"]
-            display_width = int(design_params["width"] * dpi)
-            icon_margin = design_params.get("icon_margin", 0)
-            
-            icons_html = generate_weather_icons_html(
-                df_full, ratio_info, display_width, start_idx, icon_margin
-            )
-            
-            graph_html = f'<img src="data:image/png;base64,{img_b64}" style="width: 100%; display: block;">'
-            
-            # 【重要】scroll-container により、地図とは完全に独立した表示領域を確保
-            st.markdown(
-                f'<div class="scroll-container">'
-                f'<div style="width: {display_width}px; min-width: {design_params["min_container_width"]}px;">'
-                f'{icons_html}{graph_html}'
-                f'</div></div>', 
-                unsafe_allow_html=True
-            )
+        # サブルーチン12で処理済みの df_from_graph をそのまま使用
+        dpi = design_params["graph_dpi"]
+        display_width = int(design_params["width"] * dpi)
+        icon_margin = design_params.get("icon_margin", 0)
+        
+        # アイコンHTML生成
+        icons_html = generate_weather_icons_html(
+            df_from_graph, ratio_info, display_width, start_idx, icon_margin
+        )
+        
+        graph_html = f'<img src="data:image/png;base64,{img_b64}" style="width: 100%; display: block;">'
+        
+        # 地図とは独立したセクションとして描画
+        st.markdown(
+            f'<div class="scroll-container">'
+            f'<div style="width: {display_width}px; min-width: {design_params["min_container_width"]}px;">'
+            f'{icons_html}{graph_html}'
+            f'</div></div>', 
+            unsafe_allow_html=True
+        )
             
 #==========================================================================================
 # アプリケーション起動
