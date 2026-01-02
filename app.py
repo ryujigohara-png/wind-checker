@@ -503,8 +503,8 @@ def generate_weather_icons_html(df, ratio_info, display_width, start_idx, icon_m
         icon_html += f'''
             <div style="position: absolute; left: {pos_left_px}px; top: 0px; 
                         transform: translateX(-50%); width: 80px; text-align: center; z-index: 5;">
-                <div style="font-size: 32px; line-height: 1;">{icon}</div>
-                <div style="font-size: 8px; color: red; line-height: 1.2; background: rgba(255,255,255,0.7);">
+                # <div style="font-size: 32px; line-height: 1;">{icon}</div>
+                # <div style="font-size: 8px; color: red; line-height: 1.2; background: rgba(255,255,255,0.7);">
                     i:{i}<br>h:{hr}
                 </div>
             </div>'''
