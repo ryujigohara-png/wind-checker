@@ -1052,24 +1052,24 @@ def main():
         show_location_map()
     
     col1, col2 = st.columns([1, 1]) 
-        with col1:
-            if st.button("🗺️ グラフ描画地点を確定", use_container_width=True):
-                # 1. 地図上の現在の座標を「確定座標」として記憶
-                st.session_state.map_lat = st.session_state.lat
-                st.session_state.map_lon = st.session_state.lon
-                
-                # 2. 逆ジオコーディングで地名を取得し、一時的なラベルを作成
-                addr = fetch_location_name(st.session_state.lat, st.session_state.lon)
-                st.session_state.temp_label = f"{addr} ({st.session_state.lat:.4f}, {st.session_state.lon:.4f})"
-                
-                # 3. コンボボックスがこの一時ラベルを選択するようにセット
-                st.session_state.last_basho = "一時地点"
-                
-                # 4. ブラウザに保存してリフレッシュ
-                save_settings_to_browser()
-                st.rerun()
-        with col2:
-            render_header_info(basho)
+    with col1:
+        if st.button("🗺️ グラフ描画地点を確定", use_container_width=True):
+            # 1. 地図上の現在の座標を「確定座標」として記憶
+            st.session_state.map_lat = st.session_state.lat
+            st.session_state.map_lon = st.session_state.lon
+            
+            # 2. 逆ジオコーディングで地名を取得し、一時的なラベルを作成
+            addr = fetch_location_name(st.session_state.lat, st.session_state.lon)
+            st.session_state.temp_label = f"{addr} ({st.session_state.lat:.4f}, {st.session_state.lon:.4f})"
+            
+            # 3. コンボボックスがこの一時ラベルを選択するようにセット
+            st.session_state.last_basho = "一時地点"
+            
+            # 4. ブラウザに保存してリフレッシュ
+            save_settings_to_browser()
+            st.rerun()
+    with col2:
+        render_header_info(basho)
 
     # --- 4. グラフ生成（サブルーチン12の戻り値4つ：img, ratio, idx, df） ---
     # 右辺の戻り値の定義 [base64, ratio_info, start_idx, df] に厳密に合わせます
