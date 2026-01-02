@@ -740,11 +740,12 @@ def show_favorite_control_bar(location_options, current_display_label, current_l
 # ======================================================================================
 # 19. お気に入り・地図指定・プリセットを統合するサブルーチン
 # ======================================================================================
-def get_combined_location_list(preset_master, current_lat, current_lon):
+def get_combined_location_list(preset_master, current_lat, current_lon, current_address):
     """
     お気に入り(📍付き)を最上部に配置し、次に「地図で指定(記号なし)」、最後にプリセットを配置。
     """
     import streamlit as st
+    # セッションから最新のお気に入りリストを取得（なければ空リスト）
     favorites = st.session_state.get("LOCATION_MASTER", [])
     total_data = {}
     display_list = []
@@ -756,14 +757,14 @@ def get_combined_location_list(preset_master, current_lat, current_lon):
         total_data[label] = (fav['lat'], fav['lon'], fav['name'])
 
     # 2. 地図で指定（一時的な確定座標・localStorageから復元された最新値）
-    # セッションから確定済みの地図座標を取得
+    # map_lat/lon は「確定」ボタンで保存された最新の座標
     m_lat = st.session_state.get('map_lat', current_lat)
     m_lon = st.session_state.get('map_lon', current_lon)
     map_label = f"地図で指定 ({m_lat:.4f}, {m_lon:.4f})"
     display_list.append(map_label)
     total_data[map_label] = (m_lat, m_lon, "地図で指定")
 
-    # 3. プリセット（CONFIG定義の地点。📍現在地は廃止）
+    # 3. プリセット（CONFIG定義の地点。📍現在地などは除外）
     for name, coords in preset_master.items():
         if name not in ["現在地", "地図で指定"]:
             label = f"{name} ({coords[0]:.4f}, {coords[1]:.4f})"
@@ -988,42 +989,45 @@ def render_header_info(current_basho_name):
 # 19. メインルーチン
 #==========================================================================================
 def main():
-    # --- 初期化（地図専用の記憶領域を確保） ---
+    # --- 初期化と同期 ---
+    sync_all_settings() # ここで内部的に localStorage から map_lat/lon 等が復元される
+    
     if 'lat' not in st.session_state: st.session_state.lat = CONFIG["DEFAULT_LAT"]
     if 'lon' not in st.session_state: st.session_state.lon = CONFIG["DEFAULT_LON"]
+    if 'last_basho' not in st.session_state: st.session_state.last_basho = CONFIG["DEFAULT_BASHO"]
     if 'map_lat' not in st.session_state: st.session_state.map_lat = st.session_state.lat
     if 'map_lon' not in st.session_state: st.session_state.map_lon = st.session_state.lon
-    if 'last_basho' not in st.session_state: st.session_state.last_basho = CONFIG["DEFAULT_BASHO"]
-    
-    sync_all_settings()
+
     danger_v, sel_dirs, design_params = show_sidebar_controls()
     setup_font(design_params["base_font_size"])
-    raw_now = datetime.now(timezone(timedelta(hours=9))).replace(tzinfo=None)
-    now_jst = raw_now.replace(minute=(raw_now.minute // 10) * 10, second=0, microsecond=0)
 
-    # オーバーレイ防止CSS（正規版維持）
-    st.markdown(f'<style>.block-container {{ padding-top: 2rem !important; }} .scroll-container {{ overflow-x: auto; background: white; border: 1px solid #ddd; width: 100%; }}</style>', unsafe_allow_html=True)
-    st.markdown(f'<h1 style="font-size:{CONFIG["TITLE_SIZE"]}px;">⛵ Wind_Checker! </h1>', unsafe_allow_html=True)
-
-    # --- 1. リスト生成（前回の確定座標をラベルに反映） ---
+    # --- 1. 地点リスト構築（サブルーチン19：引数4つ） ---
     current_address = fetch_location_name(st.session_state.lat, st.session_state.lon)
-    display_list, total_data = get_combined_location_list(CONFIG["LOCATION_MASTER"].copy(), st.session_state.lat, st.session_state.lon, current_address)
-
-    reverse_dict = {v[2]: k for k, v in total_data.items()}
-    current_display_label = reverse_dict.get(st.session_state.last_basho, display_list[-1])
-    _, _, raw_name = total_data.get(current_display_label, (st.session_state.lat, st.session_state.lon, "現在地"))
-
-    # --- 2. 地点選択（サブルーチン18） ---
-    selected_label = show_favorite_control_bar(display_list, current_display_label, st.session_state.lat, st.session_state.lon, raw_name)
+    display_list, total_data = get_combined_location_list(
+        CONFIG["LOCATION_MASTER"].copy(), 
+        st.session_state.lat, 
+        st.session_state.lon, 
+        current_address
+    )
     
+    # 前回の選択状態をラベルで特定
+    reverse_dict = {v[2]: k for k, v in total_data.items()}
+    current_label = reverse_dict.get(st.session_state.last_basho, display_list[0])
+    
+    # 保存ボタン用の名前（raw_name）を特定
+    _, _, raw_name = total_data.get(current_label, (st.session_state.lat, st.session_state.lon, "地図で指定"))
+
+    # --- 2. 1行地点選択（サブルーチン18） ---
+    selected_label = show_favorite_control_bar(
+        display_list, current_label, st.session_state.lat, st.session_state.lon, raw_name
+    )
+    
+    # 選択結果の確定
     new_lat, new_lon, basho = total_data[selected_label]
 
-    if selected_label != current_display_label:
+    if selected_label != current_label:
         st.session_state.last_basho = basho
-        # ここが重要：選択を切り替えた時、その地点の座標を lat/lon にセットする
-        st.session_state.lat = new_lat
-        st.session_state.lon = new_lon
-        
+        st.session_state.lat, st.session_state.lon = new_lat, new_lon
         if basho == "地図で指定":
             st.session_state.show_map_state = True
         st.cache_data.clear()
