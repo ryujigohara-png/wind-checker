@@ -458,7 +458,7 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
     fig.savefig(buf, format="png", bbox_inches=None, pad_inches=0, dpi=dpi_value)
     plt.close(fig) 
     
-    return base64.b64encode(buf.getvalue()).decode(), ratio_info, start_idx
+    return base64.b64encode(buf.getvalue()).decode(), ratio_info, start_idx, df
     
 # ======================================================================================
 # 13. お天気アイコンのHTMLを生成するサブルーチン（デバッグ表示版）
@@ -883,8 +883,8 @@ def main():
     
     # ..................................................................... 
 
-    # --- グラフ生成の呼び出し (戻り値に start_idx を追加) ---
-    img_b64, ratio_info, start_idx = generate_high_res_graph(
+    # --- グラフ生成の呼び出し (戻り値に start_idx, df を追加) ---
+    img_b64, ratio_info, start_idx, df_from_graph = generate_high_res_graph(
         st.session_state.lat, st.session_state.lon, danger_v, tuple(sel_dirs), design_params, now_jst
     )
     
@@ -898,11 +898,11 @@ def main():
             icon_margin = design_params.get("icon_margin", 0)
         
             
-            padding_df = pd.DataFrame({'time': [df_for_icons['time'].iloc[0] - timedelta(hours=i) for i in range(1, 4)][::-1]})
-            df_full = pd.concat([padding_df, df_for_icons], ignore_index=True)
+            # padding_df = pd.DataFrame({'time': [df_for_icons['time'].iloc[0] - timedelta(hours=i) for i in range(1, 4)][::-1]})
+            # df_full = pd.concat([padding_df, df_for_icons], ignore_index=True)
             
             icons_html = generate_weather_icons_html(
-                df_full, ratio_info, display_width, start_idx, icon_margin
+                df_from_graph, ratio_info, display_width, start_idx, icon_margin
             )
             
             graph_html = f'<img src="data:image/png;base64,{img_b64}" style="width: {display_width}px; display: block;">'
