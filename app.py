@@ -393,7 +393,7 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
     from datetime import timedelta
 
     df_raw = fetch_weather_data(lat, lon, 9)
-    if df_raw is None: return None, (0, 0), 0
+    if df_raw is None: return None, (0, 0), 0, None
     
     # 描画開始（グラフ左端）は現在時刻の直前の3の倍数時
     display_start_time = now_jst.replace(hour=(now_jst.hour // 3) * 3, minute=0, second=0, microsecond=0)
@@ -407,7 +407,7 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
     # 表示期間を 192時間(8日) + パディング3時間 = 195行に固定
     df = df.head(195)
     
-    # アイコン同期用：パディングを含めたこの構造では、グラフの左端（青い線）は常に 3番目
+    # アイコン同期用：パディングを含めたこの構造では、描画開始インデックスは 3
     start_idx = 3
     
     df = process_wind_data(df, list(selected_dirs_tuple))
@@ -417,7 +417,7 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
     if design_params.get("show_temp", True): active_plots.append("temp")
     if design_params.get("show_tide", True): active_plots.append("tide")
     
-    if not active_plots: return None, (0, 0), start_idx
+    if not active_plots: return None, (0, 0), start_idx, df
     
     ratios = design_params.get("ratios", CONFIG["DEFAULT_RATIOS"])
     current_ratios = [ratios[i] for i, p in enumerate(["wind", "temp", "tide"]) if p in active_plots]
@@ -450,7 +450,7 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
     plt.subplots_adjust(left=0.05, right=0.95, top=0.95, bottom=0.15,
                         hspace=design_params.get("hspace", CONFIG["HSPACE"]))
 
-    # 比率計算の修正: 全データ区間(len(df)-1)に対する1時間幅
+    # 比率計算: 全データ区間(len(df)-1)に対する1時間幅
     pos = axes[0].get_position() 
     ratio_info = (pos.x0, pos.width / (len(df) - 1))
     
@@ -461,55 +461,50 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
     return base64.b64encode(buf.getvalue()).decode(), ratio_info, start_idx, df
     
 # ======================================================================================
-# 13. お天気アイコンのHTMLを生成するサブルーチン（デバッグ表示版）
+# 13. お天気アイコンのHTMLを生成するサブルーチン
 # ======================================================================================
 def generate_weather_icons_html(df, ratio_info, display_width, start_idx, icon_margin=0):
     """
-    データのインデックス(i)と、データ内の時刻(hour)を可視化し、
-    グラフの目盛りとのズレを特定するためのデバッグ版。
+    12番で生成されたdfと物理座標情報を元に、正確な位置へ天気アイコンを配置する。
+    見出し「天気」の位置をグラフ内の「降水量mm」と垂直に揃える。
     """
     import pandas as pd
     start_x, hour_w = ratio_info
     icon_html = ""
     
     l_size_pt = CONFIG.get("LABEL_SIZE", 7)
+    # グラフ内のフォントサイズ(pt)をpx相当に変換
     header_fs_px = l_size_pt * 1.33
     
-    # 「天気」見出し
-    label_pos_x = (start_x * display_width) - 10
+    # 「天気」見出しの配置：start_x（グラフ枠の左端）を基準にする
+    # 12番の ax.text(graph_left_time, ..., ha='right') と揃えるため translateX(-100%) を使用
+    label_pos_x = (start_x * display_width)
     icon_html += f'''
         <div style="position: absolute; left: {label_pos_x}px; top: 22px; 
-                    transform: translateX(-100%); font-size: {header_fs_px}px; 
+                    transform: translateX(-105%); font-size: {header_fs_px}px; 
                     font-family: 'Noto Sans JP', sans-serif; color: #333; z-index: 5; white-space: nowrap;">
             天気
         </div>'''
 
-    # ループ開始位置の確認（手動固定 3）
-    start_idx = 3
-    
-    for i in range(start_idx, len(df), 3):
+    # 指定された開始位置から3時間おきにアイコンを配置
+    for i in range(int(start_idx), len(df), 3):
         row = df.iloc[i]
         icon = row.get('weather_icon')
         if not icon or pd.isna(icon): continue
         
-        # 時刻データの取得（デバッグ用）
-        dt = row.get('time')
-        hr = dt.hour if hasattr(dt, 'hour') else "??"
-        
-        # 物理位置計算：i（0行目からの絶対インデックス）を使用
+        # 物理位置計算：start_x（0行目の位置）＋ i時間分の幅
         pos_left_px = (start_x + (i * hour_w)) * display_width
         
-        # アイコン ＋ デバッグ情報（i=行番号, h=時刻）
         icon_html += f'''
-            <div style="position: absolute; left: {pos_left_px}px; top: 0px; 
-                        transform: translateX(-50%); width: 80px; text-align: center; z-index: 5;">
-                # <div style="font-size: 32px; line-height: 1;">{icon}</div>
-                # <div style="font-size: 8px; color: red; line-height: 1.2; background: rgba(255,255,255,0.7);">
-                    i:{i}<br>h:{hr}
-                </div>
+            <div style="position: absolute; left: {pos_left_px}px; top: 10px; 
+                        transform: translateX(-50%); width: 80px; text-align: center; 
+                        font-size: 32px; line-height: 1; z-index: 5;">
+                {icon}
             </div>'''
     
-    return f'<div style="position: relative; width: {display_width}px; height: 50px; margin-bottom: {icon_margin}px; overflow: visible;">{icon_html}</div>'
+    # 最終的なHTMLコンテナ（デバッグ用の高さを35pxに戻す）
+    return f'<div style="position: relative; width: {display_width}px; height: 35px; margin-bottom: {icon_margin}px; overflow: visible;">{icon_html}</div>'
+    
 #==========================================================================================
 # 14. 地図UIを表示し地点を選択するサブルーチン
 #==========================================================================================
