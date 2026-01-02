@@ -461,20 +461,21 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
     return base64.b64encode(buf.getvalue()).decode(), ratio_info, start_idx
     
 # ======================================================================================
-# 13. お天気アイコンのHTMLを生成するサブルーチン
+# 13. お天気アイコンのHTMLを生成するサブルーチン（デバッグ表示版）
 # ======================================================================================
 def generate_weather_icons_html(df, ratio_info, display_width, start_idx, icon_margin=0):
     """
-    1時間1行のデータ構造を利用し、start_idxから3行(3時間)おきに
-    物理的な描画pxを算出してアイコンを配置する。
+    データのインデックス(i)と、データ内の時刻(hour)を可視化し、
+    グラフの目盛りとのズレを特定するためのデバッグ版。
     """
+    import pandas as pd
     start_x, hour_w = ratio_info
     icon_html = ""
     
     l_size_pt = CONFIG.get("LABEL_SIZE", 7)
     header_fs_px = l_size_pt * 1.33
     
-    # 「天気」見出しの配置
+    # 「天気」見出し
     label_pos_x = (start_x * display_width) - 10
     icon_html += f'''
         <div style="position: absolute; left: {label_pos_x}px; top: 22px; 
@@ -483,30 +484,32 @@ def generate_weather_icons_html(df, ratio_info, display_width, start_idx, icon_m
             天気
         </div>'''
 
+    # ループ開始位置の確認（手動固定 3）
     start_idx = 3
-    # start_idxから3行飛ばし。末尾を超えないよう range で制御
+    
     for i in range(start_idx, len(df), 3):
         row = df.iloc[i]
         icon = row.get('weather_icon')
         if not icon or pd.isna(icon): continue
         
-        # 物理位置：(左端余白 + 経過時間 * 1時間幅比率) * 全体幅
-        # elapsed_hours = i - start_idx
-        # elapsed_hours = i - int(start_idx) # これで左端(3行目)が 0時間目 となる
-        # if elapsed_hours > 192: break
+        # 時刻データの取得（デバッグ用）
+        dt = row.get('time')
+        hr = dt.hour if hasattr(dt, 'hour') else "??"
         
-        # pos_left_px = (start_x + (elapsed_hours * hour_w)) * display_width
+        # 物理位置計算：i（0行目からの絶対インデックス）を使用
         pos_left_px = (start_x + (i * hour_w)) * display_width
         
+        # アイコン ＋ デバッグ情報（i=行番号, h=時刻）
         icon_html += f'''
-            <div style="position: absolute; left: {pos_left_px}px; top: 10px; 
-                        transform: translateX(-50%); width: 80px; text-align: center; 
-                        font-size: 32px; line-height: 1; z-index: 5;">
-                {icon}
+            <div style="position: absolute; left: {pos_left_px}px; top: 0px; 
+                        transform: translateX(-50%); width: 80px; text-align: center; z-index: 5;">
+                <div style="font-size: 32px; line-height: 1;">{icon}</div>
+                <div style="font-size: 8px; color: red; line-height: 1.2; background: rgba(255,255,255,0.7);">
+                    i:{i}<br>h:{hr}
+                </div>
             </div>'''
     
-    return f'<div style="position: relative; width: {display_width}px; height: 35px; margin-bottom: {icon_margin}px; overflow: visible;">{icon_html}</div>'
-    
+    return f'<div style="position: relative; width: {display_width}px; height: 50px; margin-bottom: {icon_margin}px; overflow: visible;">{icon_html}</div>'
 #==========================================================================================
 # 14. 地図UIを表示し地点を選択するサブルーチン
 #==========================================================================================
