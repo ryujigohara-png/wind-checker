@@ -625,6 +625,8 @@ def sync_all_settings():
             st.session_state.map_lat = float(data.get("map_lat", st.session_state.lat))
             st.session_state.map_lon = float(data.get("map_lon", st.session_state.lon))
             # ----------------------------------------------
+            # サブルーチン15（sync_all_settings）内の try ブロックに追加
+            st.session_state.temp_label = data.get("temp_label", None)
             
             # 2. 表示スイッチの復元
             st.session_state.show_wind = data.get("show_wind", CONFIG["SHOW_WIND"])
@@ -738,7 +740,7 @@ def show_favorite_control_bar(location_options, current_display_label, current_l
     return selected
     
 # ======================================================================================
-# 19. お気に入り・プリセット・地図指定を統合するサブルーチン（配置固定版）
+# 19. お気に入り・プリセット・地図指定を統合するサブルーチン（挿入ロジック修正）
 # ======================================================================================
 def get_combined_location_list(preset_master, current_lat, current_lon, current_address):
     import streamlit as st
@@ -746,28 +748,27 @@ def get_combined_location_list(preset_master, current_lat, current_lon, current_
     total_data = {}
     display_list = []
 
-    # 1. 📍付きお気に入り（最上部）
+    # 1. 📍お気に入り
     for fav in favorites:
         label = f"{fav['name']} ({fav['lat']:.4f}, {fav['lon']:.4f})"
         display_list.append(label)
         total_data[label] = (fav['lat'], fav['lon'], fav['name'])
 
-    # 2. プリセット（中間）
+    # 2. プリセット
     for name, coords in preset_master.items():
         if name not in ["現在地", "地図で指定"]:
             label = f"{name} ({coords[0]:.4f}, {coords[1]:.4f})"
             display_list.append(label)
             total_data[label] = (coords[0], coords[1], name)
 
-    # 3. 一時的な確定地点（「地図で指定」のすぐ上）
-    # ボタン押下時に st.session_state.temp_label に格納された値を表示
-    temp_label = st.session_state.get("temp_label")
-    if temp_label and temp_label not in total_data:
-        display_list.append(temp_label)
-        # キー（temp_label）と basho名（temp_label）を一致させることが重要
-        total_data[temp_label] = (current_lat, current_lon, temp_label)
+    # 3. 一時的な確定地点（★ここを「地図で指定」の直前で確実に append する）
+    t_label = st.session_state.get("temp_label")
+    if t_label:
+        display_list.append(t_label)
+        # 座標と名前を一致させて登録
+        total_data[t_label] = (current_lat, current_lon, t_label)
 
-    # 4. 地図で指定（常に最下部）
+    # 4. 地図で指定（最後尾に固定）
     m_lat = st.session_state.get('map_lat', current_lat)
     m_lon = st.session_state.get('map_lon', current_lon)
     map_label = f"地図で指定 ({m_lat:.4f}, {m_lon:.4f})"
@@ -809,6 +810,7 @@ def save_settings_to_browser():
         "location_master": st.session_state.get("LOCATION_MASTER", []),
         "map_lat": st.session_state.get("map_lat", st.session_state.lat),
         "map_lon": st.session_state.get("map_lon", st.session_state.lon)
+        "temp_label": st.session_state.get("temp_label", None)
     }
     
     json_data = json.dumps(save_data, ensure_ascii=False)
@@ -1050,20 +1052,19 @@ def main():
     col1, col2 = st.columns([1, 1]) 
     with col1:
         if st.button("🗺️ グラフ描画地点を確定", use_container_width=True):
-            # 座標の固定
+            # 座標を固定
             st.session_state.map_lat = st.session_state.lat
             st.session_state.map_lon = st.session_state.lon
             
-            # 逆ジオコーディングで取得した地名を使ってラベルを作成
+            # 地名を取得して正確なラベルを作成
             addr = fetch_location_name(st.session_state.lat, st.session_state.lon)
             t_label = f"{addr} ({st.session_state.lat:.4f}, {st.session_state.lon:.4f})"
             
-            # サブルーチン19が参照する「一時ラベル」を保存
+            # 1. サブルーチン19がリストに追加するための値をセット
             st.session_state.temp_label = t_label
             
-            # 【重要】コンボボックスがこのラベルを選択するようにセット
-            # これにより「一番上」に戻る現象を防ぎます
-            st.session_state.last_basho = t_label 
+            # 2. コンボボックスがそのラベルを選択状態にするようにセット
+            st.session_state.last_basho = t_label
             
             save_settings_to_browser()
             st.rerun()
