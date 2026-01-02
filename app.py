@@ -980,7 +980,7 @@ def render_header_info(current_basho_name):
 #==========================================================================================
 # 19. メインルーチン
 #==========================================================================================
-ddef main():
+def main():
     # --- 初期化（地図専用の記憶領域を確保） ---
     if 'lat' not in st.session_state: st.session_state.lat = CONFIG["DEFAULT_LAT"]
     if 'lon' not in st.session_state: st.session_state.lon = CONFIG["DEFAULT_LON"]
