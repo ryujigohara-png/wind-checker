@@ -1055,23 +1055,39 @@ def main():
     with col2:
         render_header_info(basho) 
 
-    # --- 6. グラフ生成（now_jst が定義済みなのでエラーになりません） ---
-    img_b64, ratio_info, start_idx, df_graph = generate_high_res_graph(
-        st.session_state.lat, st.session_state.lon, danger_v, tuple(sel_dirs), design_params, now_jst
+    # --- 4. グラフ生成（サブルーチン12の戻り値4つ：img, ratio, idx, df） ---
+    # 右辺の戻り値の定義 [base64, ratio_info, start_idx, df] に厳密に合わせます
+    img_b64, ratio_info, start_idx, df_from_graph = generate_high_res_graph(
+        st.session_state.lat, 
+        st.session_state.lon, 
+        danger_v, 
+        tuple(sel_dirs), 
+        design_params, 
+        now_jst
     )
-        
-    # --- 5. 描画（正規版ロジック） ---
+    
+    # --- 5. アイコン・グラフ描画 ---
     if img_b64:
-        display_width = int(design_params["width"] * design_params["graph_dpi"])
+        # サブルーチン12から返された df_from_graph をそのまま使用します
+        dpi = design_params.get("graph_dpi", CONFIG.get("DPI", 200))
+        display_width = int(design_params.get("width", CONFIG["GRAPH_WIDTH"]) * dpi)
+        
+        # アイコンHTML生成（ここで df_from_graph を使用）
         icons_html = generate_weather_icons_html(
-            df_from_graph, ratio_info, display_width, start_idx, design_params.get("icon_margin", 0)
+            df_from_graph, 
+            ratio_info, 
+            display_width, 
+            start_idx, 
+            design_params.get("icon_margin", 0)
         )
         
+        graph_html = f'<img src="data:image/png;base64,{img_b64}" style="width: 100%; display: block;">'
+        
+        # スクロールコンテナ内に描画
         st.markdown(
             f'<div class="scroll-container">'
-            f'<div style="width: {display_width}px; min-width: {design_params["min_container_width"]}px;">'
-            f'{icons_html}'
-            f'<img src="data:image/png;base64,{img_b64}" style="width: 100%; display: block;">'
+            f'<div style="width: {display_width}px; min-width: {design_params.get("min_container_width", 800)}px;">'
+            f'{icons_html}{graph_html}'
             f'</div></div>', 
             unsafe_allow_html=True
         )
