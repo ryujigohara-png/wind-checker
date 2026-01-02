@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# ベータ版　更新 2026.1.1 0950 （デザイン調整・ブラウザ保存対応）
+# ベータ版　更新 2026.1.2 0115 （デザイン調整・ブラウザ保存対応）
 import streamlit as st
 import requests
 import pandas as pd
@@ -482,7 +482,8 @@ def generate_weather_icons_html(df, ratio_info, display_width, start_idx, icon_m
                     font-family: 'Noto Sans JP', sans-serif; color: #333; z-index: 5; white-space: nowrap;">
             天気
         </div>'''
-    
+
+    start_idx = 3
     # start_idxから3行飛ばし。末尾を超えないよう range で制御
     for i in range(start_idx, len(df), 3):
         row = df.iloc[i]
