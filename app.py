@@ -590,9 +590,9 @@ def fetch_location_name(lat, lon):
     
     return "地図で指定地点"
     
-#==========================================================================================
+# ==========================================================================================
 # 15. ブラウザのlocalStorageと設定を同期するサブルーチン
-#==========================================================================================
+# ==========================================================================================
 def sync_all_settings():
     STORAGE_KEY = CONFIG['STORAGE_KEY']
     
@@ -600,66 +600,59 @@ def sync_all_settings():
     if st.session_state.get("initialized"):
         return
 
-    ## 初回起動時のみブラウザからデータを読み込む
-    ## stored_data = streamlit_js_eval(js_expressions=f"localStorage.getItem('{STORAGE_KEY}')", key="init_load_settings")
-    ## ブラウザからデータを取得
-    # stored_data = streamlit_js_eval(js_expressions=f"localStorage.getItem('{STORAGE_KEY}')", key="init_load_settings")
-
-    ## 【重要】データが取得できるまでここで止める（これが「戻ってしまう」現象の対策）
-    # if stored_data is None:
-    #     st.stop() 
-    # 
-    #if stored_data:
-
-    #--------------------------------------------------------------------------------------------
     # JS側で、データがない場合に "EMPTY" という文字列を返すように細工する
     js_query = f"localStorage.getItem('{STORAGE_KEY}') || 'EMPTY'"
     stored_data = streamlit_js_eval(js_expressions=js_query, key="init_load_settings_v3")
 
     if stored_data is None:
-        st.stop()  # 本当に通信待ちの間だけ止める
+        st.stop()  # 通信待ちの間だけ止める
 
-    if stored_data == "EMPTY":
-        # データがない場合は、何もせず初期化完了として進む
-        st.session_state.initialized = True
-    elif stored_data == "":
-        # データが存在しない場合も初期化済みとする
+    if stored_data == "EMPTY" or stored_data == "":
         st.session_state.initialized = True
     else:
-    #-----------------------------------------------------------------------------------------    
         try:
             data = json.loads(stored_data)
-            # 地点情報の復元
+            
+            # 1. 既存の地点情報の復元
             st.session_state.lat = float(data.get("lat", CONFIG["DEFAULT_LAT"]))
             st.session_state.lon = float(data.get("lon", CONFIG["DEFAULT_LON"]))
             st.session_state.last_basho = data.get("basho", CONFIG["DEFAULT_BASHO"])
             
-            # 表示スイッチの復元
+            # --- 【重要】今回追加：地点管理データの復元 ---
+            # お気に入りリスト（📍付き地名を含む）
+            st.session_state.LOCATION_MASTER = data.get("location_master", [])
+            # 地図で最後に「確定」した座標
+            st.session_state.map_lat = float(data.get("map_lat", st.session_state.lat))
+            st.session_state.map_lon = float(data.get("map_lon", st.session_state.lon))
+            # ----------------------------------------------
+            
+            # 2. 表示スイッチの復元
             st.session_state.show_wind = data.get("show_wind", CONFIG["SHOW_WIND"])
             st.session_state.show_temp = data.get("show_temp", CONFIG["SHOW_TEMP"])
             st.session_state.show_tide = data.get("show_tide", CONFIG["SHOW_TIDE"])
             
-            # サイズ・文字設定の復元
+            # 3. サイズ・文字設定の復元
             st.session_state.width = float(data.get("width", CONFIG["GRAPH_WIDTH"]))
             st.session_state.base_height = float(data.get("base_height", CONFIG["GRAPH_HIGHT"]))
             st.session_state.base_font_size = int(data.get("base_font_size", CONFIG["GRAPH_FONT_SIZE"]))
             st.session_state.label_font_size = int(data.get("label_font_size", CONFIG["LABEL_SIZE"]))
             
-            # 危険風速・選択風向の復元
+            # 4. 危険風速・選択風向の復元
             st.session_state.danger_v = float(data.get("danger_v", CONFIG["DEFAULT_DANGER_V"]))
             st.session_state.sel_dirs = data.get("sel_dirs", CONFIG["DEFAULT_DIRS"])
             
-            # 開発者用パラメータもあれば復元
-            st.session_state.is_dev_mode = data.get("is_dev_mode", CONFIG.get("SHOW_DEV_MODE", False)) # [4, 6]
+            # 5. 開発者用・詳細パラメータの復元
+            st.session_state.is_dev_mode = data.get("is_dev_mode", CONFIG.get("SHOW_DEV_MODE", False))
             st.session_state.label_pad = data.get("label_pad", CONFIG["LABEL_PAD"])
             st.session_state.hspace = data.get("hspace", CONFIG["HSPACE"])
             st.session_state.show_w_text = data.get("show_w_text", CONFIG["SHOW_W_TEXT"])
             st.session_state.show_dir_name = data.get("show_dir_name", CONFIG["SHOW_DIR_NAME"])
             st.session_state.ratios = data.get("ratios", CONFIG["DEFAULT_RATIOS"])
             
-            # フラグを立ててリラン（初回のみ）
+            # フラグを立ててリラン（初回のみブラウザの値を反映させるため）
             st.session_state.initialized = True
             st.rerun()
+            
         except Exception:
             # パース失敗時はデフォルト値で進む
             st.session_state.initialized = True
@@ -690,29 +683,31 @@ def handle_current_location_update():
                 st.rerun()
 
 # ======================================================================================
-# 18. 地点選択とお気に入り保存を1行に集約するサブルーチン
+# 18. 地点選択とお気に入り保存を1行に集約するサブルーチン（📍付与・永続保存対応）
 # ======================================================================================
 def show_favorite_control_bar(location_options, current_display_label, current_lat, current_lon, raw_name):
     """
-    3列構成で1行を死守。正規版 main から呼び出されることを前提とした設計。
+    お気に入り保存時に自動で地名の頭に「📍」を付与し、localStorageへ保存する。
     """
     import streamlit as st
 
-    # --- 1. 状態判定 ---
+    # --- お気に入り状態の判定 ---
     favorites = st.session_state.get("LOCATION_MASTER", [])
-    saved_data = next((f for f in favorites if f['name'] == raw_name), None)
+    # すでに📍が付いている名前、または付いていない名前の両方で検索
+    saved_data = next((f for f in favorites if f['name'] == raw_name or f['name'] == f"📍 {raw_name}"), None)
     
     is_saved = False
     if saved_data:
-        if abs(saved_data['lat'] - current_lat) < 0.0001 and \
-           abs(saved_data['lon'] - current_lon) < 0.0001:
+        # 座標がほぼ一致していれば「保存済み」とみなす
+        if abs(saved_data['lat'] - current_lat) < 0.0001 and abs(saved_data['lon'] - current_lon) < 0.0001:
             is_saved = True
 
-    # --- 2. レイアウト（1行集約） ---
+    # --- 1行レイアウト ---
     c1, c2, c3 = st.columns([0.88, 0.07, 0.05])
     with c1:
         selected = st.selectbox(
-            "地点を選択してください", options=location_options, 
+            "地点を選択してください", 
+            options=location_options, 
             index=location_options.index(current_display_label) if current_display_label in location_options else 0,
             label_visibility="collapsed"
         )
@@ -722,63 +717,70 @@ def show_favorite_control_bar(location_options, current_display_label, current_l
         else:
             icon = "🆙" if saved_data else "⭐"
             if st.button(icon, key="fav_save_action"):
-                new_entry = {"name": raw_name, "lat": current_lat, "lon": current_lon}
+                # 地図から来た地点（📍なし）を保存する場合、頭に「📍 」を付与する
+                final_name = raw_name if raw_name.startswith("📍 ") else f"📍 {raw_name}"
+                new_entry = {"name": final_name, "lat": current_lat, "lon": current_lon}
+                
                 if saved_data:
-                    st.session_state["LOCATION_MASTER"] = [new_entry if f['name'] == raw_name else f for f in favorites]
+                    # 既存の同名地点を更新（📍の有無に関わらず上書き）
+                    st.session_state["LOCATION_MASTER"] = [new_entry if f['name'] == saved_data['name'] else f for f in favorites]
                 else:
+                    # 新規追加
                     favorites.append(new_entry)
                     st.session_state["LOCATION_MASTER"] = favorites
+                
+                # 修正した16番の関数でlocalStorageへ永続保存
                 save_settings_to_browser()
                 st.rerun()
     with c3:
         st.write('<div style="width:1px;"></div>', unsafe_allow_html=True)
+
     return selected
     
 # ======================================================================================
-# 19. お気に入り・プリセット・動的地名を統合するサブルーチン（記憶機能付き）
+# 19. お気に入り・地図指定・プリセットを統合するサブルーチン
 # ======================================================================================
-def get_combined_location_list(preset_master, current_lat, current_lon, current_address):
+def get_combined_location_list(preset_master, current_lat, current_lon):
     """
-    確定された地図座標（map_lat/map_lon）を優先して「地図で指定」ラベルを表示する。
+    お気に入り(📍付き)を最上部に配置し、次に「地図で指定(記号なし)」、最後にプリセットを配置。
     """
     import streamlit as st
     favorites = st.session_state.get("LOCATION_MASTER", [])
     total_data = {}
     display_list = []
 
-    # 1. お気に入り地点 (⭐)
+    # 1. 📍付きお気に入り（ユーザーが意図して保存した地点）
     for fav in favorites:
-        label = f"⭐ {fav['name']} ({fav['lat']:.4f}, {fav['lon']:.4f})"
+        label = f"{fav['name']} ({fav['lat']:.4f}, {fav['lon']:.4f})"
         display_list.append(label)
         total_data[label] = (fav['lat'], fav['lon'], fav['name'])
 
-    # 2. マスター（プリセット地点）
+    # 2. 地図で指定（一時的な確定座標・localStorageから復元された最新値）
+    # セッションから確定済みの地図座標を取得
+    m_lat = st.session_state.get('map_lat', current_lat)
+    m_lon = st.session_state.get('map_lon', current_lon)
+    map_label = f"地図で指定 ({m_lat:.4f}, {m_lon:.4f})"
+    display_list.append(map_label)
+    total_data[map_label] = (m_lat, m_lon, "地図で指定")
+
+    # 3. プリセット（CONFIG定義の地点。📍現在地は廃止）
     for name, coords in preset_master.items():
         if name not in ["現在地", "地図で指定"]:
             label = f"{name} ({coords[0]:.4f}, {coords[1]:.4f})"
             display_list.append(label)
             total_data[label] = (coords[0], coords[1], name)
 
-    # 3. 📍 現在地（現在のセッション座標）
-    current_label = f"📍 {current_address} ({current_lat:.4f}, {current_lon:.4f})  "
-    display_list.append(current_label)
-    total_data[current_label] = (current_lat, current_lon, "現在地")
-
-    # 4. 🗺️ 地図で指定（「確定」された専用座標を保持・表示）
-    # セッションに保存された「確定済み地図座標」があればそれを、なければ現在の座標を使う
-    m_lat = st.session_state.get('map_lat', current_lat)
-    m_lon = st.session_state.get('map_lon', current_lon)
-    map_label = f"🗺️ 地図で指定 ({m_lat:.4f}, {m_lon:.4f})    "
-    display_list.append(map_label)
-    total_data[map_label] = (m_lat, m_lon, "地図で指定")
-
     return display_list, total_data
     
-#==========================================================================================
-# 16_x. ブラウザへの保存を実行するサブルーチン（隠し要素）
-#==========================================================================================
+# ==========================================================================================
+# 16_x. ブラウザへの保存を実行するサブルーチン（統合版）
+# ==========================================================================================
 def save_settings_to_browser():
-    """セッション状態にある現在の全設定をブラウザのlocalStorageに書き込む"""
+    """セッション状態にある現在の全設定（お気に入り・地図確定座標含む）をブラウザに書き込む"""
+    import json
+    import streamlit.components.v1 as components
+
+    # 既存の全設定項目を維持
     save_data = {
         "lat": st.session_state.lat,
         "lon": st.session_state.lon,
@@ -792,17 +794,22 @@ def save_settings_to_browser():
         "label_font_size": st.session_state.label_font_size,
         "danger_v": st.session_state.danger_v,
         "sel_dirs": st.session_state.sel_dirs,
-        "is_dev_mode": st.session_state.get("is_dev_mode", False), # ← これを追加 [5, 6]
+        "is_dev_mode": st.session_state.get("is_dev_mode", False),
         "label_pad": st.session_state.get("label_pad", CONFIG["LABEL_PAD"]),
         "hspace": st.session_state.get("hspace", CONFIG["HSPACE"]),
         "show_w_text": st.session_state.get("show_w_text", CONFIG["SHOW_W_TEXT"]),
         "show_dir_name": st.session_state.get("show_dir_name", CONFIG["SHOW_DIR_NAME"]),
-        "ratios": st.session_state.get("ratios", CONFIG["DEFAULT_RATIOS"])
+        "ratios": st.session_state.get("ratios", CONFIG["DEFAULT_RATIOS"]),
+        
+        # --- 今回追加する地点管理用データ ---
+        "location_master": st.session_state.get("LOCATION_MASTER", []),
+        "map_lat": st.session_state.get("map_lat", st.session_state.lat),
+        "map_lon": st.session_state.get("map_lon", st.session_state.lon)
     }
     
     json_data = json.dumps(save_data, ensure_ascii=False)
     
-    # JavaScriptを実行して保存。height=0でUIには影響を与えません。
+    # 既存の JavaScript 実行方式をそのまま継承
     components.html(
         f"""
         <script>
@@ -811,7 +818,7 @@ def save_settings_to_browser():
         """,
         height=0,
     )
-
+    
 # ======================================================================================
 # 17. グラフ表示設定を詳細ダイアログで一括変更するサブルーチン（正規版表現・完全復旧）
 # ======================================================================================
