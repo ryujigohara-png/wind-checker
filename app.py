@@ -1049,7 +1049,6 @@ def main():
     
     col1, col2 = st.columns([1, 1]) 
     with col1:
-with col1:
         if st.button("🗺️ グラフ描画地点を確定", use_container_width=True):
             # 座標の固定
             st.session_state.map_lat = st.session_state.lat
