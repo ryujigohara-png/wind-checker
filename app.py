@@ -884,40 +884,51 @@ def main():
 
     st.markdown(f'<h1 style="font-size:{CONFIG["TITLE_SIZE"]}px;">⛵ Wind_Checker! </h1>', unsafe_allow_html=True)
     
-    # (地点選択・地図表示ロジックは既存のものを維持)
-    # --- 地点選択コンボボックス（座標を名前に統合） ---
+    # ==================================================================================
+    # 地点選択ロジック（修正版）：取得した詳細地名をリストに反映
+    # ==================================================================================
     master = CONFIG["LOCATION_MASTER"].copy()
     display_options = {}
+    
+    # 1. マスター（固定の場所）を登録
     for name, coords in master.items():
         display_options[f"{name} ({coords[0]:.4f}, {coords[1]:.4f})"] = name
 
-    # 【復活】現在地ラベルに座標を表示
-    current_loc_label = f"📍 現在地 ({st.session_state.lat:.4f}, {st.session_state.lon:.4f})  "
-    display_options[current_loc_label] = "現在地"
-    map_loc_label = f"🗺️ 地図で指定 ({st.session_state.lat:.4f}, {st.session_state.lon:.4f})   "
-    display_options[map_loc_label] = "地図で指定"
+    # 2. 現在の状態（last_basho）がマスターにない場合（＝地図で選んだ地名の場合）
+    #    その地名をドロップダウンの選択肢に「📍」マーク付きで追加する
+    current_name = st.session_state.last_basho
+    if current_name not in master:
+        # 地名が取得できていればそれを使用し、座標もラベルに付与する
+        dynamic_label = f"📍 {current_name} ({st.session_state.lat:.4f}, {st.session_state.lon:.4f})"
+        display_options[dynamic_label] = current_name
 
-    
-    # current_loc_label = f"📍 現在地 ({st.session_state.lat:.4f}, {st.session_state.lon:.4f})"
-    # display_options[current_loc_label] = "現在地"
-    # display_options["🗺️ 地図で指定"] = "地図で指定"
-
+    # 3. 表示用ラベルから内部用の名前を引くための逆引き辞書を作成
     reverse_display = {v: k for k, v in display_options.items()}
-    current_display_val = reverse_display.get(st.session_state.last_basho, current_loc_label)
+    
+    # 4. 現在選択されているべき表示ラベルを決定
+    current_display_val = reverse_display.get(current_name)
     
     options_list = list(display_options.keys())
-    default_idx = options_list.index(current_display_val) if current_display_val in options_list else 0
+    
+    # デフォルトのインデックスを特定（見つからなければ0番目）
+    try:
+        default_idx = options_list.index(current_display_val)
+    except ValueError:
+        default_idx = 0
 
+    # 5. セレクトボックスの表示
     selected_display = st.selectbox("地点を選択してください", options_list, index=default_idx)
     basho = display_options[selected_display]
 
+    # 6. 選択が変更された場合の処理
     if basho != st.session_state.last_basho:
         st.session_state.last_basho = basho
-        if basho not in ["地図で指定", "現在地"]:
+        # マスターにある場所が選ばれたら座標を更新
+        if basho in master:
             st.session_state.lat, st.session_state.lon = master[basho]
-        if basho == "地図で指定":
-            st.session_state.show_map_state = True
-        st.cache_data.clear() # 地点変更時は即座にクリア
+            st.session_state.show_map_state = False # マスター選択時は地図を閉じる（任意）
+        
+        st.cache_data.clear() 
         st.rerun()
 
     show_map = st.checkbox("地図表示", value=st.session_state.get('show_map_state', False))
