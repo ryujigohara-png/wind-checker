@@ -989,8 +989,8 @@ def render_header_info(current_basho_name):
 # 19. メインルーチン
 #==========================================================================================
 def main():
-    # --- 初期化と同期 ---
-    sync_all_settings() # ここで内部的に localStorage から map_lat/lon 等が復元される
+    # --- 1. 初期化と同期 ---
+    sync_all_settings() 
     
     if 'lat' not in st.session_state: st.session_state.lat = CONFIG["DEFAULT_LAT"]
     if 'lon' not in st.session_state: st.session_state.lon = CONFIG["DEFAULT_LON"]
@@ -998,10 +998,20 @@ def main():
     if 'map_lat' not in st.session_state: st.session_state.map_lat = st.session_state.lat
     if 'map_lon' not in st.session_state: st.session_state.map_lon = st.session_state.lon
 
+    # --- 2. 時刻の定義（ここが generate_high_res_graph より前に必要です） ---
+    from datetime import datetime, timezone, timedelta
+    raw_now = datetime.now(timezone(timedelta(hours=9))).replace(tzinfo=None)
+    now_jst = raw_now.replace(minute=(raw_now.minute // 10) * 10, second=0, microsecond=0)
+
+    # サイドバーとフォント設定
     danger_v, sel_dirs, design_params = show_sidebar_controls()
     setup_font(design_params["base_font_size"])
 
-    # --- 1. 地点リスト構築（サブルーチン19：引数4つ） ---
+    # レイアウト維持CSS
+    st.markdown(f'<style>.block-container {{ padding-top: 2rem !important; }} .scroll-container {{ overflow-x: auto; background: white; border: 1px solid #ddd; width: 100%; }}</style>', unsafe_allow_html=True)
+    st.markdown(f'<h1 style="font-size:{CONFIG["TITLE_SIZE"]}px;">⛵ Wind_Checker! </h1>', unsafe_allow_html=True)
+
+    # --- 3. 地点リスト構築（サブルーチン19） ---
     current_address = fetch_location_name(st.session_state.lat, st.session_state.lon)
     display_list, total_data = get_combined_location_list(
         CONFIG["LOCATION_MASTER"].copy(), 
@@ -1010,21 +1020,16 @@ def main():
         current_address
     )
     
-    # 前回の選択状態をラベルで特定
     reverse_dict = {v[2]: k for k, v in total_data.items()}
     current_label = reverse_dict.get(st.session_state.last_basho, display_list[0])
-    
-    # 保存ボタン用の名前（raw_name）を特定
     _, _, raw_name = total_data.get(current_label, (st.session_state.lat, st.session_state.lon, "地図で指定"))
 
-    # --- 2. 1行地点選択（サブルーチン18） ---
+    # --- 4. 地点選択バー（サブルーチン18） ---
     selected_label = show_favorite_control_bar(
         display_list, current_label, st.session_state.lat, st.session_state.lon, raw_name
     )
     
-    # 選択結果の確定
     new_lat, new_lon, basho = total_data[selected_label]
-
     if selected_label != current_label:
         st.session_state.last_basho = basho
         st.session_state.lat, st.session_state.lon = new_lat, new_lon
@@ -1033,7 +1038,7 @@ def main():
         st.cache_data.clear()
         st.rerun()
 
-    # --- 3. 地図と確定ボタン ---
+    # --- 5. 地図表示と確定ボタン ---
     show_map = st.checkbox("地図表示", value=st.session_state.get('show_map_state', False))
     st.session_state.show_map_state = show_map
     if show_map:
@@ -1041,20 +1046,20 @@ def main():
 
     col1, col2 = st.columns([1, 1]) 
     with col1:
-        # 地図で確定ボタンが押された際、st.session_state.lat/lon を map_lat/map_lon に同期させる
         if st.button("🗺️ グラフ描画地点を確定", use_container_width=True):
             st.session_state.map_lat = st.session_state.lat
             st.session_state.map_lon = st.session_state.lon
             st.session_state.last_basho = "地図で指定"
+            save_settings_to_browser() # 確定した座標を保存
             st.rerun()
     with col2:
         render_header_info(basho) 
 
-    # --- 4. グラフ生成（戻り値4つ：img, ratio, idx, df） ---
-    img_b64, ratio_info, start_idx, df_from_graph = generate_high_res_graph(
+    # --- 6. グラフ生成（now_jst が定義済みなのでエラーになりません） ---
+    img_b64, ratio_info, start_idx, df_graph = generate_high_res_graph(
         st.session_state.lat, st.session_state.lon, danger_v, tuple(sel_dirs), design_params, now_jst
     )
-    
+        
     # --- 5. 描画（正規版ロジック） ---
     if img_b64:
         display_width = int(design_params["width"] * design_params["graph_dpi"])
