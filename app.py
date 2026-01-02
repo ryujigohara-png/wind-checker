@@ -740,10 +740,10 @@ def show_favorite_control_bar(location_options, current_display_label, current_l
 # ======================================================================================
 # 19. お気に入り・プリセット・地図指定を統合するサブルーチン（一時地名対応版）
 # ======================================================================================
-def get_combined_location_list(preset_master, current_lat, current_lon):
+def get_combined_location_list(preset_master, current_lat, current_lon, current_address):
     """
     お気に入り(最上部) -> プリセット -> (もしあれば一時地点) -> 地図で指定(最下部)
-    の順でリストを生成する。
+    の順でリストを生成する。引数は main の呼び出し（4つ）に完全に合わせる。
     """
     import streamlit as st
     favorites = st.session_state.get("LOCATION_MASTER", [])
@@ -763,13 +763,13 @@ def get_combined_location_list(preset_master, current_lat, current_lon):
             display_list.append(label)
             total_data[label] = (coords[0], coords[1], name)
 
-    # 3. 一時的な確定地点（もし保持されており、かつ「地図で指定」でない場合）
-    # ⭐保存されるまでの間だけ表示される。
+    # 3. 一時的な確定地点（⭐保存されるまでの間だけ表示される）
     temp_label = st.session_state.get("temp_label")
-    if temp_label and temp_label not in total_data:
-        display_list.append(temp_label)
-        # 座標は現在のセッションのものを使用
-        total_data[temp_label] = (current_lat, current_lon, "一時地点")
+    if temp_label:
+        # すでにお気に入りに同じラベルがない場合のみ追加
+        if temp_label not in total_data:
+            display_list.append(temp_label)
+            total_data[temp_label] = (current_lat, current_lon, "一時地点")
 
     # 4. 地図で指定（常に一番下）
     m_lat = st.session_state.get('map_lat', current_lat)
