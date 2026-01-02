@@ -732,110 +732,84 @@ def save_settings_to_browser():
 # ======================================================================================
 def show_sidebar_controls():
     """
-    元のサイドバーの全機能を保持した完全版。
-    st.form を使用してグラフ描画負荷を軽減し、確定時に localStorage へ同期保存する。
+    負荷軽減と即時保存を両立。
+    風向チェックは操作のたびに localStorage へ保存するが、
+    グラフの重い再描画（API通信等）は「適用」ボタン押下時までスキップさせる。
     """
     import streamlit as st
 
-    # --- 1. 開発者モード判定 ---
     is_dev_url = st.query_params.get("mode") == "dev"
 
-    # --- 2. サイドバーフォーム（一括設定による負荷軽減） ---
-    with st.sidebar.form("sidebar_setting_form"):
+    # --- 1. フォーム：レイアウト関連（ボタン押下まで何もしない） ---
+    with st.sidebar.form("layout_setting_form"):
         st.header("表示設定")
-        
-        # 表示項目の切り替え
         f_show_wind = st.toggle("風向・風速", value=st.session_state.get("show_wind", CONFIG["SHOW_WIND"]))
         f_show_temp = st.toggle("気温", value=st.session_state.get("show_temp", CONFIG["SHOW_TEMP"]))
         f_show_tide = st.toggle("潮位", value=st.session_state.get("show_tide", CONFIG["SHOW_TIDE"]))
         
-        st.markdown("---")
-        
-        # グラフサイズ・文字設定（元のスライダー設定を完全維持）
         w_cfg, h_cfg, f_cfg = CONFIG["SLIDER_WIDTH"], CONFIG["SLIDER_HEIGHT"], CONFIG["SLIDER_FONT"]
-        f_width = st.slider("横幅 (inch)", w_cfg["min"], w_cfg["max"], float(st.session_state.get("width", CONFIG["GRAPH_WIDTH"])), step=w_cfg["step"])
-        f_base_h = st.slider("基準縦幅 (inch)", h_cfg["min"], h_cfg["max"], float(st.session_state.get("base_height", CONFIG["GRAPH_HIGHT"])), step=h_cfg["step"])
-        f_base_f = st.slider("グラフ内文字", f_cfg["min"], f_cfg["max"], int(st.session_state.get("base_font_size", CONFIG["GRAPH_FONT_SIZE"])), step=f_cfg["step"])
-        f_label_f = st.slider("軸ラベル文字", f_cfg["min"], f_cfg["max"], int(st.session_state.get("label_font_size", CONFIG["LABEL_SIZE"])), step=f_cfg["step"])
-
-        st.markdown("---")
-        
-        # 危険風速ライン
+        f_width = st.slider("横幅 (inch)", w_cfg["min"], w_cfg["max"], float(st.session_state.get("width", CONFIG["GRAPH_WIDTH"])))
+        f_base_h = st.slider("基準縦幅 (inch)", h_cfg["min"], h_cfg["max"], float(st.session_state.get("base_height", CONFIG["GRAPH_HIGHT"])))
+        f_base_f = st.slider("グラフ内文字", f_cfg["min"], f_cfg["max"], int(st.session_state.get("base_font_size", CONFIG["GRAPH_FONT_SIZE"])))
+        f_label_f = st.slider("軸ラベル文字", f_cfg["min"], f_cfg["max"], int(st.session_state.get("label_font_size", CONFIG["LABEL_SIZE"])))
         f_danger_v = st.number_input("危険風速ライン(m/s)", value=float(st.session_state.get("danger_v", CONFIG["DEFAULT_DANGER_V"])), step=0.5)
-        
-        # 色付風向選択（元のチェックボックス形式を完全維持）
-        st.write("色付風向選択")
-        current_saved_dirs = st.session_state.get("sel_dirs", list(CONFIG["DEFAULT_DIRS"]))
-        f_new_sel_dirs = []
-        cols = st.columns(2)
-        for i, d in enumerate(ALL_DIRECTIONS):
-            with cols[i % 2]:
-                # フォーム内のローカルな選択状態を構築
-                if st.checkbox(d, value=(d in current_saved_dirs), key=f"form_chk_{d}"):
-                    f_new_sel_dirs.append(d)
 
-        # 開発者用マイクロ調整（元の機能をすべて復元）
-        # フォーム内で変更された値を保持するための辞書
+        # 開発者用（フォーム内）
         d_params = {
             "label_pad": st.session_state.get("label_pad", CONFIG["LABEL_PAD"]),
             "hspace": st.session_state.get("hspace", CONFIG["HSPACE"]),
             "show_w_text": st.session_state.get("show_w_text", CONFIG["SHOW_W_TEXT"]),
             "show_dir_name": st.session_state.get("show_dir_name", CONFIG["SHOW_DIR_NAME"]),
             "ratios": list(st.session_state.get("ratios", CONFIG["DEFAULT_RATIOS"])),
-            "min_container_width": st.session_state.get("min_container_width", 2500),
-            "graph_dpi": st.session_state.get("graph_dpi", 200),
             "precip_y": st.session_state.get("precip_y", 0.5),
             "icon_margin": st.session_state.get("icon_margin", 0)
         }
-
         if is_dev_url:
             st.markdown("---")
-            st.warning("🔧 開発者用マイクロ調整")
-            d_params["hspace"] = st.slider("グラフ間余白", -0.2, 1.5, float(d_params["hspace"]), step=0.05)
-            d_params["label_pad"] = st.slider("ラベル距離", -5, 10, int(d_params["label_pad"]))
-            d_params["show_w_text"] = st.toggle("天気詳細文字を表示", value=d_params["show_w_text"])
-            d_params["show_dir_name"] = st.toggle("風向名を表示", value=d_params["show_dir_name"])
-            d_params["precip_y"] = st.slider("降水量表示高さ", 0.0, 1.0, float(d_params["precip_y"]), 0.01)
-            d_params["icon_margin"] = st.slider("アイコン下余白", 0, 100, int(d_params["icon_margin"]), 5)
-            
-            # 各グラフ比率
-            r = d_params["ratios"]
-            r[0] = st.number_input("比率:風向", 0.5, 10.0, float(r[0]), step=0.1)
-            r[1] = st.number_input("比率:気温", 0.5, 5.0, float(r[1]), step=0.1)
-            r[2] = st.number_input("比率:潮位", 0.5, 5.0, float(r[2]), step=0.1)
-            d_params["ratios"] = r
+            d_params["hspace"] = st.slider("余白", -0.2, 1.5, float(d_params["hspace"]))
+            d_params["label_pad"] = st.slider("距離", -5, 10, int(d_params["label_pad"]))
+            d_params["precip_y"] = st.slider("降水高さ", 0.0, 1.0, float(d_params["precip_y"]))
+            d_params["icon_margin"] = st.slider("アイコン余白", 0, 100, int(d_params["icon_margin"]))
 
-        # 適用ボタン：これまでは「保存」が漏れていたためリロードに弱かった
         submitted = st.form_submit_button("設定を適用してグラフ更新", use_container_width=True, type="primary")
 
-    # --- 3. 確定時の処理（ここが解決の鍵） ---
+    # --- 2. フォーム外：風向チェックボックス（即時セッション反映・即時保存） ---
+    st.sidebar.markdown("---")
+    st.sidebar.write("色付風向選択（即時保存）")
+    current_sel = st.session_state.get("sel_dirs", list(CONFIG["DEFAULT_DIRS"]))
+    new_sel_dirs = []
+    cols = st.sidebar.columns(2)
+    for i, d in enumerate(ALL_DIRECTIONS):
+        with cols[i % 2]:
+            if st.sidebar.checkbox(d, value=(d in current_sel), key=f"instant_chk_{d}"):
+                new_sel_dirs.append(d)
+
+    # 風向が変更されたら、即座に localStorage へ書き出す（リランは発生するが描画はキャッシュで耐える）
+    if set(new_sel_dirs) != set(current_sel):
+        st.session_state["sel_dirs"] = new_sel_dirs
+        save_settings_to_browser() # F12で即時確認可能
+        # ここでは st.cache_data.clear() を呼ばないので、グラフ描画の負荷は極めて低い
+
+    # --- 3. 確定ボタンが押された時の処理 ---
     if submitted:
-        # A. フォーム内の全値を st.session_state へ一括反映
         st.session_state.update({
             "show_wind": f_show_wind, "show_temp": f_show_temp, "show_tide": f_show_tide,
-            "width": f_width, "base_height": f_base_h, 
-            "base_font_size": f_base_f, "label_font_size": f_label_f,
-            "danger_v": f_danger_v, "sel_dirs": f_new_sel_dirs,
-            **d_params # 開発者用設定も一括更新
+            "width": f_width, "base_height": f_base_h, "base_font_size": f_base_f,
+            "label_font_size": f_label_f, "danger_v": f_danger_v, **d_params
         })
-        
-        # B. 【重要】リロード耐性の核：session_state が更新された直後に localStorage へ書き込む
         save_settings_to_browser()
-        
-        # C. キャッシュをクリアして再描画を強制
-        st.cache_data.clear()
+        st.cache_data.clear() # ここで初めて重い描画を許可
         st.rerun()
 
-    # --- 4. 最終的な戻り値の構築 ---
-    # calculate_graph_height は session_state の最新値を使用して高さを計算
+    # --- 戻り値の構築 ---
     h = calculate_graph_height(
         st.session_state.get("base_height", CONFIG["GRAPH_HIGHT"]),
         st.session_state.get("ratios", CONFIG["DEFAULT_RATIOS"]),
-        st.session_state.get("show_wind", CONFIG["SHOW_WIND"]),
-        st.session_state.get("show_temp", CONFIG["SHOW_TEMP"]),
-        st.session_state.get("show_tide", CONFIG["SHOW_TIDE"])
+        st.session_state.get("show_wind", True),
+        st.session_state.get("show_temp", True),
+        st.session_state.get("show_tide", True)
     )
-    
+
     design_params = {
         "width": st.session_state.get("width", CONFIG["GRAPH_WIDTH"]),
         "height": h,
@@ -854,10 +828,8 @@ def show_sidebar_controls():
         "precip_y": st.session_state.get("precip_y", 0.5),
         "icon_margin": st.session_state.get("icon_margin", 0)
     }
-    
-    return st.session_state.get("danger_v", CONFIG["DEFAULT_DANGER_V"]), \
-           st.session_state.get("sel_dirs", CONFIG["DEFAULT_DIRS"]), \
-           design_params
+
+    return st.session_state.get("danger_v", 10.0), st.session_state.get("sel_dirs", []), design_params
            
 # ======================================================================================
 # 20. グラフの表示高さを一括計算するサブルーチン
