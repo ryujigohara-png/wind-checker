@@ -506,12 +506,12 @@ def generate_weather_icons_html(df, ratio_info, display_width, start_idx, icon_m
     return f'<div style="position: relative; width: {display_width}px; height: 35px; margin-bottom: {icon_margin}px; overflow: visible;">{icon_html}</div>'
     
 # ==========================================================================================
-# 14. 地図UIを表示し地点を選択するサブルーチン (修正版)
+# 14. 地図UIを表示し地点を選択するサブルーチン (修正版・確定ボタン名維持)
 # ==========================================================================================
 def show_location_map():
     """
     地図を表示し、ユーザーがクリックした地点の座標を取得。
-    「確定」ボタン押下時に地名を逆ジオコーディングし、状態を保存してリランする。
+    「グラフ描画地点確定」ボタン押下時に地名を取得、保存、リランする。
     """
     st.info("地図の中央地点のグラフを描画表示することができます。")
     st.markdown("""<style>
@@ -520,21 +520,18 @@ def show_location_map():
         .guide-arrow-main { color: crimson; font-size: 24px; font-weight: bold; text-align: center; }
         </style>""", unsafe_allow_html=True)
 
-    # 地図の初期表示位置（現在の座標、なければデフォルト）
     start_lat = st.session_state.get("map_lat", st.session_state.lat)
     start_lon = st.session_state.get("map_lon", st.session_state.lon)
 
     m = folium.Map(location=[start_lat, start_lon], zoom_start=13)
     folium.Marker([start_lat, start_lon], icon=folium.Icon(color='red')).add_to(m)
     
-    # ガイド矢印の表示
     col_l1, col_m1, col_r1 = st.columns([1, 18, 1])
     with col_m1: st.markdown("<div class='guide-arrow-main'>▼</div>", unsafe_allow_html=True)
     
     col_l2, col_m2, col_r2 = st.columns([1, 18, 1])
     with col_l2: st.markdown(f"<div style='line-height:{CONFIG['MAP_HEIGHT']}px; text-align:right;' class='guide-arrow-main'>▶</div>", unsafe_allow_html=True)
     
-    # 地図描画（中心座標を取得する設定）
     map_out = st_folium(
         m, 
         width=None, 
@@ -548,26 +545,23 @@ def show_location_map():
     col_l3, col_m3, col_r3 = st.columns([1, 18, 1])
     with col_m3: st.markdown("<div class='guide-arrow-main' style='margin-top:-10px;'>▲</div>", unsafe_allow_html=True)
     
-    # 確定ボタンの処理
     if map_out and map_out.get("center"):
-        if st.button("✅ グラフ描画地点確定", use_container_width=True):
+        # 正しいボタン名：グラフ描画地点確定
+        if st.button("グラフ描画地点確定", use_container_width=True):
             target_lat = map_out["center"]["lat"]
             target_lon = map_out["center"]["lng"]
             
-            # 1. 逆ジオコーディングで地名取得（サブルーチン14_sub）
             with st.spinner("地点名を検索中..."):
                 place_name = fetch_location_name(target_lat, target_lon)
             
-            # 2. 一時表示用のラベルを作成
             new_temp_label = f"{place_name} ({target_lat:.4f}, {target_lon:.4f})"
             
-            # 3. 【重要】統一更新関数で、保存と画面更新を実行
             update_state_and_save({
                 "lat": target_lat,
                 "lon": target_lon,
                 "last_basho": place_name,
                 "temp_label": new_temp_label,
-                "show_map": False  # 確定後は地図を閉じる
+                "show_map": False
             })
 
 # ==========================================================================================
@@ -670,6 +664,52 @@ def update_state_and_save(updates_dict):
     
     st.rerun()
 
+# ==========================================================================================
+# 16_2. 現在地を取得し、状態を保存するサブルーチン
+# ==========================================================================================
+def handle_current_location_update_integrated():
+    """
+    GPSから現在地を取得し、地名を特定して保存・リランする。
+    ボタン名は正規版のイメージを維持します。
+    """
+    # ボタン表示
+    if st.button("🔄 📍現在地を取得　　　　　　　　　　", use_container_width=True):
+        st.session_state.waiting_loc = True
+        st.session_state.geo_key = f"geo_{datetime.now().timestamp()}"
+        st.rerun()
+
+    # 取得待ち状態の処理
+    if st.session_state.get("waiting_loc"):
+        st.info("🛰️ 現在地を取得中...")
+        loc = get_geolocation(component_key=st.session_state.get("geo_key"))
+        
+        if loc:
+            new_lat = round(loc['coords']['latitude'], 4)
+            new_lon = round(loc['coords']['longitude'], 4)
+            
+            # 1. 逆ジオコーディングで現在地の地名を取得
+            with st.spinner("現在地の地名を特定中..."):
+                place_name = fetch_location_name(new_lat, new_lon)
+            
+            # 2. 一時表示用のラベルを作成
+            new_temp_label = f"{place_name} ({new_lat:.4f}, {new_lon:.4f})"
+            
+            # 3. 取得完了フラグを下げ、保存関数を呼び出してリラン
+            st.session_state.waiting_loc = False
+            update_state_and_save({
+                "lat": new_lat,
+                "lon": new_lon,
+                "last_basho": place_name,
+                "temp_label": new_temp_label,
+                "show_map": False
+            })
+            
+        elif loc is False:
+            st.error("❌ 位置情報の取得に失敗しました。ブラウザの許可を確認してください。")
+            if st.button("キャンセル"):
+                st.session_state.waiting_loc = False
+                st.rerun()
+            
 # ==========================================================================================
 # 16_x. ブラウザへの保存を実行するサブルーチン (名称維持)
 # ==========================================================================================
