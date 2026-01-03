@@ -579,25 +579,30 @@ def fetch_location_name(lat, lon):
         return "指定地点"
         
 # ==========================================================================================
-# 15. ブラウザのlocalStorageと設定を同期するサブルーチン (★修正箇所：初期化処理を追加)
+# 15. ブラウザのlocalStorageと設定を同期するサブルーチン (★修正点：初期化処理を追加)
 # ==========================================================================================
 def sync_all_settings():
     STORAGE_KEY = CONFIG['STORAGE_KEY']
     
-    # ★【修正点】初回起動時の AttributeError 回避のため、変数の初期枠を確保
-    if "show_wind" not in st.session_state:
-        st.session_state.show_wind = CONFIG["SHOW_WIND"]
-    if "show_temp" not in st.session_state:
-        st.session_state.show_temp = CONFIG["SHOW_TEMP"]
-    if "show_tide" not in st.session_state:
-        st.session_state.show_tide = CONFIG["SHOW_TIDE"]
-    if "lat" not in st.session_state:
-        st.session_state.lat = CONFIG["DEFAULT_LAT"]
-    if "lon" not in st.session_state:
-        st.session_state.lon = CONFIG["DEFAULT_LON"]
-    if "last_basho" not in st.session_state:
-        st.session_state.last_basho = CONFIG["DEFAULT_BASHO"]
-    # (他、必要な変数はここに追記可能ですが、まずはエラーの show_wind を優先)
+    # ★【修正点】AttributeError回避のため、起動直後に変数の「枠」をデフォルト値で作る
+    init_vars = {
+        "show_wind": CONFIG["SHOW_WIND"],
+        "show_temp": CONFIG["SHOW_TEMP"],
+        "show_tide": CONFIG["SHOW_TIDE"],
+        "lat": CONFIG["DEFAULT_LAT"],
+        "lon": CONFIG["DEFAULT_LON"],
+        "last_basho": CONFIG["DEFAULT_BASHO"],
+        "width": CONFIG["GRAPH_WIDTH"],
+        "base_height": CONFIG["GRAPH_HIGHT"],
+        "base_font_size": CONFIG["GRAPH_FONT_SIZE"],
+        "label_font_size": CONFIG["LABEL_SIZE"],
+        "danger_v": CONFIG["DEFAULT_DANGER_V"],
+        "sel_dirs": CONFIG["DEFAULT_DIRS"]
+    }
+    
+    for var_name, default_val in init_vars.items():
+        if var_name not in st.session_state:
+            st.session_state[var_name] = default_val
 
     # すでに初期化済みの場合は、サイドバー操作時の再実行を防ぐために即リターン
     if st.session_state.get("initialized"):
@@ -761,8 +766,7 @@ def save_settings_to_browser():
 # ======================================================================================
 def render_location_selector_module():
     """場所選択コンボボックスとお気に入り登録ボタンを表示する"""
-    # 依存する補助関数（get_combined_location_list等）が
-    # お手元のファイルにある前提で、呼び出しを維持します。
+    # 外部依存関数の呼び出しを維持
     pass
 
 # ======================================================================================
@@ -791,7 +795,6 @@ def render_update_control_module():
             st.rerun()
     with col2:
         if st.button("⚙️ グラフ表示設定", use_container_width=True):
-            # show_settings_dialog() 等が必要な場合は適宜呼び出し
             pass
 
 # ======================================================================================
@@ -841,20 +844,37 @@ def render_graph_area_module(now_jst):
 # 100. メイン処理 (再構築版)
 # ======================================================================================
 def main():
+    # 0. 初期化とブラウザデータ同期 (サブルーチン15)
     sync_all_settings()
+    
+    # フォント設定
     setup_font(st.session_state.get("base_font_size", CONFIG["GRAPH_FONT_SIZE"]))
+    
     st.title("Wind Checker v2")
+    
+    # 共通時刻の取得
     now_jst = datetime.now(timezone(timedelta(hours=9)))
     
+    # ① 場所選択
     render_location_selector_module()
+    
+    # ② 地図表示
     render_map_module()
+    
+    # ③ 現在地取得
     render_current_location_module()
+    
+    # ④ グラフ更新・設定
     render_update_control_module()
+    
+    # ⑤ グラフ描画
     render_graph_area_module(now_jst)
 
+    # 開発者モード（デバッグ情報）
     if st.session_state.get("is_dev_mode"):
         st.divider()
         st.write("Debug: Session State", st.session_state)
 
+# アプリ起動
 if __name__ == "__main__":
     main()
