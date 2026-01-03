@@ -506,63 +506,57 @@ def generate_weather_icons_html(df, ratio_info, display_width, start_idx, icon_m
     return f'<div style="position: relative; width: {display_width}px; height: 35px; margin-bottom: {icon_margin}px; overflow: visible;">{icon_html}</div>'
     
 # ==========================================================================================
-# 14. 地図UIを表示し地点を選択するサブルーチン (修正版・確定ボタン名維持)
+# 14. 地図UIをダイアログで表示するサブルーチン (ダイアログ化)
 # ==========================================================================================
-def show_location_map():
+@st.dialog("📍 地図で地点を指定")
+def show_location_map_dialog():
     """
-    地図を表示し、ユーザーがクリックした地点の座標を取得。
-    「グラフ描画地点確定」ボタン押下時に地名を取得、保存、リランする。
+    ポップアップで地図を表示し、中心座標を確定して保存する。
+    メイン画面とは独立して動くため、動作が安定します。
     """
-    st.info("地図の中央地点のグラフを描画表示することができます。")
-    st.markdown("""<style>
-        div[data-testid="stHorizontalBlock"] { flex-wrap: nowrap !important; justify-content: center !important; }
-        [data-testid="column"] { min-width: 0px !important; }
-        .guide-arrow-main { color: crimson; font-size: 24px; font-weight: bold; text-align: center; }
-        </style>""", unsafe_allow_html=True)
+    st.info("地図の中央を合わせ、「この地点を確定して保存」を押してください。")
 
-    start_lat = st.session_state.get("map_lat", st.session_state.lat)
-    start_lon = st.session_state.get("map_lon", st.session_state.lon)
+    # 現在保持されている地図の基準座標
+    m_lat = st.session_state.get("map_lat", st.session_state.lat)
+    m_lon = st.session_state.get("map_lon", st.session_state.lon)
 
-    m = folium.Map(location=[start_lat, start_lon], zoom_start=13)
-    folium.Marker([start_lat, start_lon], icon=folium.Icon(color='red')).add_to(m)
+    m = folium.Map(location=[m_lat, m_lon], zoom_start=13)
+    folium.Marker([m_lat, m_lon], icon=folium.Icon(color='red')).add_to(m)
     
-    col_l1, col_m1, col_r1 = st.columns([1, 18, 1])
-    with col_m1: st.markdown("<div class='guide-arrow-main'>▼</div>", unsafe_allow_html=True)
-    
-    col_l2, col_m2, col_r2 = st.columns([1, 18, 1])
-    with col_l2: st.markdown(f"<div style='line-height:{CONFIG['MAP_HEIGHT']}px; text-align:right;' class='guide-arrow-main'>▶</div>", unsafe_allow_html=True)
-    
+    # 地図描画
     map_out = st_folium(
         m, 
-        width=None, 
-        height=CONFIG["MAP_HEIGHT"], 
-        key=f"map_{st.session_state.lat}_{st.session_state.lon}", 
+        width=650, 
+        height=400, 
+        key="map_dialog_key",
         returned_objects=["center"]
     )
     
-    with col_r2: st.markdown(f"<div style='line-height:{CONFIG['MAP_HEIGHT']}px; text-align:left;' class='guide-arrow-main'>◀</div>", unsafe_allow_html=True)
-    
-    col_l3, col_m3, col_r3 = st.columns([1, 18, 1])
-    with col_m3: st.markdown("<div class='guide-arrow-main' style='margin-top:-10px;'>▲</div>", unsafe_allow_html=True)
-    
+    # 地図を動かすたびに中心座標をセッションに一時保存
     if map_out and map_out.get("center"):
-        # 正しいボタン名：グラフ描画地点確定
-        if st.button("グラフ描画地点確定", use_container_width=True):
-            target_lat = map_out["center"]["lat"]
-            target_lon = map_out["center"]["lng"]
-            
-            with st.spinner("地点名を検索中..."):
-                place_name = fetch_location_name(target_lat, target_lon)
-            
-            new_temp_label = f"{place_name} ({target_lat:.4f}, {target_lon:.4f})"
-            
-            update_state_and_save({
-                "lat": target_lat,
-                "lon": target_lon,
-                "last_basho": place_name,
-                "temp_label": new_temp_label,
-                "show_map": False
-            })
+        st.session_state.map_lat = map_out["center"]["lat"]
+        st.session_state.map_lon = map_out["center"]["lng"]
+
+    st.divider()
+    
+    # 確定ボタン（ダイアログ内）
+    if st.button("✅ この地点を確定して保存", use_container_width=True):
+        target_lat = st.session_state.map_lat
+        target_lon = st.session_state.map_lon
+        
+        with st.spinner("地点名を検索中..."):
+            place_name = fetch_location_name(target_lat, target_lon)
+        
+        new_temp_label = f"{place_name} ({target_lat:.4f}, {target_lon:.4f})"
+        
+        # 統一保存関数を呼び出し（ここでLocalStorage保存とst.rerunが走る）
+        update_state_and_save({
+            "lat": target_lat,
+            "lon": target_lon,
+            "last_basho": place_name,
+            "temp_label": new_temp_label,
+            "show_map": False # 次回起動時は地図を閉じた状態にする
+        })
 
 # ==========================================================================================
 # 14_sub. 座標から地名を取得するサブルーチン (fetch_location_name)
@@ -786,13 +780,10 @@ def render_location_selector_module():
 # 21. 【main機能分離】②地図表示モジュール
 # ======================================================================================
 def render_map_module():
-    """地図のON/OFF切り替えと、地図本体を表示する"""
-    show_map = st.toggle("地図を表示して地点を選択", value=st.session_state.get("show_map", False))
-    st.session_state.show_map = show_map
-
-    if show_map:
-        # 正しい関数名（show_location_map）で呼び出す
-        show_location_map()
+    """「🗺️ 地図表示」ボタンの表示"""
+    if st.button("🗺️ 地図表示", use_container_width=True):
+        # ここで新しいサブルーチンを呼び出す
+        show_location_map_dialog()
         
 # ======================================================================================
 # 22. 【main機能分離】③現在地取得モジュール
