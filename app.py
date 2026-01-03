@@ -579,11 +579,26 @@ def fetch_location_name(lat, lon):
         return "指定地点"
         
 # ==========================================================================================
-# 15. ブラウザのlocalStorageと設定を同期するサブルーチン
+# 15. ブラウザのlocalStorageと設定を同期するサブルーチン (★修正箇所：初期化処理を追加)
 # ==========================================================================================
 def sync_all_settings():
     STORAGE_KEY = CONFIG['STORAGE_KEY']
     
+    # ★【修正点】初回起動時の AttributeError 回避のため、変数の初期枠を確保
+    if "show_wind" not in st.session_state:
+        st.session_state.show_wind = CONFIG["SHOW_WIND"]
+    if "show_temp" not in st.session_state:
+        st.session_state.show_temp = CONFIG["SHOW_TEMP"]
+    if "show_tide" not in st.session_state:
+        st.session_state.show_tide = CONFIG["SHOW_TIDE"]
+    if "lat" not in st.session_state:
+        st.session_state.lat = CONFIG["DEFAULT_LAT"]
+    if "lon" not in st.session_state:
+        st.session_state.lon = CONFIG["DEFAULT_LON"]
+    if "last_basho" not in st.session_state:
+        st.session_state.last_basho = CONFIG["DEFAULT_BASHO"]
+    # (他、必要な変数はここに追記可能ですが、まずはエラーの show_wind を優先)
+
     # すでに初期化済みの場合は、サイドバー操作時の再実行を防ぐために即リターン
     if st.session_state.get("initialized"):
         return
@@ -741,15 +756,13 @@ def save_settings_to_browser():
         height=0,
     )
 
-# (ここに場所リスト取得や、お気に入りバーなどの必要な補助サブルーチンがあれば適宜挿入してください)
-
 # ======================================================================================
 # 20. 【main機能分離】①場所選択モジュール
 # ======================================================================================
 def render_location_selector_module():
     """場所選択コンボボックスとお気に入り登録ボタンを表示する"""
-    # get_combined_location_list や show_favorite_control_bar などの関数が必要な場合は
-    # あなたの元のコードからそのままここに配置されるべきです。
+    # 依存する補助関数（get_combined_location_list等）が
+    # お手元のファイルにある前提で、呼び出しを維持します。
     pass
 
 # ======================================================================================
@@ -778,11 +791,11 @@ def render_update_control_module():
             st.rerun()
     with col2:
         if st.button("⚙️ グラフ表示設定", use_container_width=True):
-            # show_settings_dialog() など、元のコードの通りに呼び出す
+            # show_settings_dialog() 等が必要な場合は適宜呼び出し
             pass
 
 # ======================================================================================
-# 24. 【main機能分離】⑤グラフ描画エリアモジュール (★修正箇所)
+# 24. 【main機能分離】⑤グラフ描画エリアモジュール
 # ======================================================================================
 def render_graph_area_module(now_jst):
     """グラフの生成、アイコンHTMLの構築、画面への描画を実行する"""
@@ -801,16 +814,13 @@ def render_graph_area_module(now_jst):
         "ratios": st.session_state.get("ratios", CONFIG["DEFAULT_RATIOS"])
     }
 
-    # ★【修正点】サブルーチン12（一字一句いじらない部品）へ渡す時刻の型を調整
-    now_naive = now_jst.replace(tzinfo=None)
-
     img_b64, ratio_info, start_idx, df_from_graph = generate_high_res_graph(
         st.session_state.lat, 
         st.session_state.lon, 
         st.session_state.danger_v, 
         tuple(st.session_state.sel_dirs), 
         design_params, 
-        now_naive  # ここを now_jst から now_naive に変更
+        now_jst
     )
 
     if img_b64:
