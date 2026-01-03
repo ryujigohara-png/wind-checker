@@ -505,80 +505,41 @@ def generate_weather_icons_html(df, ratio_info, display_width, start_idx, icon_m
     # 最終的なHTMLコンテナ（デバッグ用の高さを35pxに戻す）
     return f'<div style="position: relative; width: {display_width}px; height: 35px; margin-bottom: {icon_margin}px; overflow: visible;">{icon_html}</div>'
     
-# ==========================================================================================
-# 14. 地図UIをダイアログで表示するサブルーチン (ダイアログ化)
-# ==========================================================================================
-@st.dialog("📍 地図で地点を指定")
-def show_location_map_dialog():
-    """
-    ポップアップで地図を表示し、中心座標を確定して保存する。
-    メイン画面とは独立して動くため、動作が安定します。
-    """
-    st.info("地図の中央を合わせ、「この地点を確定して保存」を押してください。")
-
-    # 現在保持されている地図の基準座標
-    m_lat = st.session_state.get("map_lat", st.session_state.lat)
-    m_lon = st.session_state.get("map_lon", st.session_state.lon)
-
-    m = folium.Map(location=[m_lat, m_lon], zoom_start=13)
-    folium.Marker([m_lat, m_lon], icon=folium.Icon(color='red')).add_to(m)
+#==========================================================================================
+# 14. 地図UIを表示し地点を選択するサブルーチン
+#==========================================================================================
+def show_location_map():
+    st.info("地図の中央地点のグラフを描画表示することができます。")
+    st.markdown("""<style>
+        div[data-testid="stHorizontalBlock"] { flex-wrap: nowrap !important; justify-content: center !important; }
+        [data-testid="column"] { min-width: 0px !important; }
+        .guide-arrow-main { color: crimson; font-size: 24px; font-weight: bold; text-align: center; }
+        </style>""", unsafe_allow_html=True)
     
-    # 地図描画
-    map_out = st_folium(
-        m, 
-        width=650, 
-        height=400, 
-        key="map_dialog_key",
-        returned_objects=["center"]
-    )
+    m = folium.Map(location=[st.session_state.lat, st.session_state.lon], zoom_start=13)
+    folium.Marker([st.session_state.lat, st.session_state.lon], icon=folium.Icon(color='red')).add_to(m)
     
-    # 地図を動かすたびに中心座標をセッションに一時保存
+    col_l1, col_m1, col_r1 = st.columns([1, 18, 1])
+    with col_m1: st.markdown("<div class='guide-arrow-main'>▼</div>", unsafe_allow_html=True)
+    
+    col_l2, col_m2, col_r2 = st.columns([1, 18, 1])
+    with col_l2: st.markdown(f"<div style='line-height:{CONFIG['MAP_HEIGHT']}px; text-align:right;' class='guide-arrow-main'>▶</div>", unsafe_allow_html=True)
+    with col_m2: map_out = st_folium(m, width=None, height=CONFIG["MAP_HEIGHT"], key=f"map_{st.session_state.lat}_{st.session_state.lon}", returned_objects=["center"])
+    with col_r2: st.markdown(f"<div style='line-height:{CONFIG['MAP_HEIGHT']}px; text-align:left;' class='guide-arrow-main'>◀</div>", unsafe_allow_html=True)
+    
+    col_l3, col_m3, col_r3 = st.columns([1, 18, 1])
+    with col_m3: st.markdown("<div class='guide-arrow-main' style='margin-top:-10px;'>▲</div>", unsafe_allow_html=True)
+    
     if map_out and map_out.get("center"):
-        st.session_state.map_lat = map_out["center"]["lat"]
-        st.session_state.map_lon = map_out["center"]["lng"]
+        if st.button("グラフ描画地点確定", use_container_width=True):
+            st.session_state.lat = map_out["center"]["lat"]
+            st.session_state.lon = map_out["center"]["lng"]
+            st.session_state.last_basho = "地図で指定"
+            st.rerun()
 
-    st.divider()
-    
-    # 確定ボタン（ダイアログ内）
-    if st.button("✅ この地点を確定して保存", use_container_width=True):
-        target_lat = st.session_state.map_lat
-        target_lon = st.session_state.map_lon
-        
-        with st.spinner("地点名を検索中..."):
-            place_name = fetch_location_name(target_lat, target_lon)
-        
-        new_temp_label = f"{place_name} ({target_lat:.4f}, {target_lon:.4f})"
-        
-        # 統一保存関数を呼び出し（ここでLocalStorage保存とst.rerunが走る）
-        update_state_and_save({
-            "lat": target_lat,
-            "lon": target_lon,
-            "last_basho": place_name,
-            "temp_label": new_temp_label,
-            "show_map": False # 次回起動時は地図を閉じた状態にする
-        })
-
-# ==========================================================================================
-# 14_sub. 座標から地名を取得するサブルーチン (fetch_location_name)
-# ==========================================================================================
-def fetch_location_name(lat, lon):
-    """Nominatim APIを使用して緯度経度から地名（市区町村レベル）を取得する"""
-    try:
-        url = f"https://nominatim.openstreetmap.org/reverse?format=json&lat={lat}&lon={lon}&zoom=14"
-        headers = {"User-Agent": "WindChecker/2.0"}
-        response = requests.get(url, headers=headers, timeout=5)
-        if response.status_code == 200:
-            data = response.json()
-            address = data.get("address", {})
-            city = address.get("city") or address.get("town") or address.get("village") or address.get("suburb") or "未知の地点"
-            return city
-        return "指定地点"
-    except Exception:
-        return "指定地点"
-        
-# ==========================================================================================
+#==========================================================================================
 # 15. ブラウザのlocalStorageと設定を同期するサブルーチン
-# ==========================================================================================
+#==========================================================================================
 def sync_all_settings():
     STORAGE_KEY = CONFIG['STORAGE_KEY']
     
@@ -586,129 +547,100 @@ def sync_all_settings():
     if st.session_state.get("initialized"):
         return
 
+    ## 初回起動時のみブラウザからデータを読み込む
+    ## stored_data = streamlit_js_eval(js_expressions=f"localStorage.getItem('{STORAGE_KEY}')", key="init_load_settings")
+    ## ブラウザからデータを取得
+    # stored_data = streamlit_js_eval(js_expressions=f"localStorage.getItem('{STORAGE_KEY}')", key="init_load_settings")
+
+    ## 【重要】データが取得できるまでここで止める（これが「戻ってしまう」現象の対策）
+    # if stored_data is None:
+    #     st.stop() 
+    # 
+    #if stored_data:
+
+    #--------------------------------------------------------------------------------------------
     # JS側で、データがない場合に "EMPTY" という文字列を返すように細工する
     js_query = f"localStorage.getItem('{STORAGE_KEY}') || 'EMPTY'"
     stored_data = streamlit_js_eval(js_expressions=js_query, key="init_load_settings_v3")
 
     if stored_data is None:
-        st.stop()  # 通信待ちの間だけ止める
+        st.stop()  # 本当に通信待ちの間だけ止める
 
-    if stored_data == "EMPTY" or stored_data == "":
+    if stored_data == "EMPTY":
+        # データがない場合は、何もせず初期化完了として進む
+        st.session_state.initialized = True
+    elif stored_data == "":
+        # データが存在しない場合も初期化済みとする
         st.session_state.initialized = True
     else:
+    #-----------------------------------------------------------------------------------------    
         try:
             data = json.loads(stored_data)
-            
-            # 1. 既存の地点情報の復元
+            # 地点情報の復元
             st.session_state.lat = float(data.get("lat", CONFIG["DEFAULT_LAT"]))
             st.session_state.lon = float(data.get("lon", CONFIG["DEFAULT_LON"]))
             st.session_state.last_basho = data.get("basho", CONFIG["DEFAULT_BASHO"])
             
-            # 地点管理データの復元
-            st.session_state.LOCATION_MASTER = data.get("location_master", [])
-            st.session_state.map_lat = float(data.get("map_lat", st.session_state.lat))
-            st.session_state.map_lon = float(data.get("map_lon", st.session_state.lon))
-            st.session_state.temp_label = data.get("temp_label", None)
-            
-            # 2. 表示スイッチの復元
+            # 表示スイッチの復元
             st.session_state.show_wind = data.get("show_wind", CONFIG["SHOW_WIND"])
             st.session_state.show_temp = data.get("show_temp", CONFIG["SHOW_TEMP"])
             st.session_state.show_tide = data.get("show_tide", CONFIG["SHOW_TIDE"])
             
-            # 3. サイズ・文字設定の復元
+            # サイズ・文字設定の復元
             st.session_state.width = float(data.get("width", CONFIG["GRAPH_WIDTH"]))
             st.session_state.base_height = float(data.get("base_height", CONFIG["GRAPH_HIGHT"]))
             st.session_state.base_font_size = int(data.get("base_font_size", CONFIG["GRAPH_FONT_SIZE"]))
             st.session_state.label_font_size = int(data.get("label_font_size", CONFIG["LABEL_SIZE"]))
             
-            # 4. 危険風速・選択風向の復元
+            # 危険風速・選択風向の復元
             st.session_state.danger_v = float(data.get("danger_v", CONFIG["DEFAULT_DANGER_V"]))
             st.session_state.sel_dirs = data.get("sel_dirs", CONFIG["DEFAULT_DIRS"])
             
-            # 5. 開発者用・詳細パラメータの復元
-            st.session_state.is_dev_mode = data.get("is_dev_mode", CONFIG.get("SHOW_DEV_MODE", False))
+            # 開発者用パラメータもあれば復元
+            st.session_state.is_dev_mode = data.get("is_dev_mode", CONFIG.get("SHOW_DEV_MODE", False)) # [4, 6]
             st.session_state.label_pad = data.get("label_pad", CONFIG["LABEL_PAD"])
             st.session_state.hspace = data.get("hspace", CONFIG["HSPACE"])
             st.session_state.show_w_text = data.get("show_w_text", CONFIG["SHOW_W_TEXT"])
             st.session_state.show_dir_name = data.get("show_dir_name", CONFIG["SHOW_DIR_NAME"])
             st.session_state.ratios = data.get("ratios", CONFIG["DEFAULT_RATIOS"])
-
-            # フラグを立ててリラン（初回のみブラウザの値を反映させるため）
+            
+            # フラグを立ててリラン（初回のみ）
             st.session_state.initialized = True
             st.rerun()
         except Exception:
+            # パース失敗時はデフォルト値で進む
             st.session_state.initialized = True
 
-# ==========================================================================================
-# 16. ステート更新・保存・再描画を一本化するサブルーチン (新規追加)
-# ==========================================================================================
-def update_state_and_save(updates_dict):
-    """
-    引数 updates_dict に基づき st.session_state を更新し、
-    LocalStorageへ即座に書き出し、st.rerun() を実行する。
-    """
-    for key, value in updates_dict.items():
-        st.session_state[key] = value
-    
-    # 既存の保存サブルーチンを呼び出し
-    save_settings_to_browser()
-    
-    # 書き込み時間を確保するための極小の待機
-    time.sleep(0.1)
-    
-    st.rerun()
-
-# ==========================================================================================
-# 16_2. 現在地を取得し、状態を保存するサブルーチン
-# ==========================================================================================
-def handle_current_location_update_integrated():
-    """
-    GPSから現在地を取得し、地名を特定して保存・リランする。
-    ボタン名は正規版のイメージを維持します。
-    """
-    # ボタン表示
+            
+#==========================================================================================
+# 16. 現在地を取得しセッション状態を更新するサブルーチン
+#==========================================================================================
+def handle_current_location_update():
     if st.button("🔄 📍現在地を取得　　　　　　　　　　", use_container_width=True):
         st.session_state.waiting_loc = True
         st.session_state.geo_key = f"geo_{datetime.now().timestamp()}"
         st.rerun()
 
-    # 取得待ち状態の処理
     if st.session_state.get("waiting_loc"):
         st.info("🛰️ 現在地を取得中...")
         loc = get_geolocation(component_key=st.session_state.get("geo_key"))
-        
         if loc:
-            new_lat = round(loc['coords']['latitude'], 4)
-            new_lon = round(loc['coords']['longitude'], 4)
-            
-            # 1. 逆ジオコーディングで現在地の地名を取得
-            with st.spinner("現在地の地名を特定中..."):
-                place_name = fetch_location_name(new_lat, new_lon)
-            
-            # 2. 一時表示用のラベルを作成
-            new_temp_label = f"{place_name} ({new_lat:.4f}, {new_lon:.4f})"
-            
-            # 3. 取得完了フラグを下げ、保存関数を呼び出してリラン
+            st.session_state.lat = round(loc['coords']['latitude'], 4)
+            st.session_state.lon = round(loc['coords']['longitude'], 4)
+            st.session_state.last_basho = "現在地"
             st.session_state.waiting_loc = False
-            update_state_and_save({
-                "lat": new_lat,
-                "lon": new_lon,
-                "last_basho": place_name,
-                "temp_label": new_temp_label,
-                "show_map": False
-            })
-            
+            st.rerun()
         elif loc is False:
-            st.error("❌ 位置情報の取得に失敗しました。ブラウザの許可を確認してください。")
+            st.error("❌ 取得失敗")
             if st.button("キャンセル"):
                 st.session_state.waiting_loc = False
                 st.rerun()
-            
-# ==========================================================================================
-# 16_x. ブラウザへの保存を実行するサブルーチン (名称維持)
-# ==========================================================================================
+
+#==========================================================================================
+# 16_x. ブラウザへの保存を実行するサブルーチン（隠し要素）
+#==========================================================================================
 def save_settings_to_browser():
-    """セッション状態にある現在の全設定をブラウザに書き込む"""
+    """セッション状態にある現在の全設定をブラウザのlocalStorageに書き込む"""
     save_data = {
         "lat": st.session_state.lat,
         "lon": st.session_state.lon,
@@ -722,167 +654,264 @@ def save_settings_to_browser():
         "label_font_size": st.session_state.label_font_size,
         "danger_v": st.session_state.danger_v,
         "sel_dirs": st.session_state.sel_dirs,
-        "is_dev_mode": st.session_state.get("is_dev_mode", False),
-        "label_pad": st.session_state.get("label_pad", CONFIG["LABEL_PAD"]),
-        "hspace": st.session_state.get("hspace", CONFIG["HSPACE"]),
-        "show_w_text": st.session_state.get("show_w_text", CONFIG["SHOW_W_TEXT"]),
-        "show_dir_name": st.session_state.get("show_dir_name", CONFIG["SHOW_DIR_NAME"]),
-        "ratios": st.session_state.get("ratios", CONFIG["DEFAULT_RATIOS"]),
-        "location_master": st.session_state.get("LOCATION_MASTER", []),
-        "map_lat": st.session_state.get("map_lat", st.session_state.lat),
-        "map_lon": st.session_state.get("map_lon", st.session_state.lon),
-        "temp_label": st.session_state.get("temp_label", None)
-    }
-    json_data = json.dumps(save_data, ensure_ascii=False)
-    components.html(
-        f"""<script>localStorage.setItem("{CONFIG['STORAGE_KEY']}", '{json_data}');</script>""",
-        height=0,
-    )
-
-# ======================================================================================
-# 20. 【main機能分離】①場所選択モジュール
-# ======================================================================================
-def render_location_selector_module():
-    """場所選択コンボボックスとお気に入り登録ボタンを表示する"""
-    display_list, total_data = get_combined_location_list(
-        CONFIG["LOCATION_MASTER"], 
-        st.session_state.lat, 
-        st.session_state.lon, 
-        st.session_state.last_basho
-    )
-    
-    current_label = f"{st.session_state.last_basho} ({st.session_state.lat:.4f}, {st.session_state.lon:.4f})"
-    if st.session_state.get("temp_label") and st.session_state.last_basho == st.session_state.get("temp_label"):
-         current_label = st.session_state.temp_label
-
-    selected = show_favorite_control_bar(
-        display_list, 
-        current_label, 
-        st.session_state.lat, 
-        st.session_state.lon, 
-        st.session_state.last_basho
-    )
-
-    if selected != current_label:
-        new_lat, new_lon, new_name = total_data[selected]
-        if new_name == "地図で指定":
-            st.session_state.show_map = True
-            st.rerun()
-        else:
-            update_state_and_save({
-                "lat": new_lat, 
-                "lon": new_lon, 
-                "last_basho": new_name,
-                "show_map": False
-            })
-
-# ======================================================================================
-# 21. 【main機能分離】②地図表示モジュール
-# ======================================================================================
-def render_map_module():
-    """「🗺️ 地図表示」ボタンの表示"""
-    if st.button("🗺️ 地図表示", use_container_width=True):
-        # ここで新しいサブルーチンを呼び出す
-        show_location_map_dialog()
-        
-# ======================================================================================
-# 22. 【main機能分離】③現在地取得モジュール
-# ======================================================================================
-def render_current_location_module():
-    """GPSから現在地を取得するボタンを表示する"""
-    handle_current_location_update_integrated()
-
-# ======================================================================================
-# 23. 【main機能分離】④グラフ更新・設定モジュール
-# ======================================================================================
-def render_update_control_module():
-    """グラフの更新ボタンと設定ダイアログの呼び出しボタンを表示する"""
-    col1, col2 = st.columns([1, 1])
-    with col1:
-        if st.button("📊 グラフを最新に更新", use_container_width=True):
-            st.rerun()
-    with col2:
-        if st.button("⚙️ グラフ表示設定", use_container_width=True):
-            show_settings_dialog()
-
-# ======================================================================================
-# 24. 【main機能分離】⑤グラフ描画エリアモジュール
-# ======================================================================================
-def render_graph_area_module(now_jst):
-    """グラフの生成、アイコンHTMLの構築、画面への描画を実行する"""
-    design_params = {
-        "show_wind": st.session_state.show_wind,
-        "show_temp": st.session_state.show_temp,
-        "show_tide": st.session_state.show_tide,
-        "width": st.session_state.width,
-        "height": st.session_state.base_height,
-        "base_font_size": st.session_state.base_font_size,
-        "label_font_size": st.session_state.label_font_size,
+        "is_dev_mode": st.session_state.get("is_dev_mode", False), # ← これを追加 [5, 6]
         "label_pad": st.session_state.get("label_pad", CONFIG["LABEL_PAD"]),
         "hspace": st.session_state.get("hspace", CONFIG["HSPACE"]),
         "show_w_text": st.session_state.get("show_w_text", CONFIG["SHOW_W_TEXT"]),
         "show_dir_name": st.session_state.get("show_dir_name", CONFIG["SHOW_DIR_NAME"]),
         "ratios": st.session_state.get("ratios", CONFIG["DEFAULT_RATIOS"])
     }
-
-    img_b64, ratio_info, start_idx, df_from_graph = generate_high_res_graph(
-        st.session_state.lat, 
-        st.session_state.lon, 
-        st.session_state.danger_v, 
-        tuple(st.session_state.sel_dirs), 
-        design_params, 
-        now_jst
+    
+    json_data = json.dumps(save_data, ensure_ascii=False)
+    
+    # JavaScriptを実行して保存。height=0でUIには影響を与えません。
+    components.html(
+        f"""
+        <script>
+        localStorage.setItem("{CONFIG['STORAGE_KEY']}", '{json_data}');
+        </script>
+        """,
+        height=0,
     )
 
-    if img_b64:
-        dpi = CONFIG.get("DPI", 200)
-        display_width_px = int(design_params.get("width", 15) * dpi)
-        
-        icons_html = generate_weather_icons_html(
-            df_from_graph, 
-            ratio_info, 
-            display_width_px, 
-            start_idx
+#==========================================================================================
+# 17. サイドバーの表示設定とデザイン調整を表示するサブルーチン
+#==========================================================================================
+def show_sidebar_controls():
+    is_beta = True 
+
+    # --- 1. URLパラメータから mode=dev を取得するロジックを復活 ---
+    # st.query_params を使用します
+    is_dev_url = st.query_params.get("mode") == "dev" [2], [3]
+
+    st.sidebar.header("表示設定")
+     
+    show_wind = st.sidebar.toggle("風向・風速", value=st.session_state.get("show_wind", CONFIG["SHOW_WIND"]))
+    show_temp = st.sidebar.toggle("気温", value=st.session_state.get("show_temp", CONFIG["SHOW_TEMP"]))
+    show_tide = st.sidebar.toggle("潮位", value=st.session_state.get("show_tide", CONFIG["SHOW_TIDE"]))
+    
+    w_cfg = CONFIG["SLIDER_WIDTH"]
+    h_cfg = CONFIG["SLIDER_HEIGHT"]
+    f_cfg = CONFIG["SLIDER_FONT"]
+    
+    width = st.sidebar.slider("横幅 (inch)", w_cfg["min"], w_cfg["max"], float(st.session_state.get("width", CONFIG["GRAPH_WIDTH"])), step=w_cfg["step"])
+    base_height = st.sidebar.slider("基準縦幅 (inch)", h_cfg["min"], h_cfg["max"], float(st.session_state.get("base_height", CONFIG["GRAPH_HIGHT"])), step=h_cfg["step"])
+    base_font_size = st.sidebar.slider("グラフ内文字", f_cfg["min"], f_cfg["max"], st.session_state.get("base_font_size", CONFIG["GRAPH_FONT_SIZE"]), step=f_cfg["step"])
+    label_font_size = st.sidebar.slider("軸ラベル文字", f_cfg["min"], f_cfg["max"], st.session_state.get("label_font_size", CONFIG["LABEL_SIZE"]), step=f_cfg["step"])
+
+    st.sidebar.markdown("---")
+    # --- 2. チェックボックスの初期値に URL判定の結果を組み込む ---
+    # URLが dev モード、またはセッションに保存された値が True なら有効にする
+    default_dev_val = is_dev_url or st.session_state.get("is_dev_mode", False)
+    is_dev = st.sidebar.checkbox("🔧 開発者用マイクロ調整", value=default_dev_val)  #  [1]
+    # is_dev = st.sidebar.checkbox("🔧 開発者用マイクロ調整", value=st.session_state.get("is_dev_mode", False))
+    st.session_state.is_dev_mode = is_dev
+
+    # 初期値セット
+    if "min_container_width" not in st.session_state: st.session_state.min_container_width = 2500
+    if "graph_dpi" not in st.session_state: st.session_state.graph_dpi = 200
+
+    design_params = {
+        "width": width, "base_height": base_height,
+        "base_font_size": base_font_size, "label_font_size": label_font_size,
+        "label_pad": st.session_state.get("label_pad", CONFIG["LABEL_PAD"]),
+        "hspace": st.session_state.get("hspace", CONFIG["HSPACE"]),
+        "show_wind": show_wind, "show_temp": show_temp, "show_tide": show_tide,
+        "show_w_text": st.session_state.get("show_w_text", CONFIG["SHOW_W_TEXT"]),
+        "show_dir_name": st.session_state.get("show_dir_name", CONFIG["SHOW_DIR_NAME"]),
+        "ratios": list(st.session_state.get("ratios", CONFIG["DEFAULT_RATIOS"])),
+        "min_container_width": st.session_state.min_container_width,
+        "graph_dpi": st.session_state.graph_dpi
+    }
+
+    if is_dev:
+        st.sidebar.info("開発用詳細設定")
+        # ユーザーによる修正を反映 (500~3000)
+        design_params["min_container_width"] = st.sidebar.select_slider(
+            "コンテナ最小幅 (px)", options=[500, 1000, 1500, 2000, 2500, 3000], value=design_params["min_container_width"]
         )
+        design_params["graph_dpi"] = st.sidebar.radio("解像度 (DPI)", options=[200, 300], index=(0 if design_params["graph_dpi"] == 200 else 1), horizontal=True)
+        design_params["show_w_text"] = st.sidebar.toggle("天気詳細文字を表示", value=design_params["show_w_text"])
+        design_params["show_dir_name"] = st.sidebar.toggle("風向名を表示", value=design_params["show_dir_name"])
+        design_params["hspace"] = st.sidebar.slider("グラフ間余白", -0.2, 1.5, design_params["hspace"], step=0.05)
+        design_params["label_pad"] = st.sidebar.slider("ラベル距離", -5, 10, design_params["label_pad"])
+        # サイドバーの実装例（既存のスライダー群に追加）
+        st.sidebar.markdown("### 降水量・アイコン位置調整")
+        precip_y = st.sidebar.slider("降水量ラベル高さ", 
+                                   CONFIG["SLIDER_PRECIP_Y"]["min"], 
+                                   CONFIG["SLIDER_PRECIP_Y"]["max"], 
+                                   CONFIG["DEFAULT_PRECIP_Y"], 0.01)
         
-        st.markdown(icons_html, unsafe_allow_html=True)
-        st.markdown(f'<img src="data:image/png;base64,{img_b64}" style="width:100%;">', unsafe_allow_html=True)
+        icon_margin = st.sidebar.slider("天気アイコン下余白", 
+                                      CONFIG["SLIDER_ICON_MARGIN"]["min"], 
+                                      CONFIG["SLIDER_ICON_MARGIN"]["max"], 
+                                      CONFIG["DEFAULT_ICON_MARGIN"], 5)
+        
+        # これらを design_params に入れて generate_high_res_graph に渡す
+        design_params["precip_y"] = precip_y
+        design_params["icon_margin"] = icon_margin
 
-# ======================================================================================
-# 100. メイン処理 (再構築版)
-# ======================================================================================
+        
+        r = design_params["ratios"]
+        r[0] = st.sidebar.number_input("比率:風向", 0.5, 10.0, r[0], step=0.1)
+        r[1] = st.sidebar.number_input("比率:気温", 0.5, 5.0, r[1], step=0.1)
+        r[2] = st.sidebar.number_input("比率:潮位", 0.5, 5.0, r[2], step=0.1)
+        design_params["ratios"] = r
+
+    # 縦幅計算
+    base_ratio_total = design_params["ratios"][0] + design_params["ratios"][1]
+    fixed_unit_h = base_height / base_ratio_total 
+    icon_margin = 0.45 if show_wind else 0.0
+    auto_height = icon_margin
+    if show_wind: auto_height += design_params["ratios"][0] * fixed_unit_h
+    if show_temp: auto_height += design_params["ratios"][1] * fixed_unit_h
+    if show_tide: auto_height += design_params["ratios"][2] * fixed_unit_h
+    design_params["height"] = auto_height
+
+    st.sidebar.markdown("---")
+    danger_v = st.sidebar.number_input("危険風速ライン(m/s)", value=st.session_state.get("danger_v", CONFIG["DEFAULT_DANGER_V"]), step=0.5)
+    
+    st.sidebar.write("色付風向選択")
+    saved_dirs = st.session_state.get("sel_dirs", CONFIG["DEFAULT_DIRS"])
+    sel_dirs = []
+    cols = st.sidebar.columns(2)
+    for i, d in enumerate(ALL_DIRECTIONS):
+        with cols[i % 2]:
+            if st.checkbox(d, value=(d in saved_dirs), key=f"chk_{d}"):
+                sel_dirs.append(d)
+
+    st.session_state.update({
+        "show_wind": show_wind, "show_temp": show_temp, "show_tide": show_tide,
+        "width": width, "base_height": base_height, "base_font_size": base_font_size,
+        "label_font_size": label_font_size, "danger_v": danger_v, "sel_dirs": sel_dirs,
+        "label_pad": design_params["label_pad"], "hspace": design_params["hspace"],
+        "show_w_text": design_params["show_w_text"], "show_dir_name": design_params["show_dir_name"],
+        "ratios": design_params["ratios"], "min_container_width": design_params["min_container_width"],
+        "graph_dpi": design_params["graph_dpi"]
+    })
+
+    save_settings_to_browser()
+    return danger_v, sel_dirs, design_params
+    
+#==========================================================================================
+# 18. グラフ更新ボタンと日時情報を描画するサブルーチン
+#==========================================================================================
+def render_header_info(current_basho_name):
+    now = datetime.now(timezone(timedelta(hours=9)))
+    date_time_str = now.strftime('%Y/%m/%d %H:%M:%S')
+    update_label = f"🔄 グラフ更新 ({date_time_str})　　        　"
+    if st.button(update_label, use_container_width=True):
+        st.cache_data.clear()
+        st.rerun()
+
+
+#==========================================================================================
+# 19. アプリのメインフローを制御するメインルーチン
+#==========================================================================================
 def main():
-    # 0. 初期化とブラウザデータ同期 (サブルーチン15)
+    if 'lat' not in st.session_state: st.session_state.lat = CONFIG["DEFAULT_LAT"]
+    if 'lon' not in st.session_state: st.session_state.lon = CONFIG["DEFAULT_LON"]
+    if 'last_basho' not in st.session_state: st.session_state.last_basho = CONFIG["DEFAULT_BASHO"]
+    
     sync_all_settings()
-    
-    # フォント設定
-    setup_font(st.session_state.get("base_font_size", CONFIG["GRAPH_FONT_SIZE"]))
-    
-    st.title("Wind Checker v2")
-    
-    # 共通時刻の取得
-    now_jst = datetime.now(timezone(timedelta(hours=9)))
-    
-    # ① 場所選択
-    render_location_selector_module()
-    
-    # ② 地図表示
-    render_map_module()
-    
-    # ③ 現在地取得
-    render_current_location_module()
-    
-    # ④ グラフ更新・設定
-    render_update_control_module()
-    
-    # ⑤ グラフ描画
-    render_graph_area_module(now_jst)
+    danger_v, sel_dirs, design_params = show_sidebar_controls()
+    setup_font(design_params["base_font_size"])
 
-    # 開発者モード（デバッグ情報）
-    if st.session_state.get("is_dev_mode"):
-        st.divider()
-        st.write("Debug: Session State", st.session_state)
+    raw_now = datetime.now(timezone(timedelta(hours=9))).replace(tzinfo=None)
+    now_jst = raw_now.replace(minute=(raw_now.minute // 10) * 10, second=0, microsecond=0)
 
-# アプリ起動
+    st.markdown(f"""
+        <style>
+            .block-container {{ padding-top: 2rem !important; padding-bottom: 0rem !important; }}
+            .scroll-container {{ overflow-x: auto; background: white; border: 1px solid #ddd; width: 100%; }}
+        </style>
+    """, unsafe_allow_html=True)
+
+    st.markdown(f'<h1 style="font-size:{CONFIG["TITLE_SIZE"]}px;">⛵ Wind_Checker! </h1>', unsafe_allow_html=True)
+    
+    # (地点選択・地図表示ロジックは既存のものを維持)
+    # --- 地点選択コンボボックス（座標を名前に統合） ---
+    master = CONFIG["LOCATION_MASTER"].copy()
+    display_options = {}
+    for name, coords in master.items():
+        display_options[f"{name} ({coords[0]:.4f}, {coords[1]:.4f})"] = name
+
+    # 【復活】現在地ラベルに座標を表示
+    current_loc_label = f"📍 現在地 ({st.session_state.lat:.4f}, {st.session_state.lon:.4f})  "
+    display_options[current_loc_label] = "現在地"
+    map_loc_label = f"🗺️ 地図で指定 ({st.session_state.lat:.4f}, {st.session_state.lon:.4f})   "
+    display_options[map_loc_label] = "地図で指定"
+
+    
+    # current_loc_label = f"📍 現在地 ({st.session_state.lat:.4f}, {st.session_state.lon:.4f})"
+    # display_options[current_loc_label] = "現在地"
+    # display_options["🗺️ 地図で指定"] = "地図で指定"
+
+    reverse_display = {v: k for k, v in display_options.items()}
+    current_display_val = reverse_display.get(st.session_state.last_basho, current_loc_label)
+    
+    options_list = list(display_options.keys())
+    default_idx = options_list.index(current_display_val) if current_display_val in options_list else 0
+
+    selected_display = st.selectbox("地点を選択してください", options_list, index=default_idx)
+    basho = display_options[selected_display]
+
+    if basho != st.session_state.last_basho:
+        st.session_state.last_basho = basho
+        if basho not in ["地図で指定", "現在地"]:
+            st.session_state.lat, st.session_state.lon = master[basho]
+        if basho == "地図で指定":
+            st.session_state.show_map_state = True
+        st.cache_data.clear() # 地点変更時は即座にクリア
+        st.rerun()
+
+    show_map = st.checkbox("地図表示", value=st.session_state.get('show_map_state', False))
+    st.session_state.show_map_state = show_map
+    if show_map:
+        show_location_map()
+
+    col1, col2 = st.columns([1, 1]) 
+    with col1:
+        handle_current_location_update()
+    with col2:
+        render_header_info(basho) 
+    
+    # ..................................................................... 
+
+    # --- グラフ生成の呼び出し (戻り値に start_idx, df を追加) ---
+    img_b64, ratio_info, start_idx, df_from_graph = generate_high_res_graph(
+        st.session_state.lat, st.session_state.lon, danger_v, tuple(sel_dirs), design_params, now_jst
+    )
+    
+    if img_b64:
+        df_for_icons = fetch_weather_data(st.session_state.lat, st.session_state.lon, 8)
+        if df_for_icons is not None:
+            dpi = design_params["graph_dpi"]
+            display_width = int(design_params["width"] * dpi)
+            min_w = design_params["min_container_width"]
+            # design_params から icon_margin を取得（なければ 0）
+            icon_margin = design_params.get("icon_margin", 0)
+        
+            
+            # padding_df = pd.DataFrame({'time': [df_for_icons['time'].iloc[0] - timedelta(hours=i) for i in range(1, 4)][::-1]})
+            # df_full = pd.concat([padding_df, df_for_icons], ignore_index=True)
+            
+            icons_html = generate_weather_icons_html(
+                df_from_graph, ratio_info, display_width, start_idx, icon_margin
+            )
+            
+            graph_html = f'<img src="data:image/png;base64,{img_b64}" style="width: {display_width}px; display: block;">'
+            
+            st.markdown(
+                f'<div class="scroll-container">'
+                f'<div style="width: {display_width}px; min-width: {min_w}px;">'
+                f'{icons_html}{graph_html}'
+                f'</div></div>', 
+                unsafe_allow_html=True
+            )
+            
+#==========================================================================================
+# アプリケーション起動
+#==========================================================================================
 if __name__ == "__main__":
     main()
