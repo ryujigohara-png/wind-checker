@@ -284,7 +284,7 @@ def render_wind_bar_chart(ax, df, danger_v, wind_step, design_params=None):
     ax.set_ylabel('風速 (m/s)', fontsize=l_fs) 
 
     # --- ①「降水量mm」の見出し位置修正 ---
-    # グラフ의 左端（パディング直後の時刻）を取得
+    # グラフの左端（パディング直後の時刻）を取得
     graph_left_time = df['time'].iloc[3] 
     ax.text(graph_left_time, precip_y, "降水量mm", 
             ha='right', va='bottom', fontsize=l_fs, color="blue", 
@@ -297,7 +297,7 @@ def render_wind_bar_chart(ax, df, danger_v, wind_step, design_params=None):
         row = df.iloc[i]
         dt = row['time']
         x_pos = bar.get_x() + bar.get_width()/2.
-        
+
         # --- ② 風速数値・矢印の描画（3時間ステップごと） ---
         if (i - 3) % wind_step == 0:
             if pd.isna(row['wind_speed_10m']): continue
@@ -305,6 +305,7 @@ def render_wind_bar_chart(ax, df, danger_v, wind_step, design_params=None):
             
             # 風速数値
             ax.text(x_pos, base_y + base, f"{row['wind_speed_10m']:.0f}", ha='center', va='bottom', fontsize=fs-2)
+            
             # 矢印
             current_y = base_y + base + step
             ax.text(x_pos, current_y, row['arrow'], ha='center', va='bottom', 
@@ -459,6 +460,7 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
     plt.close(fig) 
     
     return base64.b64encode(buf.getvalue()).decode(), ratio_info, start_idx, df
+    
 # ======================================================================================
 # 13. お天気アイコンのHTMLを生成するサブルーチン
 # ======================================================================================
@@ -476,6 +478,7 @@ def generate_weather_icons_html(df, ratio_info, display_width, start_idx, icon_m
     header_fs_px = l_size_pt * 1.33
     
     # 「天気」見出しの配置：start_x（グラフ枠の左端）を基準にする
+    # 12番の ax.text(graph_left_time, ..., ha='right') と揃えるため translateX(-100%) を使用
     label_pos_x = (start_x * display_width)
     icon_html += f'''
         <div style="position: absolute; left: {label_pos_x}px; top: 22px; 
@@ -502,7 +505,7 @@ def generate_weather_icons_html(df, ratio_info, display_width, start_idx, icon_m
                 {icon}
             </div>'''
     
-    # 最終的なHTMLコンテナ
+    # 最終的なHTMLコンテナ（デバッグ用の高さを35pxに戻す）
     return f'<div style="position: relative; width: {display_width}px; height: 35px; margin-bottom: {icon_margin}px; overflow: visible;">{icon_html}</div>'
     
 # ==========================================================================================
