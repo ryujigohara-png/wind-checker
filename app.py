@@ -310,28 +310,32 @@ def render_graph_area_module(now_jst):
         "ratios": st.session_state.get("ratios", CONFIG["DEFAULT_RATIOS"])
     }
 
-    # 【修正ポイント】サブルーチン側のロジックを変えず、引数側でタイムゾーンを消して渡す
+    # 【重要】サブルーチン12内の比較エラーを回避するため、タイムゾーン情報を除去した時刻を作成
     now_naive = now_jst.replace(tzinfo=None)
 
+    # サブルーチン12（generate_high_res_graph）の呼び出し
     img_b64, ratio_info, start_idx, df_from_graph = generate_high_res_graph(
         st.session_state.lat, 
         st.session_state.lon, 
         st.session_state.danger_v, 
         tuple(st.session_state.sel_dirs), 
         design_params, 
-        now_naive  # ここで調整
+        now_naive  # タイムゾーンなしの時刻を渡す
     )
 
     if img_b64:
-        # (アイコン表示ロジックなどは維持)
         dpi = CONFIG.get("DPI", 200)
         display_width_px = int(design_params.get("width", 15) * dpi)
         
-        # もし generate_weather_icons_html があれば呼び出す
-        if 'generate_weather_icons_html' in globals():
-            icons_html = generate_weather_icons_html(df_from_graph, ratio_info, display_width_px, start_idx)
-            st.markdown(icons_html, unsafe_allow_html=True)
-            
+        # サブルーチン13（generate_weather_icons_html）の呼び出し
+        icons_html = generate_weather_icons_html(
+            df_from_graph, 
+            ratio_info, 
+            display_width_px, 
+            start_idx
+        )
+        
+        st.markdown(icons_html, unsafe_allow_html=True)
         st.markdown(f'<img src="data:image/png;base64,{img_b64}" style="width:100%;">', unsafe_allow_html=True)
         
 # ======================================================================================
