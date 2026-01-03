@@ -727,11 +727,51 @@ def save_settings_to_browser():
     )
 
 # ======================================================================================
-# 20. 【main機能分離】①場所選択モジュール
+# 20. 地点選択を管理するモジュール（正規版コードを忠実に再現）
 # ======================================================================================
 def render_location_selector_module():
-    pass
+    """
+    正規版の地点選択ロジックを再現。
+    お気に入りリスト（LOCATION_MASTER）、現在地、地図指定を統合して表示。
+    """
+    master = CONFIG["LOCATION_MASTER"].copy()
+    display_options = {}
+    
+    # 1. お気に入りリストの展開 [cite: 75, 76]
+    for name, coords in master.items():
+        display_options[f"{name} ({coords[0]:.4f}, {coords[1]:.4f})"] = name
 
+    # 2. 現在地と地図指定のラベル生成（座標を名前に統合） [cite: 75, 76]
+    current_loc_label = f"📍 現在地 ({st.session_state.lat:.4f}, {st.session_state.lon:.4f})  "
+    display_options[current_loc_label] = "現在地"
+    
+    map_loc_label = f"🗺️ 地図で指定 ({st.session_state.lat:.4f}, {st.session_state.lon:.4f})   "
+    display_options[map_loc_label] = "地図で指定"
+
+    # 3. 現在の選択状態の逆引き [cite: 76]
+    reverse_display = {v: k for k, v in display_options.items()}
+    current_display_val = reverse_display.get(st.session_state.last_basho, current_loc_label)
+    
+    options_list = list(display_options.keys())
+    default_idx = options_list.index(current_display_val) if current_display_val in options_list else 0
+
+    # 4. セレクトボックスの表示 [cite: 76]
+    selected_display = st.selectbox("地点を選択してください", options_list, index=default_idx)
+    basho = display_options[selected_display]
+
+    # 5. 地点変更時の状態更新とリラン処理 [cite: 77]
+    if basho != st.session_state.last_basho:
+        st.session_state.last_basho = basho
+        if basho not in ["地図で指定", "現在地"]:
+            st.session_state.lat, st.session_state.lon = master[basho]
+        if basho == "地図で指定":
+            st.session_state.show_map_state = True
+        
+        st.cache_data.clear()  # 地点変更時はキャッシュをクリア [cite: 77]
+        st.rerun()
+
+    return basho
+    
 # ======================================================================================
 # 21. 【main機能分離】②地図表示モジュール
 # ======================================================================================
