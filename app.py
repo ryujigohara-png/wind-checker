@@ -290,15 +290,50 @@ def render_location_selector_module():
         if name == "地図で指定": show_location_map_dialog()
         else: update_state_and_save({"lat": lat, "lon": lon, "last_basho": name})
 
+# ======================================================================================
+# 24. 【main機能分離】⑤グラフ描画エリアモジュール
+# ======================================================================================
 def render_graph_area_module(now_jst):
-    params = {"width": st.session_state.width, "height": st.session_state.base_height}
-    img_b64, ratio, start_idx, df = generate_high_res_graph(
-        st.session_state.lat, st.session_state.lon, st.session_state.danger_v, 
-        tuple(st.session_state.sel_dirs), params, now_jst
-    )
-    if img_b64:
-        st.markdown(f'<img src="data:image/png;base64,{img_b64}" style="width:100%;">', unsafe_allow_html=True)
+    """グラフの生成、描画を実行する"""
+    design_params = {
+        "show_wind": st.session_state.show_wind,
+        "show_temp": st.session_state.show_temp,
+        "show_tide": st.session_state.show_tide,
+        "width": st.session_state.width,
+        "height": st.session_state.base_height,
+        "base_font_size": st.session_state.base_font_size,
+        "label_font_size": st.session_state.label_font_size,
+        "label_pad": st.session_state.get("label_pad", CONFIG["LABEL_PAD"]),
+        "hspace": st.session_state.get("hspace", CONFIG["HSPACE"]),
+        "show_w_text": st.session_state.get("show_w_text", CONFIG["SHOW_W_TEXT"]),
+        "show_dir_name": st.session_state.get("show_dir_name", CONFIG["SHOW_DIR_NAME"]),
+        "ratios": st.session_state.get("ratios", CONFIG["DEFAULT_RATIOS"])
+    }
 
+    # 【修正ポイント】サブルーチン側のロジックを変えず、引数側でタイムゾーンを消して渡す
+    now_naive = now_jst.replace(tzinfo=None)
+
+    img_b64, ratio_info, start_idx, df_from_graph = generate_high_res_graph(
+        st.session_state.lat, 
+        st.session_state.lon, 
+        st.session_state.danger_v, 
+        tuple(st.session_state.sel_dirs), 
+        design_params, 
+        now_naive  # ここで調整
+    )
+
+    if img_b64:
+        # (アイコン表示ロジックなどは維持)
+        dpi = CONFIG.get("DPI", 200)
+        display_width_px = int(design_params.get("width", 15) * dpi)
+        
+        # もし generate_weather_icons_html があれば呼び出す
+        if 'generate_weather_icons_html' in globals():
+            icons_html = generate_weather_icons_html(df_from_graph, ratio_info, display_width_px, start_idx)
+            st.markdown(icons_html, unsafe_allow_html=True)
+            
+        st.markdown(f'<img src="data:image/png;base64,{img_b64}" style="width:100%;">', unsafe_allow_html=True)
+        
 # ======================================================================================
 # 100. メイン処理
 # ======================================================================================
