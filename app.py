@@ -379,39 +379,37 @@ def render_tide_curve_chart(ax, df):
     ax.set_yticks([])
 
 # ======================================================================================
-# 12. 高解像度グラフ画像を生成するサブルーチン（正規版 1130 コンプリート版準拠）
+# 12. 高解像度グラフ画像を生成するサブルーチン
 # ======================================================================================
 @st.cache_data(show_spinner="グラフを生成中...", ttl=600)
 def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_params, now_jst):
     """
-    正規版の8日間（195行）表示ロジックを完全再現。
-    パディングを含めた精密な座標計算を行い、高密度なグラフを生成する。
+    指定されたパラメータに基づき、高解像度の気象グラフ画像を生成してBase64形式で返す。
+    データの抽出範囲をパディングを含めて厳密に定義し、HTML配置用の比率を正確に算出する。
     """
     import pandas as pd
     import io
     import base64
     from datetime import timedelta
 
-    # 正規版仕様：9日分のデータを取得し、195行（8日+3h）を切り出す
     df_raw = fetch_weather_data(lat, lon, 9)
     if df_raw is None: return None, (0, 0), 0, None
     
-    # 描画開始基準：現在時刻の直前の3の倍数時
+    # 描画開始（グラフ左端）は現在時刻の直前の3の倍数時
     display_start_time = now_jst.replace(hour=(now_jst.hour // 3) * 3, minute=0, second=0, microsecond=0)
-    # パディング開始：その3時間前
+    # パディング開始はその3時間前
     padding_start_time = display_start_time - timedelta(hours=3)
     
-    # 型合わせ（naive化）を行い、正規版の抽出ロジックを実行
-    padding_start_naive = padding_start_time.replace(tzinfo=None)
-    df = df_raw[df_raw['time'] >= padding_start_naive].copy().reset_index(drop=True)
+    # データを切り出し、インデックスを 0 から振り直す
+    # これにより i=3 が必ず display_start_time になる（左端の空白を確保）
+    df = df_raw[df_raw['time'] >= padding_start_time].copy().reset_index(drop=True)
     
-    # 正規版の固定長：195行（3時間パディング + 192時間/8日分）
+    # 表示期間を 192時間(8日) + パディング3時間 = 195行に固定
     df = df.head(195)
     
-    # アイコン描画開始インデックス（パディングの次）
+    # アイコン同期用：パディングを含めたこの構造では、描画開始インデックスは 3
     start_idx = 3
     
-    # 風データ処理
     df = process_wind_data(df, list(selected_dirs_tuple))
     
     active_plots = []
@@ -428,7 +426,6 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
     fig_h = design_params.get("height", CONFIG["GRAPH_HIGHT"])
     dpi_value = design_params.get("graph_dpi", CONFIG.get("DPI", 200))
     
-    # グラフ描画
     fig, axes = plt.subplots(len(active_plots), 1, figsize=(fig_w, fig_h), dpi=dpi_value, 
                              gridspec_kw={'height_ratios': current_ratios})
     
@@ -450,11 +447,10 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
     for ax in axes:
         apply_common_axis_settings(ax, df, formatter, now_jst, design_params)
 
-    # ミリ単位の余白調整（正規版の設定）
     plt.subplots_adjust(left=0.05, right=0.95, top=0.95, bottom=0.15,
                         hspace=design_params.get("hspace", CONFIG["HSPACE"]))
 
-    # アイコン配置のための物理比率計算
+    # 比率計算: 全データ区間(len(df)-1)に対する1時間幅
     pos = axes[0].get_position() 
     ratio_info = (pos.x0, pos.width / (len(df) - 1))
     
@@ -463,7 +459,6 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
     plt.close(fig) 
     
     return base64.b64encode(buf.getvalue()).decode(), ratio_info, start_idx, df
-    
 # ======================================================================================
 # 13. お天気アイコンのHTMLを生成するサブルーチン
 # ======================================================================================
