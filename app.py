@@ -960,7 +960,7 @@ def render_header_info(current_basho_name):
 # ======================================================================================
 # 93. 【main機能分離】⑤グラフ描画エリアモジュール
 # ======================================================================================
-def  render_graph_area_module(danger_v, sel_dirs, now_jst):
+def  render_graph_area_module(danger_v, sel_dirs, design_params, now_jst):
     # ---グラフ生成（サブルーチン12の戻り値4つ：img, ratio, idx, df） ---
     img_b64, ratio_info, start_idx, df_from_graph = generate_high_res_graph(
         st.session_state.lat, 
