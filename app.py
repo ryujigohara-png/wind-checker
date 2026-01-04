@@ -816,21 +816,43 @@ def render_graph_area_module(now_jst):
         "ratios": st.session_state.get("ratios", CONFIG["DEFAULT_RATIOS"])
     }
 
+
+    # --- 4. グラフ生成（サブルーチン12の戻り値4つ：img, ratio, idx, df） ---
+    # 右辺の戻り値の定義 [base64, ratio_info, start_idx, df] に厳密に合わせます
     img_b64, ratio_info, start_idx, df_from_graph = generate_high_res_graph(
         st.session_state.lat, 
         st.session_state.lon, 
-        st.session_state.danger_v, 
-        tuple(st.session_state.sel_dirs), 
+        danger_v, 
+        tuple(sel_dirs), 
         design_params, 
         now_jst
     )
-
+    
+    # --- 5. アイコン・グラフ描画 ---
     if img_b64:
-        dpi = CONFIG.get("DPI", 200)
-        display_width_px = int(design_params.get("width", 15) * dpi)
-        icons_html = generate_weather_icons_html(df_from_graph, ratio_info, display_width_px, start_idx)
-        st.markdown(icons_html, unsafe_allow_html=True)
-        st.markdown(f'<img src="data:image/png;base64,{img_b64}" style="width:100%;">', unsafe_allow_html=True)
+        # サブルーチン12から返された df_from_graph をそのまま使用します
+        dpi = design_params.get("graph_dpi", CONFIG.get("DPI", 200))
+        display_width = int(design_params.get("width", CONFIG["GRAPH_WIDTH"]) * dpi)
+        
+        # アイコンHTML生成（ここで df_from_graph を使用）
+        icons_html = generate_weather_icons_html(
+            df_from_graph, 
+            ratio_info, 
+            display_width, 
+            start_idx, 
+            design_params.get("icon_margin", 0)
+        )
+        
+        graph_html = f'<img src="data:image/png;base64,{img_b64}" style="width: 100%; display: block;">'
+        
+        # スクロールコンテナ内に描画
+        st.markdown(
+            f'<div class="scroll-container">'
+            f'<div style="width: {display_width}px; min-width: {design_params.get("min_container_width", 800)}px;">'
+            f'{icons_html}{graph_html}'
+            f'</div></div>', 
+            unsafe_allow_html=True
+        )
 
 # ======================================================================================
 # 17. グラフ表示設定を詳細ダイアログで一括変更するサブルーチン（正規版表現・完全復旧）
