@@ -801,20 +801,6 @@ def render_update_control_module():
 # 24. 【main機能分離】⑤グラフ描画エリアモジュール
 # ======================================================================================
 def render_graph_area_module(danger_v, now_jst):
-    design_params = {
-        "show_wind": st.session_state.show_wind,
-        "show_temp": st.session_state.show_temp,
-        "show_tide": st.session_state.show_tide,
-        "width": st.session_state.width,
-        "height": st.session_state.base_height,
-        "base_font_size": st.session_state.base_font_size,
-        "label_font_size": st.session_state.label_font_size,
-        "label_pad": st.session_state.get("label_pad", CONFIG["LABEL_PAD"]),
-        "hspace": st.session_state.get("hspace", CONFIG["HSPACE"]),
-        "show_w_text": st.session_state.get("show_w_text", CONFIG["SHOW_W_TEXT"]),
-        "show_dir_name": st.session_state.get("show_dir_name", CONFIG["SHOW_DIR_NAME"]),
-        "ratios": st.session_state.get("ratios", CONFIG["DEFAULT_RATIOS"])
-    }
 
 
     # --- 4. グラフ生成（サブルーチン12の戻り値4つ：img, ratio, idx, df） ---
