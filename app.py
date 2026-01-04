@@ -396,26 +396,24 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
     df_raw = fetch_weather_data(lat, lon, 9)
     if df_raw is None: return None, (0, 0), 0, None
     
-    # 【将来の他国展開への対応】
-    # 1. 基準となるタイムゾーンを引数（now_jst）から取得
-    current_tz = now_jst.tzinfo
+    # 【重要：型不一致エラーの回避と多国展開への対応】
+    # Streamlitのキャッシュ経由で渡される now_jst と、Pandasが保持するタイムゾーン型が
+    # 厳密に一致しない場合があるため、比較時のみタイムゾーンを無視（Naive化）します。
+    # これにより、どの国の時刻であっても「数値としての時刻」で正確に切り出しが行えます。
     
-    # 2. 描画開始時間を計算（3の倍数時）
-    # タイムゾーンを維持したまま時間を操作
-    display_start_time = now_jst.replace(hour=(now_jst.hour // 3) * 3, minute=0, second=0, microsecond=0)
+    # 1. 比較用の基準時刻（タイムゾーン情報除去）
+    now_naive = now_jst.replace(tzinfo=None)
     
-    # 3. パディング開始時間を計算
-    # display_start_time (タイムゾーン付き) からの減算なので、結果もタイムゾーンを保持
-    padding_start_time = display_start_time - timedelta(hours=3)
+    # 2. 描画開始（グラフ左端）は現在時刻の直前の3の倍数時
+    display_start_time_naive = now_naive.replace(hour=(now_naive.hour // 3) * 3, minute=0, second=0, microsecond=0)
     
-    # 【重要】もし padding_start_time のタイムゾーンが消失している場合に備え、
-    # 明示的に current_tz を適用して型を確定させます
-    if padding_start_time.tzinfo is None:
-        padding_start_time = padding_start_time.replace(tzinfo=current_tz)
+    # 3. パディング開始はその3時間前
+    padding_start_time_naive = display_start_time_naive - timedelta(hours=3)
     
-    # データを切り出し、インデックスを 0 から振り直す
-    # df_raw['time'] と padding_start_time の型が確実に一致するため、TypeErrorを回避できます
-    df = df_raw[df_raw['time'] >= padding_start_time].copy().reset_index(drop=True)
+    # 4. データ側のタイムゾーンも比較時のみ無視して抽出
+    # df_rawそのものは変更せず、一時的な temp_time で比較を行います
+    temp_time = df_raw['time'].dt.tz_localize(None)
+    df = df_raw[temp_time >= padding_start_time_naive].copy().reset_index(drop=True)
     
     # 表示期間を 192時間(8日) + パディング3時間 = 195行に固定
     df = df.head(195)
@@ -458,6 +456,7 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
         idx += 1
 
     for ax in axes:
+        # 共通設定には元のタイムゾーン付き now_jst を渡し、現在時刻線の位置や書式を正しく制御します
         apply_common_axis_settings(ax, df, formatter, now_jst, design_params)
 
     plt.subplots_adjust(left=0.05, right=0.95, top=0.95, bottom=0.15,
