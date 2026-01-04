@@ -1034,7 +1034,7 @@ def main():
     render_map_module()
     render_current_location_module()
     render_update_control_module()
-    render_graph_area_module(now_jst)
+    render_graph_area_module(danger_v, now_jst)
     if st.session_state.get("is_dev_mode"):
         st.divider()
         st.write("Debug: Session State", st.session_state)
