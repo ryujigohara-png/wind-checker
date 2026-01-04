@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# ベータ版　更新 2026.1.2 0050 （デザイン調整・ブラウザ保存対応）
+# ベータ版　更新 2026.1.2 1130 コンプリート版
 import streamlit as st
 import requests
 import pandas as pd
@@ -384,106 +384,116 @@ def render_tide_curve_chart(ax, df):
 @st.cache_data(show_spinner="グラフを生成中...", ttl=600)
 def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_params, now_jst):
     """
-    日付の色分けロジックを維持しつつ、抽出したdf内での正確な開始位置を特定し、
-    内部の描画ルーチンおよび外部のアイコン生成へ引き渡す。
+    指定されたパラメータに基づき、高解像度の気象グラフ画像を生成してBase64形式で返す。
+    データの抽出範囲をパディングを含めて厳密に定義し、HTML配置用の比率を正確に算出する。
     """
+    import pandas as pd
+    import io
+    import base64
+    from datetime import timedelta
+
     df_raw = fetch_weather_data(lat, lon, 9)
-    if df_raw is None: return None, (0, 0), 0
+    if df_raw is None: return None, (0, 0), 0, None
     
-    # 1. 安定した時刻抽出ロジック（変更禁止）
+    # 描画開始（グラフ左端）は現在時刻の直前の3の倍数時
     display_start_time = now_jst.replace(hour=(now_jst.hour // 3) * 3, minute=0, second=0, microsecond=0)
+    # パディング開始はその3時間前
     padding_start_time = display_start_time - timedelta(hours=3)
+    
+    # データを切り出し、インデックスを 0 から振り直す
+    # これにより i=3 が必ず display_start_time になる（左端の空白を確保）
     df = df_raw[df_raw['time'] >= padding_start_time].copy().reset_index(drop=True)
+    
+    # 表示期間を 192時間(8日) + パディング3時間 = 195行に固定
     df = df.head(195)
     
-    # 2. 【核心】dfの中での「表示上の起点」を動的に特定
-    # 3時間パディングがある場合は 3 になり、データ欠落時はその時点の先頭(0)になります。
-    # これにより render_wind_bar_chart 内部の (i - 3) 等の計算と同期します。
-    match_indices = df.index[df['time'] == display_start_time].tolist()
-    start_idx = match_indices[0] if match_indices else 0
+    # アイコン同期用：パディングを含めたこの構造では、描画開始インデックスは 3
+    start_idx = 3
     
-    # 3. 風向・風速処理
     df = process_wind_data(df, list(selected_dirs_tuple))
     
-    # 4. 描画コンテキストの設定
     active_plots = []
     if design_params.get("show_wind", True): active_plots.append("wind")
     if design_params.get("show_temp", True): active_plots.append("temp")
     if design_params.get("show_tide", True): active_plots.append("tide")
-    if not active_plots: return None, (0, 0), start_idx
     
-    ratios = design_params.get("ratios", CONFIG.get("DEFAULT_RATIOS", [1,1,1]))
+    if not active_plots: return None, (0, 0), start_idx, df
+    
+    ratios = design_params.get("ratios", CONFIG["DEFAULT_RATIOS"])
     current_ratios = [ratios[i] for i, p in enumerate(["wind", "temp", "tide"]) if p in active_plots]
     
-    fig_w, fig_h = design_params.get("width", 15), design_params.get("height", 2.0)
-    dpi_value = design_params.get("graph_dpi", 200)
+    fig_w = design_params.get("width", CONFIG["GRAPH_WIDTH"])
+    fig_h = design_params.get("height", CONFIG["GRAPH_HIGHT"])
+    dpi_value = design_params.get("graph_dpi", CONFIG.get("DPI", 200))
     
     fig, axes = plt.subplots(len(active_plots), 1, figsize=(fig_w, fig_h), dpi=dpi_value, 
                              gridspec_kw={'height_ratios': current_ratios})
+    
     if len(active_plots) == 1: axes = [axes]
     
-    # 5. 各チャートのレンダリング
+    formatter = get_x_axis_formatter()
+    
     idx = 0
     if "wind" in active_plots:
-        render_wind_bar_chart(axes[idx], df, danger_v, 3, design_params)
+        render_wind_bar_chart(axes[idx], df, danger_v, start_idx, design_params)
         idx += 1
-    if "temp" in active_plots and idx < len(axes):
+    if "temp" in active_plots:
         render_temp_line_chart(axes[idx], df)
         idx += 1
-    if "tide" in active_plots and idx < len(axes):
+    if "tide" in active_plots:
         render_tide_curve_chart(axes[idx], df)
+        idx += 1
 
-    # 6. 共通軸設定
     for ax in axes:
-        apply_common_axis_settings(ax, df, get_x_axis_formatter(), now_jst, design_params)
+        apply_common_axis_settings(ax, df, formatter, now_jst, design_params)
 
-    plt.subplots_adjust(left=0.05, right=0.95, top=0.95, bottom=0.15, hspace=design_params.get("hspace", 0.3))
-    
-    # 7. 比率計算（アイコン配置用）
+    plt.subplots_adjust(left=0.05, right=0.95, top=0.95, bottom=0.15,
+                        hspace=design_params.get("hspace", CONFIG["HSPACE"]))
+
+    # 比率計算: 全データ区間(len(df)-1)に対する1時間幅
     pos = axes[0].get_position() 
-    ratio_info = (pos.x0, pos.width / 192.0)
+    ratio_info = (pos.x0, pos.width / (len(df) - 1))
     
     buf = io.BytesIO()
     fig.savefig(buf, format="png", bbox_inches=None, pad_inches=0, dpi=dpi_value)
     plt.close(fig) 
     
-    # 8. 画像、比率、そして特定した正確な start_idx を返す
-    return base64.b64encode(buf.getvalue()).decode(), ratio_info, int(start_idx)
+    return base64.b64encode(buf.getvalue()).decode(), ratio_info, start_idx, df
     
 # ======================================================================================
 # 13. お天気アイコンのHTMLを生成するサブルーチン
 # ======================================================================================
 def generate_weather_icons_html(df, ratio_info, display_width, start_idx, icon_margin=0):
     """
-    1時間1行のデータ構造を利用し、start_idxから3行(3時間)おきに
-    物理的な描画pxを算出してアイコンを配置する。
+    12番で生成されたdfと物理座標情報を元に、正確な位置へ天気アイコンを配置する。
+    見出し「天気」の位置をグラフ内の「降水量mm」と垂直に揃える。
     """
+    import pandas as pd
     start_x, hour_w = ratio_info
     icon_html = ""
     
     l_size_pt = CONFIG.get("LABEL_SIZE", 7)
+    # グラフ内のフォントサイズ(pt)をpx相当に変換
     header_fs_px = l_size_pt * 1.33
     
-    # 「天気」見出しの配置
-    label_pos_x = (start_x * display_width) - 10
+    # 「天気」見出しの配置：start_x（グラフ枠の左端）を基準にする
+    # 12番の ax.text(graph_left_time, ..., ha='right') と揃えるため translateX(-100%) を使用
+    label_pos_x = (start_x * display_width)
     icon_html += f'''
         <div style="position: absolute; left: {label_pos_x}px; top: 22px; 
-                    transform: translateX(-100%); font-size: {header_fs_px}px; 
+                    transform: translateX(-105%); font-size: {header_fs_px}px; 
                     font-family: 'Noto Sans JP', sans-serif; color: #333; z-index: 5; white-space: nowrap;">
             天気
         </div>'''
-    
-    # start_idxから3行飛ばし。末尾を超えないよう range で制御
-    for i in range(start_idx, len(df), 3):
+
+    # 指定された開始位置から3時間おきにアイコンを配置
+    for i in range(int(start_idx), len(df), 3):
         row = df.iloc[i]
         icon = row.get('weather_icon')
         if not icon or pd.isna(icon): continue
         
-        # 物理位置：(左端余白 + 経過時間 * 1時間幅比率) * 全体幅
-        elapsed_hours = i - start_idx
-        if elapsed_hours > 192: break
-        
-        pos_left_px = (start_x + (elapsed_hours * hour_w)) * display_width
+        # 物理位置計算：start_x（0行目の位置）＋ i時間分の幅
+        pos_left_px = (start_x + (i * hour_w)) * display_width
         
         icon_html += f'''
             <div style="position: absolute; left: {pos_left_px}px; top: 10px; 
@@ -492,6 +502,7 @@ def generate_weather_icons_html(df, ratio_info, display_width, start_idx, icon_m
                 {icon}
             </div>'''
     
+    # 最終的なHTMLコンテナ（デバッグ用の高さを35pxに戻す）
     return f'<div style="position: relative; width: {display_width}px; height: 35px; margin-bottom: {icon_margin}px; overflow: visible;">{icon_html}</div>'
     
 #==========================================================================================
@@ -867,8 +878,8 @@ def main():
     
     # ..................................................................... 
 
-    # --- グラフ生成の呼び出し (戻り値に start_idx を追加) ---
-    img_b64, ratio_info, start_idx = generate_high_res_graph(
+    # --- グラフ生成の呼び出し (戻り値に start_idx, df を追加) ---
+    img_b64, ratio_info, start_idx, df_from_graph = generate_high_res_graph(
         st.session_state.lat, st.session_state.lon, danger_v, tuple(sel_dirs), design_params, now_jst
     )
     
@@ -882,11 +893,11 @@ def main():
             icon_margin = design_params.get("icon_margin", 0)
         
             
-            padding_df = pd.DataFrame({'time': [df_for_icons['time'].iloc[0] - timedelta(hours=i) for i in range(1, 4)][::-1]})
-            df_full = pd.concat([padding_df, df_for_icons], ignore_index=True)
+            # padding_df = pd.DataFrame({'time': [df_for_icons['time'].iloc[0] - timedelta(hours=i) for i in range(1, 4)][::-1]})
+            # df_full = pd.concat([padding_df, df_for_icons], ignore_index=True)
             
             icons_html = generate_weather_icons_html(
-                df_full, ratio_info, display_width, start_idx, icon_margin
+                df_from_graph, ratio_info, display_width, start_idx, icon_margin
             )
             
             graph_html = f'<img src="data:image/png;base64,{img_b64}" style="width: {display_width}px; display: block;">'
