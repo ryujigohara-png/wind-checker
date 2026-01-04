@@ -800,7 +800,7 @@ def render_update_control_module():
 # ======================================================================================
 # 24. 【main機能分離】⑤グラフ描画エリアモジュール
 # ======================================================================================
-def render_graph_area_module(now_jst):
+def render_graph_area_module(danger_v, now_jst):
     design_params = {
         "show_wind": st.session_state.show_wind,
         "show_temp": st.session_state.show_temp,
