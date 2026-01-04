@@ -907,7 +907,7 @@ def render_map_module():
 # ======================================================================================
 # 92. 【main機能分離】④グラフ更新・設定モジュール
 # ======================================================================================
-def render_update_control_module():
+def render_update_control_module(basho):
     col1, col2 = st.columns([1, 1])
     with col1:
         handle_current_location_update_integrated()
@@ -1008,9 +1008,9 @@ def main():
     st.title("Wind Checker v2")
     now_jst = datetime.now(timezone(timedelta(hours=9)))
 
-    render_location_selector_module()
+    basho = render_location_selector_module()
     render_map_module()
-    render_update_control_module()
+    render_update_control_module(basho)
     render_graph_area_module(danger_v, sel_dirs, now_jst)
     
     if st.session_state.get("is_dev_mode"):
