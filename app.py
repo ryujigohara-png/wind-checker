@@ -396,18 +396,25 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
     df_raw = fetch_weather_data(lat, lon, 9)
     if df_raw is None: return None, (0, 0), 0, None
     
-    # タイムゾーン情報の取得（他国展開時、now_jstが持つタイムゾーンをそのまま利用する）
-    tz_info = now_jst.tzinfo
+    # 【将来の他国展開への対応】
+    # 1. 基準となるタイムゾーンを引数（now_jst）から取得
+    current_tz = now_jst.tzinfo
     
-    # 描画開始（グラフ左端）は現在時刻の直前の3の倍数時
+    # 2. 描画開始時間を計算（3の倍数時）
+    # タイムゾーンを維持したまま時間を操作
     display_start_time = now_jst.replace(hour=(now_jst.hour // 3) * 3, minute=0, second=0, microsecond=0)
     
-    # パディング開始はその3時間前
-    # display_start_time が tzinfo を持っているため、padding_start_time も自動的にタイムゾーンを持ちます
+    # 3. パディング開始時間を計算
+    # display_start_time (タイムゾーン付き) からの減算なので、結果もタイムゾーンを保持
     padding_start_time = display_start_time - timedelta(hours=3)
     
+    # 【重要】もし padding_start_time のタイムゾーンが消失している場合に備え、
+    # 明示的に current_tz を適用して型を確定させます
+    if padding_start_time.tzinfo is None:
+        padding_start_time = padding_start_time.replace(tzinfo=current_tz)
+    
     # データを切り出し、インデックスを 0 から振り直す
-    # df_raw['time'] と padding_start_time の両方がタイムゾーンを持つため、比較が安全に行えます
+    # df_raw['time'] と padding_start_time の型が確実に一致するため、TypeErrorを回避できます
     df = df_raw[df_raw['time'] >= padding_start_time].copy().reset_index(drop=True)
     
     # 表示期間を 192時間(8日) + パディング3時間 = 195行に固定
