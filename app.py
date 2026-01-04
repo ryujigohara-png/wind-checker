@@ -962,6 +962,44 @@ def show_sidebar_controls():
     return st.session_state.get("danger_v", 10.0), st.session_state.get("sel_dirs", []), design_params
 
 # ======================================================================================
+# 20. グラフの表示高さを一括計算するサブルーチン
+# ======================================================================================
+def calculate_graph_height(base_height, ratios, show_wind, show_temp, show_tide):
+    """
+    各グラフの表示比率と基準縦幅から、最終的なグラフの合計高さを計算する。
+    """
+    # 1. 基本となる比率の合計（風向・風速 + 気温）
+    base_ratio_total = ratios[0] + ratios[1]
+    
+    # 2. 1単位あたりのピクセル高さ
+    fixed_unit_h = base_height / base_ratio_total 
+    
+    # 3. アイコン表示用のマージン（風向きが表示されている時のみ）
+    icon_margin = 0.45 if show_wind else 0.0
+    
+    # 4. 各項目の表示可否に応じた高さの積み上げ
+    auto_height = icon_margin
+    if show_wind:
+        auto_height += ratios[0] * fixed_unit_h
+    if show_temp:
+        auto_height += ratios[1] * fixed_unit_h
+    if show_tide:
+        auto_height += ratios[2] * fixed_unit_h
+        
+    return auto_height
+    
+#==========================================================================================
+# 18. グラフ更新ボタンと日時情報を描画するサブルーチン
+#==========================================================================================
+def render_header_info(current_basho_name):
+    now = datetime.now(timezone(timedelta(hours=9)))
+    date_time_str = now.strftime('%Y/%m/%d %H:%M:%S')
+    update_label = f"🔄 グラフ更新 ({date_time_str})　　        　"
+    if st.button(update_label, use_container_width=True):
+        st.cache_data.clear()
+        st.rerun()
+
+# ======================================================================================
 # 100. メイン処理 (再構築版)
 # ======================================================================================
 def main():
