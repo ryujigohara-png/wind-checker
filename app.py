@@ -509,7 +509,7 @@ def generate_weather_icons_html(df, ratio_info, display_width, start_idx, icon_m
     return f'<div style="position: relative; width: {display_width}px; height: 35px; margin-bottom: {icon_margin}px; overflow: visible;">{icon_html}</div>'
     
 # ==========================================================================================
-# 14. 地図UIをダイアログで表示するサブルーチン (ダイアログ化)
+# 20. 地図UIをダイアログで表示するサブルーチン (ダイアログ化)
 # ==========================================================================================
 @st.dialog("📍 地図で地点を指定")
 def show_location_map_dialog():
@@ -562,7 +562,7 @@ def show_location_map_dialog():
         })
 
 # ==========================================================================================
-# 14_sub. 座標から地名を取得するサブルーチン (fetch_location_name)
+# 20_sub. 座標から地名を取得するサブルーチン (fetch_location_name)
 # ==========================================================================================
 def fetch_location_name(lat, lon):
     """Nominatim APIを使用して緯度経度から地名（市区町村レベル）を取得する"""
@@ -580,7 +580,7 @@ def fetch_location_name(lat, lon):
         return "指定地点"
         
 # ==========================================================================================
-# 15. ブラウザのlocalStorageと設定を同期するサブルーチン
+# 90. ブラウザのlocalStorageと設定を同期するサブルーチン
 # ==========================================================================================
 def sync_all_settings():
     STORAGE_KEY = CONFIG['STORAGE_KEY']
@@ -647,7 +647,7 @@ def sync_all_settings():
             st.session_state.initialized = True
 
 # ==========================================================================================
-# 16. ステート更新・保存・再描画を一本化するサブルーチン (新規追加)
+# 91. ステート更新・保存・再描画を一本化するサブルーチン (新規追加)
 # ==========================================================================================
 def update_state_and_save(updates_dict):
     """
@@ -661,7 +661,7 @@ def update_state_and_save(updates_dict):
     st.rerun()
 
 # ==========================================================================================
-# 16_2. 現在地を取得し、状態を保存するサブルーチン
+# 21. 現在地を取得し、状態を保存するサブルーチン
 # ==========================================================================================
 def handle_current_location_update_integrated():
     if st.button("🔄 📍現在地を取得　　　　　　　　　　", use_container_width=True):
@@ -693,7 +693,7 @@ def handle_current_location_update_integrated():
                 st.rerun()
             
 # ==========================================================================================
-# 16_x. ブラウザへの保存を実行するサブルーチン
+# 92. ブラウザへの保存を実行するサブルーチン
 # ==========================================================================================
 def save_settings_to_browser():
     save_data = {
@@ -727,7 +727,7 @@ def save_settings_to_browser():
     )
 
 # ======================================================================================
-# 20. 地点選択を管理するモジュール（正規版コードを忠実に再現）
+# 30. 地点選択を管理するモジュール（正規版コードを忠実に再現）
 # ======================================================================================
 def render_location_selector_module():
     """
@@ -773,20 +773,20 @@ def render_location_selector_module():
     return basho
     
 # ======================================================================================
-# 21. 【main機能分離】②地図表示モジュール
+# 31. 【main機能分離】②地図表示モジュール
 # ======================================================================================
 def render_map_module():
     if st.button("🗺️ 地図表示", use_container_width=True):
         show_location_map_dialog()
         
 # ======================================================================================
-# 22. 【main機能分離】③現在地取得モジュール
+# 32. 【main機能分離】③現在地取得モジュール
 # ======================================================================================
 def render_current_location_module():
     handle_current_location_update_integrated()
 
 # ======================================================================================
-# 23. 【main機能分離】④グラフ更新・設定モジュール
+# 33. 【main機能分離】④グラフ更新・設定モジュール
 # ======================================================================================
 def render_update_control_module():
     col1, col2 = st.columns([1, 1])
@@ -794,13 +794,23 @@ def render_update_control_module():
         if st.button("📊 グラフを最新に更新", use_container_width=True):
             st.rerun()
     with col2:
-        if st.button("⚙️ グラフ表示設定", use_container_width=True):
-            pass
+        render_header_info(current_basho_name)
+
+#==========================================================================================
+# 25. グラフ更新ボタンと日時情報を描画するサブルーチン
+#==========================================================================================
+def render_header_info(current_basho_name):
+    now = datetime.now(timezone(timedelta(hours=9)))
+    date_time_str = now.strftime('%Y/%m/%d %H:%M:%S')
+    update_label = f"🔄 グラフ更新 ({date_time_str})　　        　"
+    if st.button(update_label, use_container_width=True):
+        st.cache_data.clear()
+        st.rerun()
 
 # ======================================================================================
-# 24. 【main機能分離】⑤グラフ描画エリアモジュール
+# 34. 【main機能分離】⑤グラフ描画エリアモジュール
 # ======================================================================================
-def render_graph_area_module(danger_v, now_jst):
+def  render_graph_area_module(danger_v, sel_dirs, now_jst):
 
 
     # --- 4. グラフ生成（サブルーチン12の戻り値4つ：img, ratio, idx, df） ---
@@ -841,7 +851,7 @@ def render_graph_area_module(danger_v, now_jst):
         )
 
 # ======================================================================================
-# 17. グラフ表示設定を詳細ダイアログで一括変更するサブルーチン（正規版表現・完全復旧）
+# 40. グラフ表示設定を詳細ダイアログで一括変更するサブルーチン（正規版表現・完全復旧）
 # ======================================================================================
 @st.dialog("グラフ表示設定の詳細")
 def show_settings_dialog():
@@ -930,7 +940,7 @@ def show_settings_dialog():
         st.rerun()
 
 # ======================================================================================
-# 17. サイドバー、パラメータ設定
+# 41. サイドバー、パラメータ設定
 # ======================================================================================
 def show_sidebar_controls():
     """
@@ -970,7 +980,7 @@ def show_sidebar_controls():
     return st.session_state.get("danger_v", 10.0), st.session_state.get("sel_dirs", []), design_params
 
 # ======================================================================================
-# 20. グラフの表示高さを一括計算するサブルーチン
+# 42. グラフの表示高さを一括計算するサブルーチン
 # ======================================================================================
 def calculate_graph_height(base_height, ratios, show_wind, show_temp, show_tide):
     """
@@ -996,17 +1006,6 @@ def calculate_graph_height(base_height, ratios, show_wind, show_temp, show_tide)
         
     return auto_height
     
-#==========================================================================================
-# 18. グラフ更新ボタンと日時情報を描画するサブルーチン
-#==========================================================================================
-def render_header_info(current_basho_name):
-    now = datetime.now(timezone(timedelta(hours=9)))
-    date_time_str = now.strftime('%Y/%m/%d %H:%M:%S')
-    update_label = f"🔄 グラフ更新 ({date_time_str})　　        　"
-    if st.button(update_label, use_container_width=True):
-        st.cache_data.clear()
-        st.rerun()
-
 # ======================================================================================
 # 100. メイン処理 (再構築版)
 # ======================================================================================
@@ -1020,7 +1019,7 @@ def main():
     render_map_module()
     render_current_location_module()
     render_update_control_module()
-    render_graph_area_module(danger_v, now_jst)
+    render_graph_area_module(danger_v, sel_dirs, now_jst)
     if st.session_state.get("is_dev_mode"):
         st.divider()
         st.write("Debug: Session State", st.session_state)
