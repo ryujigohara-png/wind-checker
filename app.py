@@ -1011,7 +1011,7 @@ def main():
     basho = render_location_selector_module()
     render_map_module()
     render_update_control_module(basho)
-    render_graph_area_module(danger_v, sel_dirs, now_jst)
+    render_graph_area_module(danger_v, sel_dirs, design_params, now_jst)
     
     if st.session_state.get("is_dev_mode"):
         st.divider()
