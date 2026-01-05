@@ -98,15 +98,18 @@ def fetch_weather_data(lat, lon, days):
     Open-Meteo APIから気象データを取得し、詳細な天気アイコンを割り当てる。
     timezone=auto を指定することで、世界各地の現地時間軸でデータを取得する。
     """
-    # timezone を Asia/Tokyo から auto に変更
+    import requests
+    import pandas as pd
+    
+    # timezone=auto に変更。これでAPIが緯度経度から現地の時間を判断します。
     url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&hourly=temperature_2m,wind_speed_10m,wind_direction_10m,weather_code,precipitation&timezone=auto&wind_speed_unit=ms&forecast_days={days}"
+    
     try:
         data = requests.get(url).json()
         df = pd.DataFrame(data["hourly"])
         
-        # APIが timezone=auto の場合、ISO8601形式でタイムゾーン情報を含めて返すため
-        # utc=True で読み込んだ後、データの持つタイムゾーンに変換する
-        df['time'] = pd.to_datetime(df['time'])
+        # APIが返す時間文字列を、タイムゾーンを保持したまま変換します。
+        df['time'] = pd.to_datetime(df['time'])        
         
         def get_icon(code):
             # 0: 晴天, 1-3: 晴れ時々曇り
@@ -229,12 +232,35 @@ def get_x_axis_formatter():
             return dt.strftime('%H') + '\n '
     return formatter
     
-#==========================================================================================
+# ======================================================================================
 # 8. グラフの共通軸設定を適用するサブルーチン
-#==========================================================================================
+# ======================================================================================
 def apply_common_axis_settings(ax, df, formatter, now_jst, design_params):
-    # ② 現在時刻ラインの太さを半分に変更
-    ax.axvline(now_jst, color='blue', linestyle='-', alpha=0.6, linewidth=CONFIG["VLINE_WIDTH"])
+    """
+    グラフの共通軸設定を適用し、現在時刻の青いラインを引く。
+    データのタイムゾーン設定を動的に判別し、ラインの描画位置を正確に同期させる。
+    """
+    import matplotlib.dates as mdates
+    import matplotlib.pyplot as plt
+    
+    # --- 現在時刻ラインの同期処理 ---
+    # データ側（df['time']）のタイムゾーン情報を取得
+    data_tz = df['time'].dt.tz
+    
+    # now_jstをデータ側のタイムゾーンに変換
+    now_localized = now_jst.astimezone(data_tz)
+    
+    # Matplotlibの軸が「タイムゾーンなし」として扱われる場合（APIレスポンスの仕様による）に備え、
+    # 型を完全に一致させる
+    if data_tz is None:
+        draw_now = now_localized.replace(tzinfo=None)
+    else:
+        draw_now = now_localized
+
+    # 現在時刻ラインを描画（draw_now を使用することで位置ズレを解消）
+    ax.axvline(draw_now, color='blue', linestyle='-', alpha=0.6, linewidth=CONFIG["VLINE_WIDTH"])
+    
+    # 軸の基本設定
     ax.xaxis.set_major_locator(mdates.HourLocator(byhour=range(0, 24, 3)))
     ax.xaxis.set_major_formatter(plt.FuncFormatter(formatter))
     ax.xaxis.set_minor_locator(mdates.HourLocator(interval=1))
@@ -248,13 +274,13 @@ def apply_common_axis_settings(ax, df, formatter, now_jst, design_params):
     ax.tick_params(axis='x', which='major', labelsize=l_size, pad=l_pad)
     ax.tick_params(axis='y', labelsize=l_size)
 
-    # --- 曜日の色分け設定（平日: 青, 土日: 赤） ---
+    # 曜日の色分け設定（平日: 青, 土日: 赤）
     fig = ax.figure
-    fig.canvas.draw()  # ラベルを確定させるために一度描画計算を行う
+    fig.canvas.draw()
     labels = ax.get_xticklabels()
     for label in labels:
         text = label.get_text()
-        if '(' in text:  # 曜日が含まれるラベル（0時）を特定
+        if '(' in text:
             if '土' in text or '日' in text:
                 label.set_color('red')
             else:
