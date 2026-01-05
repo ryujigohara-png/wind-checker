@@ -62,14 +62,16 @@ CONFIG = {
     "SLIDER_WIDTH": {"min": 13.0, "max": 30.0, "step": 1.0},
     "SLIDER_HEIGHT": {"min": 1.5, "max": 5.0, "step": 0.5},
     "SLIDER_FONT": {"min": 6, "max": 14, "step": 1},
-    "LOCATION_MASTER": {
+"LOCATION_MASTER": {
         "高須沖(鹿児島県)": (31.337, 130.795), 
         "柏原沖(鹿児島県)": (31.380, 131.020), 
         "垂水港(鹿児島県)": (31.478, 130.668), 
         "海潟(鹿児島県)": (31.539, 130.706), 
         "磯海岸沖(鹿児島県)": (31.614, 130.577), 
         "江口浜沖(鹿児島県)": (31.643, 130.322),
-        "錦江湾(鹿児島県)": (31.590, 130.600)
+        "錦江湾(鹿児島県)": (31.590, 130.600),
+        "ニューヨーク(米国)": (40.7128, -74.0060),
+        "ロンドン(英国)": (51.5074, -0.1278)
     }
 }
 
@@ -387,7 +389,7 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
     """
     指定されたパラメータに基づき、高解像度の気象グラフ画像を生成してBase64形式で返す。
     データの抽出範囲をパディングを含めて厳密に定義し、HTML配置用の比率を正確に算出する。
-    世界展開を見据え、データ側のタイムゾーンに現在時刻を同期させて描画する。
+    世界展開を見据え、グラフを描画する地点（気象データ）の現地時間に現在時刻を完全同期させる。
     """
     import pandas as pd
     import io
@@ -398,17 +400,20 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
     df_raw = fetch_weather_data(lat, lon, 9)
     if df_raw is None: return None, (0, 0), 0, None
     
-    # 【世界展開対応：タイムゾーン同期ロジック】
-    # データ側（df_raw['time']）のタイムゾーン情報を取得し、now_jstをその地点の時刻に変換する
-    # これにより、どの国の座標であっても「その場所の今」に青いラインが引かれる
+    # 【世界展開対応：地点時刻同期ロジック】
+    # データ側（df_raw['time']）が持っている現地のタイムゾーンを取得。
+    # 日本なら JST、海外ならその地点の現地時間が自動的に適用される。
     target_tz = df_raw['time'].dt.tz
+    
+    # システム時刻（now_jst）をデータ側のタイムゾーンに変換。
+    # これにより、青いラインの基準となる時刻が「現地の今」に一致する。
     now_localized = now_jst.astimezone(target_tz)
     
     # 2. 比較・切り出し用の基準時刻（計算の安全のため一時的にタイムゾーンを無視）
     now_naive = now_localized.replace(tzinfo=None)
     temp_time = df_raw['time'].dt.tz_localize(None)
     
-    # 3. 描画開始（グラフ左端）は現在時刻の直前の3の倍数時
+    # 3. 描画開始（グラフ左端）は現在時刻（現地）の直前の3の倍数時
     display_start_time_naive = now_naive.replace(hour=(now_naive.hour // 3) * 3, minute=0, second=0, microsecond=0)
     
     # 4. パディング開始はその3時間前
@@ -458,7 +463,7 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
         idx += 1
 
     for ax in axes:
-        # 共通設定にはデータと完全に同期した now_localized を渡し、青いラインを確実に描画
+        # 地点同期された now_localized を渡し、青ラインを正確な現地時間に描画。
         apply_common_axis_settings(ax, df, formatter, now_localized, design_params)
 
     plt.subplots_adjust(left=0.05, right=0.95, top=0.95, bottom=0.15,
@@ -1005,13 +1010,27 @@ def handle_current_location_update_integrated():
                 st.session_state.waiting_loc = False
                 st.rerun()
 
-#==========================================================================================
+# ======================================================================================
 # 94_2. グラフ更新ボタンと日時情報を描画するサブルーチン
-#==========================================================================================
+# ======================================================================================
 def render_header_info(current_basho_name):
-    now = datetime.now(timezone(timedelta(hours=9)))
+    """
+    グラフ更新ボタンと日時情報を描画する。
+    世界展開に対応し、選択された地点のタイムゾーンに基づいた時刻を表示する。
+    """
+    # 1. データのキャッシュから現在のタイムゾーンを取得（fetch_weather_dataの戻り値を参照）
+    # 万が一取得できない場合は日本時間をデフォルトとする安全策
+    try:
+        df_tmp = fetch_weather_data(st.session_state.lat, st.session_state.lon, 1)
+        target_tz = df_tmp['time'].dt.tz
+        now = datetime.now(target_tz)
+    except Exception:
+        from datetime import timezone, timedelta
+        now = datetime.now(timezone(timedelta(hours=9)))
+
     date_time_str = now.strftime('%Y/%m/%d %H:%M:%S')
-    update_label = f"🔄 グラフ更新 ({date_time_str})　　        　"
+    update_label = f"🔄 グラフ更新 ({date_time_str})　　                　"
+    
     if st.button(update_label, use_container_width=True):
         st.cache_data.clear()
         st.rerun()
