@@ -90,18 +90,22 @@ def setup_font(font_size=None):
     fm.fontManager.addfont(font_path)
     plt.rc('font', family='Noto Sans JP', size=font_size)
 
-#==========================================================================================
+# ======================================================================================
 # 3. 気象データをAPIから取得するサブルーチン
-#==========================================================================================
+# ======================================================================================
 def fetch_weather_data(lat, lon, days):
     """
     Open-Meteo APIから気象データを取得し、詳細な天気アイコンを割り当てる。
-    WMO Weather interpretation codes (WW) に準拠。降水量データも取得。
+    timezone=auto を指定することで、世界各地の現地時間軸でデータを取得する。
     """
-    url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&hourly=temperature_2m,wind_speed_10m,wind_direction_10m,weather_code,precipitation&timezone=Asia%2FTokyo&wind_speed_unit=ms&forecast_days={days}"
+    # timezone を Asia/Tokyo から auto に変更
+    url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&hourly=temperature_2m,wind_speed_10m,wind_direction_10m,weather_code,precipitation&timezone=auto&wind_speed_unit=ms&forecast_days={days}"
     try:
         data = requests.get(url).json()
         df = pd.DataFrame(data["hourly"])
+        
+        # APIが timezone=auto の場合、ISO8601形式でタイムゾーン情報を含めて返すため
+        # utc=True で読み込んだ後、データの持つタイムゾーンに変換する
         df['time'] = pd.to_datetime(df['time'])
         
         def get_icon(code):
@@ -381,7 +385,7 @@ def render_tide_curve_chart(ax, df):
     ax.set_ylim(-120, 120)
     ax.set_yticks([])
 
-# ======================================================================================
+## ======================================================================================
 # 12. 高解像度グラフ画像を生成するサブルーチン
 # ======================================================================================
 @st.cache_data(show_spinner="グラフを生成中...", ttl=600)
@@ -389,43 +393,31 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
     """
     指定されたパラメータに基づき、高解像度の気象グラフ画像を生成してBase64形式で返す。
     データの抽出範囲をパディングを含めて厳密に定義し、HTML配置用の比率を正確に算出する。
-    世界展開を見据え、グラフを描画する地点（気象データ）の現地時間に現在時刻を完全同期させる。
     """
     import pandas as pd
     import io
     import base64
     from datetime import timedelta
 
-    # 1. データ取得（緯度経度に基づいた現地の気象データを取得）
+    # 1. データ取得（timezone=auto により現地時間の df が返る）
     df_raw = fetch_weather_data(lat, lon, 9)
     if df_raw is None: return None, (0, 0), 0, None
     
-    # 【世界展開対応：地点時刻同期ロジック】
-    # データ側（df_raw['time']）が持っている現地のタイムゾーンを取得。
-    # 日本なら JST、海外ならその地点の現地時間が自動的に適用される。
+    # データが持つ現地のタイムゾーンにシステム時刻を合わせる
     target_tz = df_raw['time'].dt.tz
-    
-    # システム時刻（now_jst）をデータ側のタイムゾーンに変換。
-    # これにより、青いラインの基準となる時刻が「現地の今」に一致する。
     now_localized = now_jst.astimezone(target_tz)
     
-    # 2. 比較・切り出し用の基準時刻（計算の安全のため一時的にタイムゾーンを無視）
+    # 2. 比較・切り出し（内部処理は Naive に統一して安全に行う）
     now_naive = now_localized.replace(tzinfo=None)
     temp_time = df_raw['time'].dt.tz_localize(None)
     
     # 3. 描画開始（グラフ左端）は現在時刻（現地）の直前の3の倍数時
     display_start_time_naive = now_naive.replace(hour=(now_naive.hour // 3) * 3, minute=0, second=0, microsecond=0)
-    
-    # 4. パディング開始はその3時間前
     padding_start_time_naive = display_start_time_naive - timedelta(hours=3)
     
-    # 5. データの切り出し
+    # 4. データの切り出し
     df = df_raw[temp_time >= padding_start_time_naive].copy().reset_index(drop=True)
-    
-    # 表示期間を 192時間(8日) + パディング3時間 = 195行に固定
     df = df.head(195)
-    
-    # アイコン同期用：パディングを含めたこの構造では、描画開始インデックスは 3
     start_idx = 3
     
     df = process_wind_data(df, list(selected_dirs_tuple))
@@ -448,7 +440,6 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
                              gridspec_kw={'height_ratios': current_ratios})
     
     if len(active_plots) == 1: axes = [axes]
-    
     formatter = get_x_axis_formatter()
     
     idx = 0
@@ -463,13 +454,12 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
         idx += 1
 
     for ax in axes:
-        # 地点同期された now_localized を渡し、青ラインを正確な現地時間に描画。
+        # グラフの軸の型に合わせて now_localized を渡し、青いラインを描画
         apply_common_axis_settings(ax, df, formatter, now_localized, design_params)
 
     plt.subplots_adjust(left=0.05, right=0.95, top=0.95, bottom=0.15,
                         hspace=design_params.get("hspace", CONFIG["HSPACE"]))
 
-    # 比率計算: 全データ区間(len(df)-1)に対する1時間幅
     pos = axes[0].get_position() 
     ratio_info = (pos.x0, pos.width / (len(df) - 1))
     
