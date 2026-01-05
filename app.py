@@ -696,9 +696,7 @@ def show_sidebar_controls():
         st.session_state.get("ratios", CONFIG["DEFAULT_RATIOS"]),
         st.session_state.get("show_wind", True),
         st.session_state.get("show_temp", True),
-        st.session_state.get("show_tide", True),
-        st.session_state.get("show_w_text", True),
-        st.session_state.get("show_dir_name", True)
+        st.session_state.get("show_tide", False)
     )
 
     design_params = {
