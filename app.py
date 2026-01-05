@@ -655,10 +655,10 @@ def show_settings_dialog():
         # 非開発者モード時は現在の値を引き継ぐ
         d_min_w = st.session_state.get("min_container_width", 2500)
         d_dpi = st.session_state.get("graph_dpi", 200)
-        d_show_w_text = st.session_state.get("show_w_text", CONFIG["SHOW_W_TEXT"])
-        d_show_dir_name = st.session_state.get("show_dir_name", CONFIG["SHOW_DIR_NAME"])
-        # d_hspace = st.session_state.get("hspace", CONFIG["HSPACE"])
-        # d_label_pad = st.session_state.get("label_pad", CONFIG["LABEL_PAD"])
+        # d_show_w_text = st.session_state.get("show_w_text", CONFIG["SHOW_W_TEXT"])
+        # d_show_dir_name = st.session_state.get("show_dir_name", CONFIG["SHOW_DIR_NAME"])
+        d_hspace = st.session_state.get("hspace", CONFIG["HSPACE"])
+        d_label_pad = st.session_state.get("label_pad", CONFIG["LABEL_PAD"])
         d_precip_y = st.session_state.get("precip_y", 1.0)
         d_icon_margin = st.session_state.get("icon_margin", 10)
         d_ratios = st.session_state.get("ratios", CONFIG["DEFAULT_RATIOS"])
@@ -697,6 +697,8 @@ def show_sidebar_controls():
         st.session_state.get("show_wind", True),
         st.session_state.get("show_temp", True),
         st.session_state.get("show_tide", True)
+        st.session_state.get("show_w_text", True),
+        st.session_state.get("show_dir_name", True)
     )
 
     design_params = {
