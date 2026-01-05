@@ -773,7 +773,56 @@ def calculate_graph_height(base_height, ratios, show_wind, show_temp, show_tide)
     return auto_height
 
 # ==========================================================================================
-# 80. ブラウザのlocalStorageと設定を同期するサブルーチン
+# 81. ステート更新・保存・再描画を一本化するサブルーチン (新規追加)
+# ==========================================================================================
+def update_state_and_save(updates_dict):
+    """
+    引数 updates_dict に基づき st.session_state を更新し、
+    LocalStorageへ即座に書き出し、st.rerun() を実行する。
+    """
+    for key, value in updates_dict.items():
+        st.session_state[key] = value
+    save_settings_to_browser()
+    time.sleep(0.1)
+    st.rerun()
+
+            
+# ==========================================================================================
+# 82. ブラウザへの保存を実行するサブルーチン
+# ==========================================================================================
+def save_settings_to_browser():
+    save_data = {
+        "lat": st.session_state.lat,
+        "lon": st.session_state.lon,
+        "basho": st.session_state.last_basho,
+        "show_wind": st.session_state.show_wind,
+        "show_temp": st.session_state.show_temp,
+        "show_tide": st.session_state.show_tide,
+        "width": st.session_state.width,
+        "base_height": st.session_state.base_height,
+        "base_font_size": st.session_state.base_font_size,
+        "label_font_size": st.session_state.label_font_size,
+        "danger_v": st.session_state.danger_v,
+        "sel_dirs": st.session_state.sel_dirs,
+        "is_dev_mode": st.session_state.get("is_dev_mode", False),
+        "label_pad": st.session_state.get("label_pad", CONFIG["LABEL_PAD"]),
+        "hspace": st.session_state.get("hspace", CONFIG["HSPACE"]),
+        "show_w_text": st.session_state.get("show_w_text", CONFIG["SHOW_W_TEXT"]),
+        "show_dir_name": st.session_state.get("show_dir_name", CONFIG["SHOW_DIR_NAME"]),
+        "ratios": st.session_state.get("ratios", CONFIG["DEFAULT_RATIOS"]),
+        "location_master": st.session_state.get("LOCATION_MASTER", []),
+        "map_lat": st.session_state.get("map_lat", st.session_state.lat),
+        "map_lon": st.session_state.get("map_lon", st.session_state.lon),
+        "temp_label": st.session_state.get("temp_label", None)
+    }
+    json_data = json.dumps(save_data, ensure_ascii=False)
+    components.html(
+        f"""<script>localStorage.setItem("{CONFIG['STORAGE_KEY']}", '{json_data}');</script>""",
+        height=0,
+    )
+
+# ==========================================================================================
+# 90. ブラウザのlocalStorageと設定を同期するサブルーチン
 # ==========================================================================================
 def sync_all_settings():
     STORAGE_KEY = CONFIG['STORAGE_KEY']
@@ -839,57 +888,28 @@ def sync_all_settings():
         except Exception:
             st.session_state.initialized = True
 
-# ==========================================================================================
-# 81. ステート更新・保存・再描画を一本化するサブルーチン (新規追加)
-# ==========================================================================================
-def update_state_and_save(updates_dict):
+# ======================================================================================
+# 91. アプリ全体の共通スタイルを定義するサブルーチン
+# ======================================================================================
+def render_custom_css():
     """
-    引数 updates_dict に基づき st.session_state を更新し、
-    LocalStorageへ即座に書き出し、st.rerun() を実行する。
+    アプリ全体のCSSスタイルを定義する。
+    正規版で定義されていたスクロールコンテナ等のスタイルを管理。
     """
-    for key, value in updates_dict.items():
-        st.session_state[key] = value
-    save_settings_to_browser()
-    time.sleep(0.1)
-    st.rerun()
-
-            
-# ==========================================================================================
-# 82. ブラウザへの保存を実行するサブルーチン
-# ==========================================================================================
-def save_settings_to_browser():
-    save_data = {
-        "lat": st.session_state.lat,
-        "lon": st.session_state.lon,
-        "basho": st.session_state.last_basho,
-        "show_wind": st.session_state.show_wind,
-        "show_temp": st.session_state.show_temp,
-        "show_tide": st.session_state.show_tide,
-        "width": st.session_state.width,
-        "base_height": st.session_state.base_height,
-        "base_font_size": st.session_state.base_font_size,
-        "label_font_size": st.session_state.label_font_size,
-        "danger_v": st.session_state.danger_v,
-        "sel_dirs": st.session_state.sel_dirs,
-        "is_dev_mode": st.session_state.get("is_dev_mode", False),
-        "label_pad": st.session_state.get("label_pad", CONFIG["LABEL_PAD"]),
-        "hspace": st.session_state.get("hspace", CONFIG["HSPACE"]),
-        "show_w_text": st.session_state.get("show_w_text", CONFIG["SHOW_W_TEXT"]),
-        "show_dir_name": st.session_state.get("show_dir_name", CONFIG["SHOW_DIR_NAME"]),
-        "ratios": st.session_state.get("ratios", CONFIG["DEFAULT_RATIOS"]),
-        "location_master": st.session_state.get("LOCATION_MASTER", []),
-        "map_lat": st.session_state.get("map_lat", st.session_state.lat),
-        "map_lon": st.session_state.get("map_lon", st.session_state.lon),
-        "temp_label": st.session_state.get("temp_label", None)
-    }
-    json_data = json.dumps(save_data, ensure_ascii=False)
-    components.html(
-        f"""<script>localStorage.setItem("{CONFIG['STORAGE_KEY']}", '{json_data}');</script>""",
-        height=0,
-    )
+    st.markdown("""
+        <style>
+            .block-container { padding-top: 2rem !important; padding-bottom: 0rem !important; }
+            .scroll-container { 
+                overflow-x: auto; 
+                background: white; 
+                border: 1px solid #ddd; 
+                width: 100%; 
+            }
+        </style>
+    """, unsafe_allow_html=True)
 
 # ======================================================================================
-# 90. 地点選択を管理するモジュール（正規版コードを忠実に再現）
+# 92. 地点選択を管理するモジュール（正規版コードを忠実に再現）
 # ======================================================================================
 def render_location_selector_module():
     """
@@ -935,14 +955,14 @@ def render_location_selector_module():
     return basho
     
 # ======================================================================================
-# 91. 【main機能分離】②地図表示モジュール
+# 93. 【main機能分離】②地図表示モジュール
 # ======================================================================================
 def render_map_module():
     if st.button("🗺️ 地図表示", use_container_width=True):
         show_location_map_dialog()
         
 # ======================================================================================
-# 92. 【main機能分離】④グラフ更新・設定モジュール
+# 94. 【main機能分離】④グラフ更新・設定モジュール
 # ======================================================================================
 def render_update_control_module(basho):
     col1, col2 = st.columns([1, 1])
@@ -952,7 +972,7 @@ def render_update_control_module(basho):
         render_header_info(basho)
 
 # ==========================================================================================
-# 92_1. 現在地を取得し、状態を保存するサブルーチン
+# 94_1. 現在地を取得し、状態を保存するサブルーチン
 # ==========================================================================================
 def handle_current_location_update_integrated():
     if st.button("🔄 📍現在地を取得　　　　　　　　　　", use_container_width=True):
@@ -984,7 +1004,7 @@ def handle_current_location_update_integrated():
                 st.rerun()
 
 #==========================================================================================
-# 92_2. グラフ更新ボタンと日時情報を描画するサブルーチン
+# 94_2. グラフ更新ボタンと日時情報を描画するサブルーチン
 #==========================================================================================
 def render_header_info(current_basho_name):
     now = datetime.now(timezone(timedelta(hours=9)))
@@ -995,9 +1015,13 @@ def render_header_info(current_basho_name):
         st.rerun()
 
 # ======================================================================================
-# 93. 【main機能分離】⑤グラフ描画エリアモジュール
+# 95. 【main機能分離】⑤グラフ描画エリアモジュール
 # ======================================================================================
-def  render_graph_area_module(danger_v, sel_dirs, design_params, now_jst):
+def render_graph_area_module(danger_v, sel_dirs, design_params, now_jst):
+    """
+    グラフ描画エリアを管理するモジュール。
+    正規版のスクロール構造を再現し、横長のグラフを適切に表示する。
+    """
     # ---グラフ生成（サブルーチン12の戻り値4つ：img, ratio, idx, df） ---
     img_b64, ratio_info, start_idx, df_from_graph = generate_high_res_graph(
         st.session_state.lat, 
@@ -1010,41 +1034,57 @@ def  render_graph_area_module(danger_v, sel_dirs, design_params, now_jst):
     
     # ---アイコン・グラフ描画 ---
     if img_b64:
-        # サブルーチン12から返された df_from_graph をそのまま使用します
+        # 正規版のロジックに基づき、表示幅を計算
         dpi = design_params.get("graph_dpi", CONFIG.get("DPI", 200))
         display_width = int(design_params.get("width", CONFIG["GRAPH_WIDTH"]) * dpi)
+        min_w = design_params.get("min_container_width", 800)
+        icon_margin = design_params.get("icon_margin", 0)
         
-        # アイコンHTML生成（ここで df_from_graph を使用）
+        # アイコンHTML生成
         icons_html = generate_weather_icons_html(
             df_from_graph, 
             ratio_info, 
             display_width, 
             start_idx, 
-            design_params.get("icon_margin", 0)
+            icon_margin
         )
         
-        graph_html = f'<img src="data:image/png;base64,{img_b64}" style="width: 100%; display: block;">'
+        # グラフ本体のHTML（正規版通り width を指定して縮小を防ぐ）
+        graph_html = f'<img src="data:image/png;base64,{img_b64}" style="width: {display_width}px; display: block;">'
         
         # スクロールコンテナ内に描画
         st.markdown(
             f'<div class="scroll-container">'
-            f'<div style="width: {display_width}px; min-width: {design_params.get("min_container_width", 800)}px;">'
+            f'<div style="width: {display_width}px; min-width: {min_w}px;">'
             f'{icons_html}{graph_html}'
             f'</div></div>', 
             unsafe_allow_html=True
         )
 
-    
 # ======================================================================================
-# 100. メイン処理 (再構築版)
+# 100. メイン処理 (再構築版・スクロール対応)
 # ======================================================================================
 def main():
+    # 状態の初期化（正規版の安全策を継承）
+    if 'lat' not in st.session_state: st.session_state.lat = CONFIG["DEFAULT_LAT"]
+    if 'lon' not in st.session_state: st.session_state.lon = CONFIG["DEFAULT_LON"]
+    if 'last_basho' not in st.session_state: st.session_state.last_basho = CONFIG["DEFAULT_BASHO"]
+
     sync_all_settings()
+    
+    # スタイルとフォントの設定
+    render_custom_css()
     setup_font(st.session_state.get("base_font_size", CONFIG["GRAPH_FONT_SIZE"]))
+    
+    # コントロール取得
     danger_v, sel_dirs, design_params = show_sidebar_controls()
+    
     st.title("Wind Checker v2")
+    
+    # 時間設定（正規版の10分単位丸めロジックが必要な場合はここで行う）
     now_jst = datetime.now(timezone(timedelta(hours=9)))
 
+    # 各モジュールの描画
     basho = render_location_selector_module()
     render_map_module()
     render_update_control_module(basho)
