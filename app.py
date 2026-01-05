@@ -522,13 +522,13 @@ def generate_weather_icons_html(df, ratio_info, display_width, start_idx, icon_m
 # ==========================================================================================
 # 20. 地図UIをダイアログで表示するサブルーチン (正規版ロジック・デザイン完全復元版)
 # ==========================================================================================
-@st.dialog("📍 地図で地点を指定")
+@st.dialog("📍 地図で指定")
 def show_location_map_dialog():
     """
     ポップアップで地図を表示し、中心座標を確定して保存する。
     正規版（サブルーチン14）のデザインと「ボタン押下時に確定」するロジックを完全に再現。
     """
-    st.info("地図の中央地点のグラフを描画表示することができます。")
+    # st.info("地図の中央地点のグラフを描画表示することができます。")
 
     # 正規版のデザイン用CSSを適用
     st.markdown("""<style>
@@ -577,7 +577,7 @@ def show_location_map_dialog():
     st.divider()
     
     # 確定ボタン（正規版の動作：ボタンが押されたときだけ座標を取得して保存する）
-    if st.button("✅ グラフ描画地点確定", use_container_width=True):
+    if st.button("✅ グラフ描画地点（地図の中央）確定", use_container_width=True):
         if map_out and map_out.get("center"):
             target_lat = map_out["center"]["lat"]
             target_lon = map_out["center"]["lng"]
