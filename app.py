@@ -96,6 +96,7 @@ def setup_font(font_size=None):
 def fetch_weather_data(lat, lon, days):
     import requests
     import pandas as pd
+    from datetime import timezone, timedelta
     # timezone=auto を指定
     url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&hourly=temperature_2m,wind_speed_10m,wind_direction_10m,weather_code,precipitation&timezone=auto&wind_speed_unit=ms&forecast_days={days}"
     
@@ -103,9 +104,13 @@ def fetch_weather_data(lat, lon, days):
         response = requests.get(url).json()
         df = pd.DataFrame(response["hourly"])
         
-        # 【重要】タイムゾーン情報を維持したまま datetime 型に変換
-        # APIが返す形式を解析し、その地点の現地時間に固定する
-        df['time'] = pd.to_datetime(df['time'])
+        # --- 修正の核心：APIから返ってくるオフセット秒数を使用してタイムゾーンを固定する ---
+        # response["utc_offset_seconds"] には、その地点のUTCからの時差が秒で入っています。
+        offset_seconds = response.get("utc_offset_seconds", 0)
+        local_tz = timezone(timedelta(seconds=offset_seconds))
+        
+        # APIの時刻文字列（Naive）を一旦datetimeにし、その地点のタイムゾーンを明示的に付与
+        df['time'] = pd.to_datetime(df['time']).dt.tz_localize(local_tz)
         
         def get_icon(code):
             # 0: 晴天, 1-3: 晴れ時々曇り
@@ -127,7 +132,8 @@ def fetch_weather_data(lat, lon, days):
             
         df['weather_icon'] = df['weather_code'].apply(get_icon)
         return df
-    except: 
+    except Exception as e:
+        print(f"Error fetching weather data: {e}")
         return None
 
 #==========================================================================================
@@ -239,12 +245,16 @@ def apply_common_axis_settings(ax, df, formatter, now_jst, design_params):
     import matplotlib.dates as mdates
     import matplotlib.pyplot as plt
 
-    # --- 時刻同期修正：データのタイムゾーンに合わせて現在時刻を変換 ---
-    # 既存の now_jst を、データ (df['time']) が持つ現地のタイムゾーンに合わせる
+    # --- 時刻同期の確実な修正 ---
+    # データ (df['time']) が持っている「その地点のタイムゾーン」を抽出
     data_tz = df['time'].dt.tz
-    draw_now = now_jst.astimezone(data_tz) if data_tz is not None else now_jst.replace(tzinfo=None)
+    # 日本時間 (now_jst) を、現地のタイムゾーンに正確に変換
+    if data_tz is not None:
+        draw_now = now_jst.astimezone(data_tz)
+    else:
+        draw_now = now_jst
 
-    # ② 現在時刻ラインの太さを半分に変更（位置を draw_now に修正）
+    # 現在時刻ラインの描画（位置を現地時間に同期させた draw_now に設定）
     ax.axvline(draw_now, color='blue', linestyle='-', alpha=0.6, linewidth=CONFIG["VLINE_WIDTH"])
     
     ax.xaxis.set_major_locator(mdates.HourLocator(byhour=range(0, 24, 3)))
@@ -261,7 +271,6 @@ def apply_common_axis_settings(ax, df, formatter, now_jst, design_params):
     ax.tick_params(axis='y', labelsize=l_size)
 
     # --- 曜日の色分け設定（平日: 青, 土日: 赤） ---
-    # ※元のロジックをそのまま維持
     fig = ax.figure
     fig.canvas.draw()  # ラベルを確定させるために一度描画計算を行う
     labels = ax.get_xticklabels()
@@ -398,7 +407,7 @@ def render_tide_curve_chart(ax, df):
     ax.set_ylim(-120, 120)
     ax.set_yticks([])
 
-## ======================================================================================
+# ======================================================================================
 # 12. 高解像度グラフ画像を生成するサブルーチン
 # ======================================================================================
 @st.cache_data(show_spinner="グラフを生成中...", ttl=600)
@@ -411,25 +420,24 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
     import io
     import base64
     from datetime import timedelta
+    import matplotlib.pyplot as plt
 
-    # 1. データ取得（timezone=auto により現地時間の df が返る）
+    # 1. データ取得（fetch_weather_data 内でタイムゾーンが固定された df が返る）
     df_raw = fetch_weather_data(lat, lon, 9)
     if df_raw is None: return None, (0, 0), 0, None
     
-    # データが持つ現地のタイムゾーンにシステム時刻を合わせる
+    # データが持つ「現地のタイムゾーン」を取得
     target_tz = df_raw['time'].dt.tz
+    # 日本時間 (now_jst) を現地の時刻に変換
     now_localized = now_jst.astimezone(target_tz)
     
-    # 2. 比較・切り出し（内部処理は Naive に統一して安全に行う）
-    now_naive = now_localized.replace(tzinfo=None)
-    temp_time = df_raw['time'].dt.tz_localize(None)
-    
-    # 3. 描画開始（グラフ左端）は現在時刻（現地）の直前の3の倍数時
-    display_start_time_naive = now_naive.replace(hour=(now_naive.hour // 3) * 3, minute=0, second=0, microsecond=0)
-    padding_start_time_naive = display_start_time_naive - timedelta(hours=3)
+    # 2. 比較・切り出し（タイムゾーンを維持したまま計算を行う）
+    # 描画開始（グラフ左端）は現在時刻（現地）の直前の3の倍数時
+    display_start_time = now_localized.replace(hour=(now_localized.hour // 3) * 3, minute=0, second=0, microsecond=0)
+    padding_start_time = display_start_time - timedelta(hours=3)
     
     # 4. データの切り出し
-    df = df_raw[temp_time >= padding_start_time_naive].copy().reset_index(drop=True)
+    df = df_raw[df_raw['time'] >= padding_start_time].copy().reset_index(drop=True)
     df = df.head(195)
     start_idx = 3
     
@@ -467,8 +475,8 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
         idx += 1
 
     for ax in axes:
-        # グラフの軸の型に合わせて now_localized を渡し、青いラインを描画
-        apply_common_axis_settings(ax, df, formatter, now_localized, design_params)
+        # ここで now_jst を渡すが、apply_common_axis_settings 内で target_tz に変換される
+        apply_common_axis_settings(ax, df, formatter, now_jst, design_params)
 
     plt.subplots_adjust(left=0.05, right=0.95, top=0.95, bottom=0.15,
                         hspace=design_params.get("hspace", CONFIG["HSPACE"]))
