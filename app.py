@@ -387,32 +387,34 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
     """
     指定されたパラメータに基づき、高解像度の気象グラフ画像を生成してBase64形式で返す。
     データの抽出範囲をパディングを含めて厳密に定義し、HTML配置用の比率を正確に算出する。
+    世界展開を見据え、データ側のタイムゾーンに現在時刻を同期させて描画する。
     """
     import pandas as pd
     import io
     import base64
     from datetime import timedelta
 
+    # 1. データ取得（緯度経度に基づいた現地の気象データを取得）
     df_raw = fetch_weather_data(lat, lon, 9)
     if df_raw is None: return None, (0, 0), 0, None
     
-    # 【重要：型不一致エラーの回避と多国展開への対応】
-    # Streamlitのキャッシュ経由で渡される now_jst と、Pandasが保持するタイムゾーン型が
-    # 厳密に一致しない場合があるため、比較時のみタイムゾーンを無視（Naive化）します。
-    # これにより、どの国の時刻であっても「数値としての時刻」で正確に切り出しが行えます。
+    # 【世界展開対応：タイムゾーン同期ロジック】
+    # データ側（df_raw['time']）のタイムゾーン情報を取得し、now_jstをその地点の時刻に変換する
+    # これにより、どの国の座標であっても「その場所の今」に青いラインが引かれる
+    target_tz = df_raw['time'].dt.tz
+    now_localized = now_jst.astimezone(target_tz)
     
-    # 1. 比較用の基準時刻（タイムゾーン情報除去）
-    now_naive = now_jst.replace(tzinfo=None)
+    # 2. 比較・切り出し用の基準時刻（計算の安全のため一時的にタイムゾーンを無視）
+    now_naive = now_localized.replace(tzinfo=None)
+    temp_time = df_raw['time'].dt.tz_localize(None)
     
-    # 2. 描画開始（グラフ左端）は現在時刻の直前の3の倍数時
+    # 3. 描画開始（グラフ左端）は現在時刻の直前の3の倍数時
     display_start_time_naive = now_naive.replace(hour=(now_naive.hour // 3) * 3, minute=0, second=0, microsecond=0)
     
-    # 3. パディング開始はその3時間前
+    # 4. パディング開始はその3時間前
     padding_start_time_naive = display_start_time_naive - timedelta(hours=3)
     
-    # 4. データ側のタイムゾーンも比較時のみ無視して抽出
-    # df_rawそのものは変更せず、一時的な temp_time で比較を行います
-    temp_time = df_raw['time'].dt.tz_localize(None)
+    # 5. データの切り出し
     df = df_raw[temp_time >= padding_start_time_naive].copy().reset_index(drop=True)
     
     # 表示期間を 192時間(8日) + パディング3時間 = 195行に固定
@@ -456,8 +458,8 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
         idx += 1
 
     for ax in axes:
-        # 共通設定には元のタイムゾーン付き now_jst を渡し、現在時刻線の位置や書式を正しく制御します
-        apply_common_axis_settings(ax, df, formatter, now_jst, design_params)
+        # 共通設定にはデータと完全に同期した now_localized を渡し、青いラインを確実に描画
+        apply_common_axis_settings(ax, df, formatter, now_localized, design_params)
 
     plt.subplots_adjust(left=0.05, right=0.95, top=0.95, bottom=0.15,
                         hspace=design_params.get("hspace", CONFIG["HSPACE"]))
