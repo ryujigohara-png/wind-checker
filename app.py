@@ -140,16 +140,30 @@ def fetch_weather_data(lat, lon, days):
 # 4. 潮位レベルを計算するサブルーチン
 #==========================================================================================
 def get_tide_level(times):
+    from datetime import datetime
+    import numpy as np
+    import pandas as pd
+    
+    # 基準となる満潮時刻（Naive）
     base_full_tide = datetime(2025, 1, 1, 6, 0)
     cycle_hours = 12.42
     levels = []
+    
     for t in times:
         if pd.isna(t):
             levels.append(np.nan)
             continue
-        hours_from_base = (t - base_full_tide).total_seconds() / 3600
+        
+        # --- 修正の核心：タイムゾーンの有無を判定して計算を合わせる ---
+        # t がタイムゾーン情報を持っている場合、base_full_tide にも同じ情報を付与するか、
+        # あるいは t を一時的に Naive（タイムゾーンなし）に戻して計算する。
+        # ここでは計算の安全性を優先し、t を Naive に変換して時差を求めます。
+        t_naive = t.replace(tzinfo=None) if hasattr(t, 'tzinfo') and t.tzinfo is not None else t
+        
+        hours_from_base = (t_naive - base_full_tide).total_seconds() / 3600
         level = 100 * np.cos(2 * np.pi * hours_from_base / cycle_hours)
         levels.append(level)
+        
     return levels
 
 #==========================================================================================
