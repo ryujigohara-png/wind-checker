@@ -55,7 +55,7 @@ CONFIG = {
     "HLINE_WIDTH": 1.0,
     "PX_PER_INCH": 200,
     "DEFAULT_PRECIP_Y": 1.00,      # 降水量の表示高さ（グラフ枠を1.0とした相対値）
-    "DEFAULT_ICON_MARGIN": 10,     # アイコンHTMLの下マージン(px)
+    "DEFAULT_ICON_MARGIN": 0,     # アイコンHTMLの下マージン(px)
     "SLIDER_PRECIP_Y": {"min": 0.95, "max": 1.30, "step": 0.01},
     "SLIDER_ICON_MARGIN": {"min": -20, "max": 50, "step": 5},
     # スライダーの範囲設定
@@ -606,6 +606,8 @@ def show_settings_dialog():
     d_show_wind = st.toggle("風向・風速", value=st.session_state.get("show_wind", CONFIG["SHOW_WIND"]))
     d_show_temp = st.toggle("気温", value=st.session_state.get("show_temp", CONFIG["SHOW_TEMP"]))
     d_show_tide = st.toggle("潮位", value=st.session_state.get("show_tide", CONFIG["SHOW_TIDE"]))
+    d_show_w_text = st.toggle("天気詳細文字を表示", value=st.session_state.get("show_w_text", CONFIG["SHOW_W_TEXT"]))
+    d_show_dir_name = st.toggle("風向名を表示", value=st.session_state.get("show_dir_name", CONFIG["SHOW_DIR_NAME"]))
 
     # --- 2. サイズ・文字（スライダー） ---
     w_cfg, h_cfg, f_cfg = CONFIG["SLIDER_WIDTH"], CONFIG["SLIDER_HEIGHT"], CONFIG["SLIDER_FONT"]
@@ -615,7 +617,7 @@ def show_settings_dialog():
     d_label_f = st.slider("軸ラベル文字", f_cfg["min"], f_cfg["max"], int(st.session_state.get("label_font_size", CONFIG["LABEL_SIZE"])))
     
     st.markdown("---")
-    d_danger_v = st.number_input("危険風速ライン(m/s)", value=float(st.session_state.get("danger_v", CONFIG["DEFAULT_DANGER_V"])), step=0.5)
+    d_danger_v = st.number_input("危険風速ライン(m/s)", value=float(st.session_state.get("danger_v", CONFIG["DEFAULT_DANGER_V"])), step=1.0)
 
     # --- 3. 色付風向選択（2列チェックボックス） ---
     st.subheader("色付風向選択")
@@ -635,8 +637,6 @@ def show_settings_dialog():
         st.subheader("開発用詳細設定")
         d_min_w = st.slider("コンテナ最小幅 (px)", 500, 5000, int(st.session_state.get("min_container_width", 2500)), 100)
         d_dpi = st.radio("解像度 (DPI)", [200, 300], index=0 if st.session_state.get("graph_dpi", 200) == 200 else 1, horizontal=True)
-        d_show_w_text = st.toggle("天気詳細文字を表示", value=st.session_state.get("show_w_text", CONFIG["SHOW_W_TEXT"]))
-        d_show_dir_name = st.toggle("風向名を表示", value=st.session_state.get("show_dir_name", CONFIG["SHOW_DIR_NAME"]))
         d_hspace = st.slider("グラフ間余白", -0.2, 1.5, float(st.session_state.get("hspace", CONFIG["HSPACE"])), 0.05)
         d_label_pad = st.slider("ラベル距離", -5, 10, int(st.session_state.get("label_pad", CONFIG["LABEL_PAD"])))
 
