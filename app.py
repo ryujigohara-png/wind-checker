@@ -96,7 +96,7 @@ def setup_font(font_size=None):
 def fetch_weather_data(lat, lon, days):
     import requests
     import pandas as pd
-    from datetime import timezone, timedelta
+    
     # timezone=auto を指定
     url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&hourly=temperature_2m,wind_speed_10m,wind_direction_10m,weather_code,precipitation&timezone=auto&wind_speed_unit=ms&forecast_days={days}"
     
@@ -104,13 +104,14 @@ def fetch_weather_data(lat, lon, days):
         response = requests.get(url).json()
         df = pd.DataFrame(response["hourly"])
         
-        # --- 修正の核心：APIから返ってくるオフセット秒数を使用してタイムゾーンを固定する ---
-        # response["utc_offset_seconds"] には、その地点のUTCからの時差が秒で入っています。
-        offset_seconds = response.get("utc_offset_seconds", 0)
-        local_tz = timezone(timedelta(seconds=offset_seconds))
+        # 変数 y: APIが返す現地のUTC時差（秒）
+        local_offset_s = response.get("utc_offset_seconds", 0)
         
-        # APIの時刻文字列（Naive）を一旦datetimeにし、その地点のタイムゾーンを明示的に付与
-        df['time'] = pd.to_datetime(df['time']).dt.tz_localize(local_tz)
+        # APIが返した「現地時間の数字」をそのままNaive（時差情報なし）で保持
+        df['time'] = pd.to_datetime(df['time']).dt.tz_localize(None)
+        
+        # 現地の時差秒数を属性として保存
+        df.attrs['local_offset_seconds'] = local_offset_s
         
         def get_icon(code):
             # 0: 晴天, 1-3: 晴れ時々曇り
@@ -136,15 +137,16 @@ def fetch_weather_data(lat, lon, days):
         print(f"Error fetching weather data: {e}")
         return None
 
-#==========================================================================================
+# ======================================================================================
 # 4. 潮位レベルを計算するサブルーチン
-#==========================================================================================
+# ======================================================================================
 def get_tide_level(times):
     from datetime import datetime
     import numpy as np
     import pandas as pd
     
     # 基準となる満潮時刻（Naive）
+    # 2025/1/1 06:00 (UTC想定) を基準点とする
     base_full_tide = datetime(2025, 1, 1, 6, 0)
     cycle_hours = 12.42
     levels = []
@@ -154,13 +156,17 @@ def get_tide_level(times):
             levels.append(np.nan)
             continue
         
-        # --- 修正の核心：タイムゾーンの有無を判定して計算を合わせる ---
-        # t がタイムゾーン情報を持っている場合、base_full_tide にも同じ情報を付与するか、
-        # あるいは t を一時的に Naive（タイムゾーンなし）に戻して計算する。
-        # ここでは計算の安全性を優先し、t を Naive に変換して時差を求めます。
+        # --- 修正の核心：計算の不整合を防ぐ ---
+        # df['time'] が今回の修正で Naive（タイムゾーンなし）に統一されたため、
+        # そのまま naive な datetime として扱い、基準時刻との差分を計算します。
+        # 万が一タイムゾーン情報が含まれていた場合でも、replace(tzinfo=None) で除去して
+        # 型エラー（TypeError）を確実に防ぎます。
         t_naive = t.replace(tzinfo=None) if hasattr(t, 'tzinfo') and t.tzinfo is not None else t
         
+        # 基準時刻からの経過時間（時間単位）を算出
         hours_from_base = (t_naive - base_full_tide).total_seconds() / 3600
+        
+        # 正弦波による潮位計算（-100 ～ 100 の範囲）
         level = 100 * np.cos(2 * np.pi * hours_from_base / cycle_hours)
         levels.append(level)
         
@@ -253,22 +259,26 @@ def get_x_axis_formatter():
 # ======================================================================================
 def apply_common_axis_settings(ax, df, formatter, now_jst, design_params):
     """
-    グラフの共通軸設定を適用する。曜日の色分け機能を維持しつつ、
-    現在時刻のラインが世界各地の現地時間と一致するように修正。
+    グラフの共通軸設定を適用する。
+    ブラウザの時差(x)と、現地の時差(y)を動的に取得し、現在時刻のラインを算出する。
     """
     import matplotlib.dates as mdates
     import matplotlib.pyplot as plt
+    from datetime import timedelta
 
-    # --- 時刻同期の確実な修正 ---
-    # データ (df['time']) が持っている「その地点のタイムゾーン」を抽出
-    data_tz = df['time'].dt.tz
-    # 日本時間 (now_jst) を、現地のタイムゾーンに正確に変換
-    if data_tz is not None:
-        draw_now = now_jst.astimezone(data_tz)
-    else:
-        draw_now = now_jst
+    # 変数 x: ブラウザ（実行環境）の時差を動的に取得
+    # now_jst がタイムゾーン情報を持っている場合、そのオフセットを秒で取得する
+    browser_offset = now_jst.utcoffset()
+    browser_offset_s = browser_offset.total_seconds() if browser_offset else 0
+    
+    # 変数 y: 現地のUTC時差
+    local_offset_s = df.attrs.get('local_offset_seconds', 0)
+    
+    # 計算：[ブラウザ時刻] - [ブラウザ時差x] + [現地時差y] = 現地の今の数字
+    # 一旦 UTC に戻してから現地の時差を足す計算を、すべて秒単位で行う
+    draw_now = now_jst.replace(tzinfo=None) - timedelta(seconds=browser_offset_s) + timedelta(seconds=local_offset_s)
 
-    # 現在時刻ラインの描画（位置を現地時間に同期させた draw_now に設定）
+    # 現在時刻ラインを描画
     ax.axvline(draw_now, color='blue', linestyle='-', alpha=0.6, linewidth=CONFIG["VLINE_WIDTH"])
     
     ax.xaxis.set_major_locator(mdates.HourLocator(byhour=range(0, 24, 3)))
@@ -284,13 +294,13 @@ def apply_common_axis_settings(ax, df, formatter, now_jst, design_params):
     ax.tick_params(axis='x', which='major', labelsize=l_size, pad=l_pad)
     ax.tick_params(axis='y', labelsize=l_size)
 
-    # --- 曜日の色分け設定（平日: 青, 土日: 赤） ---
+    # 曜日の色分け設定
     fig = ax.figure
-    fig.canvas.draw()  # ラベルを確定させるために一度描画計算を行う
+    fig.canvas.draw()
     labels = ax.get_xticklabels()
     for label in labels:
         text = label.get_text()
-        if '(' in text:  # 曜日が含まれるラベル（0時）を特定
+        if '(' in text:
             if '土' in text or '日' in text:
                 label.set_color('red')
             else:
@@ -428,7 +438,7 @@ def render_tide_curve_chart(ax, df):
 def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_params, now_jst):
     """
     指定されたパラメータに基づき、高解像度の気象グラフ画像を生成してBase64形式で返す。
-    データの抽出範囲をパディングを含めて厳密に定義し、HTML配置用の比率を正確に算出する。
+    ブラウザの時差と現地の時差の差分を用いて、表示範囲を現地時間基準で切り出す。
     """
     import pandas as pd
     import io
@@ -436,18 +446,20 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
     from datetime import timedelta
     import matplotlib.pyplot as plt
 
-    # 1. データ取得（fetch_weather_data 内でタイムゾーンが固定された df が返る）
+    # 1. データ取得
     df_raw = fetch_weather_data(lat, lon, 9)
     if df_raw is None: return None, (0, 0), 0, None
     
-    # データが持つ「現地のタイムゾーン」を取得
-    target_tz = df_raw['time'].dt.tz
-    # 日本時間 (now_jst) を現地の時刻に変換
-    now_localized = now_jst.astimezone(target_tz)
+    # 2. ブラウザと現地の時差から、現地の現在時刻を計算
+    browser_offset = now_jst.utcoffset()
+    browser_offset_s = browser_offset.total_seconds() if browser_offset else 0
+    local_offset_s = df_raw.attrs.get('local_offset_seconds', 0)
     
-    # 2. 比較・切り出し（タイムゾーンを維持したまま計算を行う）
-    # 描画開始（グラフ左端）は現在時刻（現地）の直前の3の倍数時
-    display_start_time = now_localized.replace(hour=(now_localized.hour // 3) * 3, minute=0, second=0, microsecond=0)
+    # 現地の現在時刻（数字のみ）を算出
+    now_local = now_jst.replace(tzinfo=None) - timedelta(seconds=browser_offset_s) + timedelta(seconds=local_offset_s)
+    
+    # 3. 描画開始（グラフ左端）の設定
+    display_start_time = now_local.replace(hour=(now_local.hour // 3) * 3, minute=0, second=0, microsecond=0)
     padding_start_time = display_start_time - timedelta(hours=3)
     
     # 4. データの切り出し
@@ -489,7 +501,6 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
         idx += 1
 
     for ax in axes:
-        # ここで now_jst を渡すが、apply_common_axis_settings 内で target_tz に変換される
         apply_common_axis_settings(ax, df, formatter, now_jst, design_params)
 
     plt.subplots_adjust(left=0.05, right=0.95, top=0.95, bottom=0.15,
