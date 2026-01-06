@@ -1123,6 +1123,9 @@ def render_map_module():
 # 94. 【main機能分離】④グラフ更新・設定モジュール
 # ======================================================================================
 def render_update_control_module(basho):
+    """
+    現在地取得ボタンと、グラフ更新・時刻情報表示ボタンを1行に並べて表示する。
+    """
     col1, col2 = st.columns([1, 1])
     with col1:
         handle_current_location_update_integrated()
@@ -1133,6 +1136,9 @@ def render_update_control_module(basho):
 # 94_1. 現在地を取得し、状態を保存するサブルーチン
 # ==========================================================================================
 def handle_current_location_update_integrated():
+    """
+    「現在地を取得」ボタンを処理し、取得成功時に座標と地名を更新・保存する。
+    """
     if st.button("🔄 📍現在地を取得　　　　　　　　　　", use_container_width=True):
         st.session_state.waiting_loc = True
         st.session_state.geo_key = f"geo_{datetime.now().timestamp()}"
@@ -1148,13 +1154,16 @@ def handle_current_location_update_integrated():
                 place_name = fetch_location_name(new_lat, new_lon)
             new_temp_label = f"{place_name} ({new_lat:.4f}, {new_lon:.4f})"
             st.session_state.waiting_loc = False
+            # 座標が更新されるため、グラフ描画フラグをTrueにして保存
             update_state_and_save({
                 "lat": new_lat,
                 "lon": new_lon,
                 "last_basho": place_name,
                 "temp_label": new_temp_label,
-                "show_map": False
+                "show_map": False,
+                "needs_graph_update": True
             })
+            st.rerun()
         elif loc is False:
             st.error("❌ 位置情報の取得に失敗しました。")
             if st.button("キャンセル"):
@@ -1170,16 +1179,15 @@ def render_header_info(current_basho_name):
     ブラウザの現在時刻(now_jst)と現地の時差を使い、選択地点の正確な現地時刻を表示する。
     needs_graph_updateフラグを確認し、必要な場合のみグラフを更新・表示する。
     """
-    # フラグがFalse（更新不要）かつ、すでにグラフ画像が保持されている場合は再描画をスキップ
-    # ※ @st.cache_data を使っている場合でも、このチェックを入れることで処理をより確実に抑制できます
-    
+    # 描画フラグの処理（追加部分）
     if st.session_state.get("needs_graph_update", True):
-        # ここに実際のグラフ生成ロジックを記述（または既存のサブルーチンを呼び出し）
+        # ここで実際のグラフ生成ロジックを記述（または既存のサブルーチンを呼び出し）
         # 例: generate_high_res_graph(...) 
         
         # 描画が終わったらフラグを下ろす
         st.session_state.needs_graph_update = False
         
+    # --- ここから下の時刻計算・表示ロジックは一切変更せず維持 ---
     import streamlit as st
     from datetime import datetime, timedelta
 
@@ -1211,7 +1219,10 @@ def render_header_info(current_basho_name):
     
     if st.button(update_label, use_container_width=True):
         st.cache_data.clear()
+        # 更新ボタン押下時も描画を許可する
+        st.session_state.needs_graph_update = True
         st.rerun()
+        
 
 # ======================================================================================
 # 95. 【main機能分離】⑤グラフ描画エリアモジュール
@@ -1264,12 +1275,13 @@ def render_graph_area_module(danger_v, sel_dirs, design_params, now_jst):
 # 100. メイン処理 (再構築版・スクロール対応)
 # ======================================================================================
 def main():
-    # 状態の初期化
+    # --- 1. 状態の初期化 ---
     if 'lat' not in st.session_state: st.session_state.lat = CONFIG["DEFAULT_LAT"]
     if 'lon' not in st.session_state: st.session_state.lon = CONFIG["DEFAULT_LON"]
     if 'last_basho' not in st.session_state: st.session_state.last_basho = CONFIG["DEFAULT_BASHO"]
-    # 描画抑制フラグの初期化（初回はTrue）
-    if 'needs_graph_update' not in st.session_state: st.session_state.needs_graph_update = True
+    # 描画抑制フラグ：このフラグが True のときだけ重い処理を実行する
+    if 'needs_graph_update' not in st.session_state:
+        st.session_state.needs_graph_update = True
 
     # LocalStorageからの復元
     sync_all_settings()
@@ -1278,7 +1290,7 @@ def main():
     render_custom_css()
     setup_font(st.session_state.get("base_font_size", CONFIG["GRAPH_FONT_SIZE"]))
     
-    # サイドバーのコントロール（設定変更があればここでフラグが立つ）
+    # サイドバーのコントロール（設定変更があれば内部で needs_graph_update = True になる）
     danger_v, sel_dirs, design_params = show_sidebar_controls()
     
     st.title("Wind Checker v2")
@@ -1286,18 +1298,17 @@ def main():
     # 時間設定
     now_jst = datetime.now(timezone(timedelta(hours=9)))
 
-    # --- 各モジュールの描画 ---
-    
-    # 1. 場所選択モジュール（ここで 18, 19番のロジックを実行）
+    # --- 2. 各モジュールの描画 ---
+    # 場所選択モジュール（返り値 basho は表示用の文字列）
     basho = render_location_selector_module()
     
-    # 2. 地図表示モジュール（「地図で指定」が選ばれた時などの表示管理）
+    # 地図表示モジュール
     render_map_module()
     
-    # 3. 更新ボタン等
+    # 更新・情報表示モジュール（ここに basho を渡す）
     render_update_control_module(basho)
     
-    # 4. グラフエリア（ここで needs_graph_update フラグを見て描画を抑制する）
+    # グラフエリア（ここでフラグを見て描画を行う）
     render_graph_area_module(danger_v, sel_dirs, design_params, now_jst)
     
     if st.session_state.get("is_dev_mode"):
@@ -1306,3 +1317,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+    
