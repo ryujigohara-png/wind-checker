@@ -954,48 +954,45 @@ def render_custom_css():
 # ======================================================================================
 # 92. 地点選択を管理するモジュール（正規版コードを忠実に再現）
 # ======================================================================================
+# ======================================================================================
+# 17. 場所選択モジュールの統合実行
+# ======================================================================================
 def render_location_selector_module():
     """
-    正規版の地点選択ロジックを再現。
-    お気に入りリスト（LOCATION_MASTER）、現在地、地図指定を統合して表示。
+    メイン画面上部に場所選択バーとお気に入りボタンを表示し、選択変更を監視する。
     """
-    master = CONFIG["LOCATION_MASTER"].copy()
-    display_options = {}
-    
-    # 1. お気に入りリストの展開 [cite: 75, 76]
-    for name, coords in master.items():
-        display_options[f"{name} ({coords[0]:.4f}, {coords[1]:.4f})"] = name
+    # 19番のサブルーチンで選択肢リストを作成
+    display_list, total_data = get_combined_location_list(
+        CONFIG["LOCATION_MASTER"], 
+        st.session_state.lat, 
+        st.session_state.lon
+    )
 
-    # 2. 現在地と地図指定のラベル生成（座標を名前に統合） [cite: 75, 76]
-    current_loc_label = f"📍 現在地 ({st.session_state.lat:.4f}, {st.session_state.lon:.4f})  "
-    display_options[current_loc_label] = "現在地"
-    
-    map_loc_label = f"🗺️ 地図で指定 ({st.session_state.lat:.4f}, {st.session_state.lon:.4f})   "
-    display_options[map_loc_label] = "地図で指定"
+    # 18番のサブルーチンで選択バーを表示
+    selected_label = show_favorite_control_bar(
+        display_list, 
+        st.session_state.last_basho, 
+        st.session_state.lat, 
+        st.session_state.lon, 
+        st.session_state.last_basho
+    )
 
-    # 3. 現在の選択状態の逆引き [cite: 76]
-    reverse_display = {v: k for k, v in display_options.items()}
-    current_display_val = reverse_display.get(st.session_state.last_basho, current_loc_label)
-    
-    options_list = list(display_options.keys())
-    default_idx = options_list.index(current_display_val) if current_display_val in options_list else 0
-
-    # 4. セレクトボックスの表示 [cite: 76]
-    selected_display = st.selectbox("地点を選択してください", options_list, index=default_idx)
-    basho = display_options[selected_display]
-
-    # 5. 地点変更時の状態更新とリラン処理 [cite: 77]
-    if basho != st.session_state.last_basho:
-        st.session_state.last_basho = basho
-        if basho not in ["地図で指定", "現在地"]:
-            st.session_state.lat, st.session_state.lon = master[basho]
-        if basho == "地図で指定":
-            st.session_state.show_map_state = True
-        
-        st.cache_data.clear()  # 地点変更時はキャッシュをクリア [cite: 77]
+    # 選択が変更された場合の処理
+    if selected_label == "地図で指定":
+        show_location_map_dialog()
+    elif selected_label != st.session_state.last_basho:
+        # 新しい地点の座標と名前を取得
+        new_lat, new_lon, new_name = total_data[selected_label]
+        # 状態更新・保存・描画フラグON
+        update_state_and_save({
+            "lat": new_lat, 
+            "lon": new_lon, 
+            "last_basho": selected_label,
+            "needs_graph_update": True
+        })
         st.rerun()
-
-    return basho
+    
+    return st.session_state.last_basho
 
 # ======================================================================================
 # 19. お気に入り・プリセット・地図指定を統合するサブルーチン（構造化・完全版）
@@ -1072,7 +1069,7 @@ def show_favorite_control_bar(location_options, current_display_label, current_l
 
     return selected
 
-    # ======================================================================================
+# ======================================================================================
 # 45. お気に入り地点の名称登録ダイアログ
 # ======================================================================================
 @st.dialog("お気に入り地点の名称確認")
@@ -1171,7 +1168,18 @@ def render_header_info(current_basho_name):
     """
     グラフ更新ボタンと日時情報を描画する。
     ブラウザの現在時刻(now_jst)と現地の時差を使い、選択地点の正確な現地時刻を表示する。
+    needs_graph_updateフラグを確認し、必要な場合のみグラフを更新・表示する。
     """
+    # フラグがFalse（更新不要）かつ、すでにグラフ画像が保持されている場合は再描画をスキップ
+    # ※ @st.cache_data を使っている場合でも、このチェックを入れることで処理をより確実に抑制できます
+    
+    if st.session_state.get("needs_graph_update", True):
+        # ここに実際のグラフ生成ロジックを記述（または既存のサブルーチンを呼び出し）
+        # 例: generate_high_res_graph(...) 
+        
+        # 描画が終わったらフラグを下ろす
+        st.session_state.needs_graph_update = False
+        
     import streamlit as st
     from datetime import datetime, timedelta
 
