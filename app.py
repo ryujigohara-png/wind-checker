@@ -840,7 +840,8 @@ def save_settings_to_browser():
         "show_w_text": st.session_state.get("show_w_text", CONFIG["SHOW_W_TEXT"]),
         "show_dir_name": st.session_state.get("show_dir_name", CONFIG["SHOW_DIR_NAME"]),
         "ratios": st.session_state.get("ratios", CONFIG["DEFAULT_RATIOS"]),
-        "location_master": st.session_state.get("LOCATION_MASTER", []),
+        # 【重要】お気に入りリストを保存対象に含める
+        "user_locations": st.session_state.get("user_locations", []),
         "map_lat": st.session_state.get("map_lat", st.session_state.lat),
         "map_lon": st.session_state.get("map_lon", st.session_state.lon),
         "temp_label": st.session_state.get("temp_label", None)
@@ -909,7 +910,7 @@ def sync_all_settings():
             st.session_state.lat = float(data.get("lat", CONFIG["DEFAULT_LAT"]))
             st.session_state.lon = float(data.get("lon", CONFIG["DEFAULT_LON"]))
             st.session_state.last_basho = data.get("basho", CONFIG["DEFAULT_BASHO"])
-            st.session_state.LOCATION_MASTER = data.get("location_master", [])
+            st.session_state.user_locations = data.get("user_locations", [])
             st.session_state.map_lat = float(data.get("map_lat", st.session_state.lat))
             st.session_state.map_lon = float(data.get("map_lon", st.session_state.lon))
             st.session_state.temp_label = data.get("temp_label", None)
@@ -928,6 +929,8 @@ def sync_all_settings():
             st.session_state.show_w_text = data.get("show_w_text", CONFIG["SHOW_W_TEXT"])
             st.session_state.show_dir_name = data.get("show_dir_name", CONFIG["SHOW_DIR_NAME"])
             st.session_state.ratios = data.get("ratios", CONFIG["DEFAULT_RATIOS"])
+            # 【重要】お気に入りリストの復元
+            st.session_state.user_locations = data.get("user_locations", [])
             st.session_state.initialized = True
             st.rerun()
         except Exception:
@@ -955,9 +958,6 @@ def render_custom_css():
 
 # ======================================================================================
 # 92. 地点選択を管理するモジュール（正規版コードを忠実に再現）
-# ======================================================================================
-# ======================================================================================
-# 17. 場所選択モジュールの統合実行
 # ======================================================================================
 def render_location_selector_module():
     """
@@ -997,7 +997,7 @@ def render_location_selector_module():
     return st.session_state.last_basho
 
 # ======================================================================================
-# 19. お気に入り・プリセット・地図指定を統合するサブルーチン（構造化・完全版）
+# 92_1. お気に入り・プリセット・地図指定を統合するサブルーチン（構造化・完全版）
 # ======================================================================================
 def get_combined_location_list(preset_master, current_lat, current_lon):
     """
@@ -1037,7 +1037,7 @@ def get_combined_location_list(preset_master, current_lat, current_lon):
     return display_list, total_data
 
 # ======================================================================================
-# 18. 地点選択とお気に入り保存を1行に集約するサブルーチン（ダイアログ・保存フラグ対応）
+# 92_2. 地点選択とお気に入り保存を1行に集約するサブルーチン（ダイアログ・保存フラグ対応）
 # ======================================================================================
 def show_favorite_control_bar(location_options, current_display_label, current_lat, current_lon, raw_name):
     """
@@ -1072,7 +1072,7 @@ def show_favorite_control_bar(location_options, current_display_label, current_l
     return selected
 
 # ======================================================================================
-# 45. お気に入り地点の名称登録ダイアログ
+# 92_3. お気に入り地点の名称登録ダイアログ
 # ======================================================================================
 @st.dialog("お気に入り地点の名称確認")
 def show_favorite_registration_dialog(default_name, lat, lon):
