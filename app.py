@@ -1052,20 +1052,36 @@ def handle_current_location_update_integrated():
 def render_header_info(current_basho_name):
     """
     グラフ更新ボタンと日時情報を描画する。
-    世界展開に対応し、選択された地点のタイムゾーンに基づいた時刻を表示する。
+    ブラウザの現在時刻(now_jst)と現地の時差を使い、選択地点の正確な現地時刻を表示する。
     """
-    # 1. データのキャッシュから現在のタイムゾーンを取得（fetch_weather_dataの戻り値を参照）
-    # 万が一取得できない場合は日本時間をデフォルトとする安全策
-    try:
-        df_tmp = fetch_weather_data(st.session_state.lat, st.session_state.lon, 1)
-        target_tz = df_tmp['time'].dt.tz
-        now = datetime.now(target_tz)
-    except Exception:
-        from datetime import timezone, timedelta
-        now = datetime.now(timezone(timedelta(hours=9)))
+    import streamlit as st
+    from datetime import datetime, timedelta
 
-    date_time_str = now.strftime('%Y/%m/%d %H:%M:%S')
-    update_label = f"🔄 グラフ更新 ({date_time_str})　　                　"
+    # 基準となるブラウザ時刻（メイン処理から渡される now_jst を想定）
+    # もし session_state 等に保持されていない場合の安全策として現在時刻を取得
+    now_jst = st.session_state.get('now_jst', datetime.now())
+
+    try:
+        # 1. 現地の時差情報を取得するために軽量なデータ取得を行う
+        df_tmp = fetch_weather_data(st.session_state.lat, st.session_state.lon, 1)
+        
+        # 変数 x: ブラウザの時差を動的に取得
+        browser_offset = now_jst.utcoffset()
+        browser_offset_s = browser_offset.total_seconds() if browser_offset else 0
+        
+        # 変数 y: 現地の時差（fetch_weather_data で付与された属性）
+        local_offset_s = df_tmp.attrs.get('local_offset_seconds', 0)
+        
+        # 2. 計算：[ブラウザ時刻] - [ブラウザ時差x] + [現地時差y]
+        now_local = now_jst.replace(tzinfo=None) - timedelta(seconds=browser_offset_s) + timedelta(seconds=local_offset_s)
+        
+    except Exception:
+        # エラー時はフォールバックとしてブラウザ時刻をそのまま表示
+        now_local = now_jst.replace(tzinfo=None)
+
+    date_time_str = now_local.strftime('%Y/%m/%d %H:%M:%S')
+    # ボタンのラベルに現地時刻を反映
+    update_label = f"🔄 グラフ更新 ({date_time_str})"
     
     if st.button(update_label, use_container_width=True):
         st.cache_data.clear()
