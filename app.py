@@ -859,10 +859,11 @@ def save_settings_to_browser():
         "temp_label": st.session_state.get("temp_label", None)
     }
     json_data = json.dumps(save_data, ensure_ascii=False)
+    # クォートのエスケープ処理を追加してJSエラーを防止
+    escaped_json = json_data.replace("'", "\\'")
     components.html(
-        f"""<script>localStorage.setItem("{CONFIG['STORAGE_KEY']}", '{json_data}');</script>""",
-        height=0,
-    )
+        f"""<script>localStorage.setItem("{CONFIG['STORAGE_KEY']}", '{escaped_json}');</script>""",
+        height=0,    )
 
 # ==========================================================================================
 # 90. ブラウザのlocalStorageと設定を同期するサブルーチン
@@ -1034,7 +1035,7 @@ def get_combined_location_list(preset_master, current_lat, current_lon):
 
     return display_list, total_data
 
-    # ======================================================================================
+# ======================================================================================
 # 18. 地点選択とお気に入り保存を1行に集約するサブルーチン（ダイアログ・保存フラグ対応）
 # ======================================================================================
 def show_favorite_control_bar(location_options, current_display_label, current_lat, current_lon, raw_name):
@@ -1177,9 +1178,15 @@ def render_header_info(current_basho_name):
     """
     グラフ更新ボタンと日時情報を描画する。
     ブラウザの現在時刻(now_jst)と現地の時差を使い、選択地点の正確な現地時刻を表示する。
-    needs_graph_updateフラグを確認し、必要な場合のみグラフを更新・表示する。
     """
-    # 描画フラグの処理（追加部分）
+    # 関数冒頭で必要なものを定義・インポートし、UnboundLocalErrorを完全に回避
+    import streamlit as st
+    from datetime import datetime, timedelta
+
+    # 1. 描画フラグの確認とクリア
+    # グラフ描画が実行されるタイミング（この関数の前後のモジュール）で
+    # フラグがTrueなら描画を行い、終わったらここでFalseにする、
+    # あるいは既に描画済みならFalseとして扱うロジックをここに置く。
     if st.session_state.get("needs_graph_update", True):
         # ここで実際のグラフ生成ロジックを記述（または既存のサブルーチンを呼び出し）
         # 例: generate_high_res_graph(...) 
