@@ -996,7 +996,125 @@ def render_location_selector_module():
         st.rerun()
 
     return basho
+
+# ======================================================================================
+# 19. お気に入り・プリセット・地図指定を統合するサブルーチン（構造化・完全版）
+# ======================================================================================
+def get_combined_location_list(preset_master, current_lat, current_lon):
+    """
+    お気に入り(user_locations)、既定値(preset_master)、一時地点、地図指定を統合したリストを返す。
+    """
+    # LocalStorageから読み込まれているユーザー保存地点を取得
+    favorites = st.session_state.get("user_locations", [])
+    total_data = {}
+    display_list = []
+
+    # 1. 📍お気に入り（LocalStorage保存分）を最優先
+    for fav in favorites:
+        # 地名に 📍 がなければ付与して区別しやすくする
+        name = fav['name'] if fav['name'].startswith("📍") else f"📍 {fav['name']}"
+        label = f"{name} ({fav['lat']:.4f}, {fav['lon']:.4f})"
+        display_list.append(label)
+        total_data[label] = (fav['lat'], fav['lon'], name)
+
+    # 2. プリセット（CONFIG["LOCATION_MASTER"] 定義分）
+    for name, coords in preset_master.items():
+        if name not in ["現在地を取得", "地図で指定"]:
+            label = f"{name} ({coords[0]:.4f}, {coords[1]:.4f})"
+            display_list.append(label)
+            total_data[label] = (coords[0], coords[1], name)
+
+    # 3. 一時的な確定地点（地図で指定した直後など、まだ保存されていない地点）
+    t_label = st.session_state.get("temp_label")
+    if t_label and t_label not in display_list:
+        display_list.insert(0, t_label) # リストの先頭に挿入
+        total_data[t_label] = (current_lat, current_lon, t_label.split(" (")[0])
+
+    # 4. 地図で指定（操作トリガーとしての項目）
+    map_label = "地図で指定"
+    display_list.append(map_label)
+    total_data[map_label] = (current_lat, current_lon, "地図で指定")
+
+    return display_list, total_data
+
+    # ======================================================================================
+# 18. 地点選択とお気に入り保存を1行に集約するサブルーチン（ダイアログ・保存フラグ対応）
+# ======================================================================================
+def show_favorite_control_bar(location_options, current_display_label, current_lat, current_lon, raw_name):
+    """
+    メイン画面上で地点選択と「⭐」保存ボタンを1行に表示する。
+    """
+    # --- お気に入り状態の判定（座標一致でチェック） ---
+    favorites = st.session_state.get("user_locations", [])
+    saved_data = next((f for f in favorites if abs(f['lat'] - current_lat) < 0.0001 and abs(f['lon'] - current_lon) < 0.0001), None)
     
+    is_saved = saved_data is not None
+
+    # --- 1行レイアウト (選択ボックスとボタン) ---
+    c1, c2 = st.columns([0.92, 0.08])
+    with c1:
+        selected = st.selectbox(
+            "地点を選択してください", 
+            options=location_options, 
+            index=location_options.index(current_display_label) if current_display_label in location_options else 0,
+            label_visibility="collapsed"
+        )
+    with c2:
+        if is_saved:
+            # すでに保存されている地点はチェックマーク（無効ボタン）を表示
+            st.button("✅", key="fav_saved_icon", disabled=True, help="お気に入り登録済み")
+        else:
+            # 未保存の地点（地図指定後など）の場合のみ、保存ボタンを表示
+            if st.button("⭐", key="fav_save_action", help="この場所をお気に入りに登録"):
+                # 地名部分を抽出し、ダイアログを起動
+                pure_name = raw_name.split(" (")[0]
+                show_favorite_registration_dialog(pure_name, current_lat, current_lon)
+
+    return selected
+
+    # ======================================================================================
+# 45. お気に入り地点の名称登録ダイアログ
+# ======================================================================================
+@st.dialog("お気に入り地点の名称確認")
+def show_favorite_registration_dialog(default_name, lat, lon):
+    """
+    お気に入り登録時に「地名（逆引き住所）」を確認・修正してLocalStorageへ永続保存する。
+    """
+    st.write("この地点に名前をつけて「お気に入り」に保存します。")
+    # 📍をデフォルトで付与
+    initial_val = default_name if default_name.startswith("📍") else f"📍 {default_name}"
+    new_name = st.text_input("登録名（修正可）", value=initial_val)
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("OK（保存実行）", use_container_width=True):
+            if "user_locations" not in st.session_state:
+                st.session_state.user_locations = []
+            
+            # リストに追加
+            st.session_state.user_locations.append({
+                "name": new_name,
+                "lat": lat,
+                "lon": lon
+            })
+            
+            # LocalStorageへの保存と、再描画フラグを立てる
+            update_state_and_save({
+                "last_basho": new_name,
+                "temp_label": None, # 一時ラベルはクリア
+                "needs_graph_update": True
+            })
+            st.success(f"「{new_name}」を保存しました。")
+            time.sleep(1)
+            st.rerun()
+            
+    with col2:
+        if st.button("Cancel", use_container_width=True):
+            st.rerun()
+
+    
+
+
 # ======================================================================================
 # 93. 【main機能分離】②地図表示モジュール
 # ======================================================================================
@@ -1138,29 +1256,40 @@ def render_graph_area_module(danger_v, sel_dirs, design_params, now_jst):
 # 100. メイン処理 (再構築版・スクロール対応)
 # ======================================================================================
 def main():
-    # 状態の初期化（正規版の安全策を継承）
+    # 状態の初期化
     if 'lat' not in st.session_state: st.session_state.lat = CONFIG["DEFAULT_LAT"]
     if 'lon' not in st.session_state: st.session_state.lon = CONFIG["DEFAULT_LON"]
     if 'last_basho' not in st.session_state: st.session_state.last_basho = CONFIG["DEFAULT_BASHO"]
+    # 描画抑制フラグの初期化（初回はTrue）
+    if 'needs_graph_update' not in st.session_state: st.session_state.needs_graph_update = True
 
+    # LocalStorageからの復元
     sync_all_settings()
     
     # スタイルとフォントの設定
     render_custom_css()
     setup_font(st.session_state.get("base_font_size", CONFIG["GRAPH_FONT_SIZE"]))
     
-    # コントロール取得
+    # サイドバーのコントロール（設定変更があればここでフラグが立つ）
     danger_v, sel_dirs, design_params = show_sidebar_controls()
     
     st.title("Wind Checker v2")
     
-    # 時間設定（正規版の10分単位丸めロジックが必要な場合はここで行う）
+    # 時間設定
     now_jst = datetime.now(timezone(timedelta(hours=9)))
 
-    # 各モジュールの描画
+    # --- 各モジュールの描画 ---
+    
+    # 1. 場所選択モジュール（ここで 18, 19番のロジックを実行）
     basho = render_location_selector_module()
+    
+    # 2. 地図表示モジュール（「地図で指定」が選ばれた時などの表示管理）
     render_map_module()
+    
+    # 3. 更新ボタン等
     render_update_control_module(basho)
+    
+    # 4. グラフエリア（ここで needs_graph_update フラグを見て描画を抑制する）
     render_graph_area_module(danger_v, sel_dirs, design_params, now_jst)
     
     if st.session_state.get("is_dev_mode"):
