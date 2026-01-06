@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# ベータ版　更新 2026.1.5 2358 main改造中
+# ベータ版　更新 2026.1.6 2310 main改造中 ☆登録成功
 import streamlit as st
 import requests
 import pandas as pd
@@ -562,105 +562,9 @@ def generate_weather_icons_html(df, ratio_info, display_width, start_idx, icon_m
     # 最終的なHTMLコンテナ（デバッグ用の高さを35pxに戻す）
     return f'<div style="position: relative; width: {display_width}px; height: 35px; margin-bottom: {icon_margin}px; overflow: visible;">{icon_html}</div>'
     
-# ==========================================================================================
-# 20. 地図UIをダイアログで表示するサブルーチン (正規版ロジック・デザイン完全復元版)
-# ==========================================================================================
-@st.dialog("📍 地図で指定")
-def show_location_map_dialog():
-    """
-    ポップアップで地図を表示し、中心座標を確定して保存する。
-    正規版（サブルーチン14）のデザインと「ボタン押下時に確定」するロジックを完全に再現。
-    """
-    # st.info("地図の中央地点のグラフを描画表示することができます。")
 
-    # 正規版のデザイン用CSSを適用
-    st.markdown("""<style>
-        div[data-testid="stHorizontalBlock"] { flex-wrap: nowrap !important; justify-content: center !important; }
-        [data-testid="column"] { min-width: 0px !important; }
-        .guide-arrow-main { color: crimson; font-size: 24px; font-weight: bold; text-align: center; }
-        </style>""", unsafe_allow_html=True)
-
-    # 地図の初期位置（現在確定されている座標を使用）
-    m_lat = st.session_state.lat
-    m_lon = st.session_state.lon
-
-    m = folium.Map(location=[m_lat, m_lon], zoom_start=13)
-    folium.Marker([m_lat, m_lon], icon=folium.Icon(color='red')).add_to(m)
-    
-    # --- 3×3 レイアウトによる中心示唆記号の描画 (正規版の完全再現) ---
-    # 上段：下向き矢印
-    col_l1, col_m1, col_r1 = st.columns([1, 18, 1])
-    with col_m1: 
-        st.markdown("<div class='guide-arrow-main'>▼</div>", unsafe_allow_html=True)
-    
-    # 中段：左矢印 + 地図 + 右矢印
-    col_l2, col_m2, col_r2 = st.columns([1, 18, 1])
-    with col_l2: 
-        st.markdown(f"<div style='line-height:{CONFIG['MAP_HEIGHT']}px; text-align:right;' class='guide-arrow-main'>▶</div>", unsafe_allow_html=True)
-    
-    with col_m2: 
-        # 地図描画（keyは正規版と同様に座標を含めることでキャッシュを制御）
-        map_out = st_folium(
-            m, 
-            width=None, 
-            height=CONFIG["MAP_HEIGHT"], 
-            key=f"map_dialog_{st.session_state.lat}_{st.session_state.lon}",
-            returned_objects=["center"]
-        )
-        
-    with col_r2: 
-        st.markdown(f"<div style='line-height:{CONFIG['MAP_HEIGHT']}px; text-align:left;' class='guide-arrow-main'>◀</div>", unsafe_allow_html=True)
-    
-    # 下段：上向き矢印
-    col_l3, col_m3, col_r3 = st.columns([1, 18, 1])
-    with col_m3: 
-        st.markdown("<div class='guide-arrow-main' style='margin-top:-10px;'>▲</div>", unsafe_allow_html=True)
-    # -----------------------------------------------------------
-
-    st.divider()
-    
-    # 確定ボタン（正規版の動作：ボタンが押されたときだけ座標を取得して保存する）
-    if st.button("✅ グラフ描画地点（地図の中央）確定", use_container_width=True):
-        if map_out and map_out.get("center"):
-            target_lat = map_out["center"]["lat"]
-            target_lon = map_out["center"]["lng"]
-            
-            with st.spinner("地点名を検索中..."):
-                place_name = fetch_location_name(target_lat, target_lon)
-            
-            new_temp_label = f"{place_name} ({target_lat:.4f}, {target_lon:.4f})"
-            
-            # 統一保存関数を呼び出し
-            update_state_and_save({
-                "lat": target_lat,
-                "lon": target_lon,
-                "last_basho": place_name,
-                "temp_label": new_temp_label,
-                "show_map": False
-            })
-        else:
-            st.warning("地図の読み込みが完了するまでお待ちください。")
-
-# ==========================================================================================
-# 20_sub. 座標から地名を取得するサブルーチン (fetch_location_name)
-# ==========================================================================================
-def fetch_location_name(lat, lon):
-    """Nominatim APIを使用して緯度経度から地名（市区町村レベル）を取得する"""
-    try:
-        url = f"https://nominatim.openstreetmap.org/reverse?format=json&lat={lat}&lon={lon}&zoom=14"
-        headers = {"User-Agent": "WindChecker/2.0"}
-        response = requests.get(url, headers=headers, timeout=5)
-        if response.status_code == 200:
-            data = response.json()
-            address = data.get("address", {})
-            city = address.get("city") or address.get("town") or address.get("village") or address.get("suburb") or "未知の地点"
-            return city
-        return "指定地点"
-    except Exception:
-        return "指定地点"
-        
 # ======================================================================================
-# 40. グラフ表示設定を詳細ダイアログで一括変更するサブルーチン（正規版表現・完全復旧）
+# 20. サイドバーからグラフ表示設定を詳細ダイアログで一括変更するサブルーチン（正規版表現・完全復旧）
 # ======================================================================================
 @st.dialog("グラフ表示設定の詳細")
 def show_settings_dialog():
@@ -749,7 +653,7 @@ def show_settings_dialog():
         st.rerun()
 
 # ======================================================================================
-# 41. サイドバー、パラメータ設定
+# 21. サイドバー、パラメータ設定
 # ======================================================================================
 def show_sidebar_controls():
     """
@@ -789,7 +693,7 @@ def show_sidebar_controls():
     return st.session_state.get("danger_v", 10.0), st.session_state.get("sel_dirs", []), design_params
 
 # ======================================================================================
-# 42. グラフの表示高さを一括計算するサブルーチン
+# 22. グラフの表示高さを一括計算するサブルーチン
 # ======================================================================================
 def calculate_graph_height(base_height, ratios, show_wind, show_temp, show_tide):
     """
@@ -815,21 +719,104 @@ def calculate_graph_height(base_height, ratios, show_wind, show_temp, show_tide)
         
     return auto_height
 
-# ==========================================================================================
-# 81. ステート更新・保存・再描画を一本化するサブルーチン (新規追加)
-# ==========================================================================================
-def update_state_and_save(updates_dict):
-    """
-    引数 updates_dict に基づき st.session_state を更新し、
-    LocalStorageへ即座に書き出し、st.rerun() を実行する。
-    """
-    for key, value in updates_dict.items():
-        st.session_state[key] = value
-    save_settings_to_browser()
-    time.sleep(0.1)
-    st.rerun()
 
+# ==========================================================================================
+# 30. 地図UIをダイアログで表示するサブルーチン (正規版ロジック・デザイン完全復元版)
+# ==========================================================================================
+@st.dialog("📍 地図で指定")
+def show_location_map_dialog():
+    """
+    ポップアップで地図を表示し、中心座標を確定して保存する。
+    正規版（サブルーチン14）のデザインと「ボタン押下時に確定」するロジックを完全に再現。
+    """
+    # st.info("地図の中央地点のグラフを描画表示することができます。")
+
+    # 正規版のデザイン用CSSを適用
+    st.markdown("""<style>
+        div[data-testid="stHorizontalBlock"] { flex-wrap: nowrap !important; justify-content: center !important; }
+        [data-testid="column"] { min-width: 0px !important; }
+        .guide-arrow-main { color: crimson; font-size: 24px; font-weight: bold; text-align: center; }
+        </style>""", unsafe_allow_html=True)
+
+    # 地図の初期位置（現在確定されている座標を使用）
+    m_lat = st.session_state.lat
+    m_lon = st.session_state.lon
+
+    m = folium.Map(location=[m_lat, m_lon], zoom_start=13)
+    folium.Marker([m_lat, m_lon], icon=folium.Icon(color='red')).add_to(m)
+    
+    # --- 3×3 レイアウトによる中心示唆記号の描画 (正規版の完全再現) ---
+    # 上段：下向き矢印
+    col_l1, col_m1, col_r1 = st.columns([1, 18, 1])
+    with col_m1: 
+        st.markdown("<div class='guide-arrow-main'>▼</div>", unsafe_allow_html=True)
+    
+    # 中段：左矢印 + 地図 + 右矢印
+    col_l2, col_m2, col_r2 = st.columns([1, 18, 1])
+    with col_l2: 
+        st.markdown(f"<div style='line-height:{CONFIG['MAP_HEIGHT']}px; text-align:right;' class='guide-arrow-main'>▶</div>", unsafe_allow_html=True)
+    
+    with col_m2: 
+        # 地図描画（keyは正規版と同様に座標を含めることでキャッシュを制御）
+        map_out = st_folium(
+            m, 
+            width=None, 
+            height=CONFIG["MAP_HEIGHT"], 
+            key=f"map_dialog_{st.session_state.lat}_{st.session_state.lon}",
+            returned_objects=["center"]
+        )
+        
+    with col_r2: 
+        st.markdown(f"<div style='line-height:{CONFIG['MAP_HEIGHT']}px; text-align:left;' class='guide-arrow-main'>◀</div>", unsafe_allow_html=True)
+    
+    # 下段：上向き矢印
+    col_l3, col_m3, col_r3 = st.columns([1, 18, 1])
+    with col_m3: 
+        st.markdown("<div class='guide-arrow-main' style='margin-top:-10px;'>▲</div>", unsafe_allow_html=True)
+    # -----------------------------------------------------------
+
+    st.divider()
+    
+    # 確定ボタン（正規版の動作：ボタンが押されたときだけ座標を取得して保存する）
+    if st.button("✅ グラフ描画地点（地図の中央）確定", use_container_width=True):
+        if map_out and map_out.get("center"):
+            target_lat = map_out["center"]["lat"]
+            target_lon = map_out["center"]["lng"]
             
+            with st.spinner("地点名を検索中..."):
+                place_name = fetch_location_name(target_lat, target_lon)
+            
+            new_temp_label = f"{place_name} ({target_lat:.4f}, {target_lon:.4f})"
+            
+            # 統一保存関数を呼び出し
+            update_state_and_save({
+                "lat": target_lat,
+                "lon": target_lon,
+                "last_basho": place_name,
+                "temp_label": new_temp_label,
+                "show_map": False
+            })
+        else:
+            st.warning("地図の読み込みが完了するまでお待ちください。")
+
+# ==========================================================================================
+# 30_1. 座標から地名を取得するサブルーチン (fetch_location_name)
+# ==========================================================================================
+def fetch_location_name(lat, lon):
+    """Nominatim APIを使用して緯度経度から地名（市区町村レベル）を取得する"""
+    try:
+        url = f"https://nominatim.openstreetmap.org/reverse?format=json&lat={lat}&lon={lon}&zoom=14"
+        headers = {"User-Agent": "WindChecker/2.0"}
+        response = requests.get(url, headers=headers, timeout=5)
+        if response.status_code == 200:
+            data = response.json()
+            address = data.get("address", {})
+            city = address.get("city") or address.get("town") or address.get("village") or address.get("suburb") or "未知の地点"
+            return city
+        return "指定地点"
+    except Exception:
+        return "指定地点"
+
 # ==========================================================================================
 # 82. ブラウザへの保存を実行するサブルーチン
 # ==========================================================================================
@@ -864,6 +851,20 @@ def save_settings_to_browser():
     components.html(
         f"""<script>localStorage.setItem("{CONFIG['STORAGE_KEY']}", '{escaped_json}');</script>""",
         height=0,    )
+
+# ==========================================================================================
+# 83. ステート更新・保存・再描画を一本化するサブルーチン (新規追加)
+# ==========================================================================================
+def update_state_and_save(updates_dict):
+    """
+    引数 updates_dict に基づき st.session_state を更新し、
+    LocalStorageへ即座に書き出し、st.rerun() を実行する。
+    """
+    for key, value in updates_dict.items():
+        st.session_state[key] = value
+    save_settings_to_browser()
+    time.sleep(0.1)
+    st.rerun()
 
 # ==========================================================================================
 # 90. ブラウザのlocalStorageと設定を同期するサブルーチン
