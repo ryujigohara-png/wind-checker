@@ -721,13 +721,14 @@ def calculate_graph_height(base_height, ratios, show_wind, show_temp, show_tide)
 
 
 # ==========================================================================================
-# 30. 地図UIをダイアログで表示するサブルーチン (案B: Fragment導入・デザイン完全維持版)
+# 30. # ==========================================================================================
+# 30. 地図UIをダイアログで表示するサブルーチン (情報のリアルタイム表示追加版)
 # ==========================================================================================
 @st.dialog("📍 地図で指定")
 def show_location_map_dialog():
     """
     ポップアップで地図を表示。
-    st.fragmentを導入し、ダイアログを閉じずにポインタ移動と地名詳細化を実現する。
+    選定された地点情報をリアルタイムで地図下に表示し、ユーザーが確認できるようにする。
     """
     # 【デザイン完全維持】3x3レイアウト用CSS
     st.markdown("""<style>
@@ -735,14 +736,15 @@ def show_location_map_dialog():
         [data-testid="column"] { min-width: 0px !important; }
         .guide-arrow-main { color: crimson; font-size: 24px; font-weight: bold; text-align: center; }
         div[data-testid="stColumn"] button p { font-size: 13px !important; white-space: nowrap !important; }
+        .temp-info-box { background-color: #f0f2f6; padding: 10px; border-radius: 5px; border-left: 5px solid crimson; margin-bottom: 10px; }
         </style>""", unsafe_allow_html=True)
 
-    # 地図と「選定」ボタンを独立したフラグメントとして定義
     @st.fragment
     def map_and_select_section():
         # 表示座標（選定前は確定値、選定後は一時変数を参照）
         d_lat = st.session_state.get("temp_lat", st.session_state.lat)
         d_lon = st.session_state.get("temp_lon", st.session_state.lon)
+        d_basho = st.session_state.get("temp_basho", st.session_state.last_basho)
 
         # 地図構築
         m = folium.Map(location=[d_lat, d_lon], zoom_start=13)
@@ -755,7 +757,6 @@ def show_location_map_dialog():
         col_l2, col_m2, col_r2 = st.columns([1, 18, 1])
         with col_l2: st.markdown(f"<div style='line-height:{CONFIG['MAP_HEIGHT']}px; text-align:right;' class='guide-arrow-main'>▶</div>", unsafe_allow_html=True)
         with col_m2: 
-            # keyを固定しても、fragment内のrerunで地図は更新されます
             map_out = st_folium(m, width=None, height=CONFIG["MAP_HEIGHT"], key="map_fragment_core", returned_objects=["center"])
         with col_r2: st.markdown(f"<div style='line-height:{CONFIG['MAP_HEIGHT']}px; text-align:left;' class='guide-arrow-main'>◀</div>", unsafe_allow_html=True)
         
@@ -763,6 +764,16 @@ def show_location_map_dialog():
         with col_m3: st.markdown("<div class='guide-arrow-main' style='margin-top:-10px;'>▲</div>", unsafe_allow_html=True)
 
         st.divider()
+
+        # --- 【追加】選定された地点情報の表示エリア ---
+        # ユーザーが現在どの地点を「選定」しているかを一目で確認できるようにします
+        st.markdown(f"""
+            <div class='temp-info-box'>
+                <small>現在の選定地点：</small><br>
+                <strong>📍 {d_basho}</strong><br>
+                <small>({d_lat:.4f}, {d_lon:.4f})</small>
+            </div>
+        """, unsafe_allow_html=True)
 
         # --- ボタンエリア (12:4:4) ---
         btn_col1, btn_col2, btn_col3 = st.columns([12, 4, 4])
@@ -776,13 +787,11 @@ def show_location_map_dialog():
                     with st.spinner("詳細地名を取得中..."):
                         place_name = fetch_location_name(t_lat, t_lon)
                     
-                    # session_stateを更新
                     st.session_state.temp_lat = t_lat
                     st.session_state.temp_lon = t_lon
                     st.session_state.temp_basho = place_name
                     
                     st.toast(f"📍 {place_name} を選定しました")
-                    # fragmentのスコープのみ再起動。ダイアログは閉じず、地図だけが新座標で描き直される
                     st.rerun(scope="fragment")
 
         with btn_col2:
@@ -794,12 +803,10 @@ def show_location_map_dialog():
                     st.session_state.temp_label = f"{st.session_state.temp_basho} ({st.session_state.temp_lat:.4f}, {st.session_state.temp_lon:.4f})"
                     st.session_state.needs_graph_update = True
                     for k in ["temp_lat", "temp_lon", "temp_basho"]: st.session_state.pop(k, None)
-                # ダイアログ全体を閉じるために通常のリランを実行
                 st.rerun()
 
         with btn_col3:
             if st.button("中止", use_container_width=True):
-                # 優先順位（現在地 > My Spot > 既定値）で復元
                 if st.session_state.get("geo_lat"):
                     st.session_state.lat, st.session_state.lon = st.session_state.geo_lat, st.session_state.geo_lon
                     st.session_state.last_basho = "現在地"
@@ -814,7 +821,6 @@ def show_location_map_dialog():
                 st.session_state.needs_graph_update = True
                 st.rerun()
 
-    # フラグメントの実行
     map_and_select_section()
 
 # ==========================================================================================
