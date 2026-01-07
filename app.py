@@ -721,58 +721,57 @@ def calculate_graph_height(base_height, ratios, show_wind, show_temp, show_tide)
 
 
 # ==========================================================================================
-# 30. 地図UIをダイアログで表示するサブルーチン (正規版ロジック・デザイン完全復元版)
+# 30. 地図UIをダイアログで表示するサブルーチン (デザイン完全復旧・動作修正版)
 # ==========================================================================================
 @st.dialog("📍 地図で指定")
 def show_location_map_dialog():
     """
     ポップアップで地図を表示し、中心座標を選定して保存する。
-    「選定」ボタンでポインタを移動させ、「中止」で優先順位に基づきリセットする。
+    3×3デザインを完全に維持し、選定ボタンで閉じずに内部状態を更新する。
     """
-    # デザイン調整：ボタンのはみ出しを物理的に防ぎ、3×3レイアウトを維持
+    # 【デザイン完全復旧】正規版のデザイン用CSS
     st.markdown("""<style>
-        /* ダイアログ内のカラム間隔をゼロにし、枠内収まりを強制 */
-        div[data-testid="stHorizontalBlock"] { 
-            gap: 0px !important; 
-            margin: 0px !important;
-            padding: 0px !important;
-        }
-        /* ボタンの最小幅を解除して枠に合わせる */
-        div[data-testid="stColumn"] button {
-            min-width: 0px !important;
-            padding: 0px 2px !important;
-        }
+        div[data-testid="stHorizontalBlock"] { flex-wrap: nowrap !important; justify-content: center !important; }
+        [data-testid="column"] { min-width: 0px !important; }
         .guide-arrow-main { color: crimson; font-size: 24px; font-weight: bold; text-align: center; }
         </style>""", unsafe_allow_html=True)
 
-    # 現在の選定座標（初期表示は session_state、選定後は temp_lat を優先）
-    curr_lat = st.session_state.get("temp_lat", st.session_state.lat)
-    curr_lon = st.session_state.get("temp_lon", st.session_state.lon)
+    # 地図の初期位置（現在の確定座標）
+    m_lat = st.session_state.lat
+    m_lon = st.session_state.lon
 
-    m = folium.Map(location=[curr_lat, curr_lon], zoom_start=13)
-    folium.Marker([curr_lat, curr_lon], icon=folium.Icon(color='red')).add_to(m)
+    m = folium.Map(location=[m_lat, m_lon], zoom_start=13)
+    folium.Marker([m_lat, m_lon], icon=folium.Icon(color='red')).add_to(m)
     
-    # --- 3×3 レイアウトによる中心示唆記号 (正規版完全再現) ---
+    # --- 3×3 レイアウト (正規版の完全再現) ---
     col_l1, col_m1, col_r1 = st.columns([1, 18, 1])
-    with col_m1: st.markdown("<div class='guide-arrow-main'>▼</div>", unsafe_allow_html=True)
+    with col_m1: 
+        st.markdown("<div class='guide-arrow-main'>▼</div>", unsafe_allow_html=True)
     
     col_l2, col_m2, col_r2 = st.columns([1, 18, 1])
-    with col_l2: st.markdown(f"<div style='line-height:{CONFIG['MAP_HEIGHT']}px; text-align:right;' class='guide-arrow-main'>▶</div>", unsafe_allow_html=True)
+    with col_l2: 
+        st.markdown(f"<div style='line-height:{CONFIG['MAP_HEIGHT']}px; text-align:right;' class='guide-arrow-main'>▶</div>", unsafe_allow_html=True)
     with col_m2: 
-        # keyを固定することでダイアログ閉鎖を徹底防止
+        # 地図描画（keyを固定。returned_objectsにcenterを指定）
         map_out = st_folium(
-            m, width=None, height=CONFIG["MAP_HEIGHT"], 
-            key="map_dialog_v2_fixed",
+            m, 
+            width=None, 
+            height=CONFIG["MAP_HEIGHT"], 
+            key="map_dialog_fixed_v4",
             returned_objects=["center"]
         )
-    with col_r2: st.markdown(f"<div style='line-height:{CONFIG['MAP_HEIGHT']}px; text-align:left;' class='guide-arrow-main'>◀</div>", unsafe_allow_html=True)
+    with col_r2: 
+        st.markdown(f"<div style='line-height:{CONFIG['MAP_HEIGHT']}px; text-align:left;' class='guide-arrow-main'>◀</div>", unsafe_allow_html=True)
     
     col_l3, col_m3, col_r3 = st.columns([1, 18, 1])
-    with col_m3: st.markdown("<div class='guide-arrow-main' style='margin-top:-10px;'>▲</div>", unsafe_allow_html=True)
+    with col_m3: 
+        st.markdown("<div class='guide-arrow-main' style='margin-top:-10px;'>▲</div>", unsafe_allow_html=True)
+    # -----------------------------------------------------------
 
     st.divider()
     
-    # --- 1. 選定ボタン ---
+    # 1. 選定ボタン
+    # 【修正】st.rerun()を呼ばないことでダイアログが閉じるのを防ぎます
     if st.button("✅ グラフ描画地点（地図中央）選定", use_container_width=True):
         if map_out and map_out.get("center"):
             t_lat = map_out["center"]["lat"]
@@ -781,48 +780,44 @@ def show_location_map_dialog():
             with st.spinner("詳細な地点名を検索中..."):
                 place_name = fetch_location_name(t_lat, t_lon)
             
-            # 内部状態を更新（これだけでは rerun しないためダイアログは閉じない）
+            # 本番データは書き換えず、一時的に保存
             st.session_state.temp_lat = t_lat
             st.session_state.temp_lon = t_lon
             st.session_state.temp_basho = place_name
             
-            st.toast(f"📍 {place_name} を選定しました")
-            # ポインタ（マーカー）の位置を更新するために再描画
-            st.rerun()
+            # トーストで通知。rerunしないのでダイアログは維持されます。
+            st.toast(f"📍 {place_name} を選定しました。")
+        else:
+            st.warning("地図の読み込みが完了するまでお待ちください。")
 
-    # --- 2. 下部ボタン（決定と中止） ---
-    col_end1, col_end2 = st.columns(2)
-    with col_end1:
-        if st.button("決定して閉じる", use_container_width=True):
-            if "temp_lat" in st.session_state:
-                # 決定時のみ本番の state を更新
-                st.session_state.lat = st.session_state.temp_lat
-                st.session_state.lon = st.session_state.temp_lon
-                st.session_state.last_basho = st.session_state.temp_basho
-                st.session_state.temp_label = f"{st.session_state.temp_basho} ({st.session_state.temp_lat:.4f}, {st.session_state.temp_lon:.4f})"
-                st.session_state.needs_graph_update = True
-                # 不要な一時変数を掃除
-                for k in ["temp_lat", "temp_lon", "temp_basho"]: st.session_state.pop(k, None)
-            st.rerun()
-            
-    with col_end2:
-        if st.button("中止して閉じる", use_container_width=True):
-            # 優先順位に基づき再設定 (現在地 > My Spot > 既定値)
-            if st.session_state.get("geo_lat"):
-                st.session_state.lat, st.session_state.lon = st.session_state.geo_lat, st.session_state.geo_lon
-                st.session_state.last_basho = "現在地"
-            elif st.session_state.get("my_spot_lat"):
-                st.session_state.lat, st.session_state.lon = st.session_state.my_spot_lat, st.session_state.my_spot_lon
-                st.session_state.last_basho = "My Spot"
-            else:
-                st.session_state.lat = CONFIG["DEFAULT_LAT"]
-                st.session_state.lon = CONFIG["DEFAULT_LON"]
-                st.session_state.last_basho = CONFIG["DEFAULT_BASHO"]
-            
-            # 一時変数を掃除
-            for k in ["temp_lat", "temp_lon", "temp_basho"]: st.session_state.pop(k, None)
+    # 2. 下部ボタン（はみ出し防止のため columns を使わず一列ずつ配置）
+    if st.button("決定して閉じる", use_container_width=True):
+        if "temp_lat" in st.session_state:
+            st.session_state.lat = st.session_state.temp_lat
+            st.session_state.lon = st.session_state.temp_lon
+            st.session_state.last_basho = st.session_state.temp_basho
+            st.session_state.temp_label = f"{st.session_state.temp_basho} ({st.session_state.temp_lat:.4f}, {st.session_state.temp_lon:.4f})"
             st.session_state.needs_graph_update = True
-            st.rerun()
+            # 一時変数をクリア
+            for k in ["temp_lat", "temp_lon", "temp_basho"]: st.session_state.pop(k, None)
+        st.rerun()
+
+    if st.button("中止して閉じる", use_container_width=True):
+        # 優先順位（現在地 > My Spot > 既定値）でリセット
+        if st.session_state.get("geo_lat"):
+            st.session_state.lat, st.session_state.lon = st.session_state.geo_lat, st.session_state.geo_lon
+            st.session_state.last_basho = "現在地"
+        elif st.session_state.get("my_spot_lat"):
+            st.session_state.lat, st.session_state.lon = st.session_state.my_spot_lat, st.session_state.my_spot_lon
+            st.session_state.last_basho = "My Spot"
+        else:
+            st.session_state.lat, st.session_state.lon = CONFIG["DEFAULT_LAT"], CONFIG["DEFAULT_LON"]
+            st.session_state.last_basho = CONFIG["DEFAULT_BASHO"]
+        
+        # 一時変数をクリア
+        for k in ["temp_lat", "temp_lon", "temp_basho"]: st.session_state.pop(k, None)
+        st.session_state.needs_graph_update = True
+        st.rerun()
 
 # ==========================================================================================
 # 30_1. 座標から地名を取得するサブルーチン (fetch_location_name)
@@ -835,14 +830,19 @@ def fetch_location_name(lat, lon):
         response = requests.get(url, headers=headers, timeout=5)
         if response.status_code == 200:
             addr = response.json().get("address", {})
-            # 1. 市町村レベル (city or town or village)
+            # 市町村レベル (city, town, village, or suburb as a fallback for big cities)
             city = addr.get("city") or addr.get("town") or addr.get("village") or ""
-            # 2. その1つ下の詳細レベル (suburb or neighbourhood or road)
-            detail = addr.get("suburb") or addr.get("neighbourhood") or addr.get("road") or ""
+            # 詳細レベル (suburb, neighbourhood, road, or quarter)
+            detail = addr.get("suburb") or addr.get("neighbourhood") or addr.get("road") or addr.get("quarter") or ""
             
-            if city and detail:
-                return f"{city} {detail}"
-            return city or detail or "指定地点"
+            # 重複を防ぐための簡易処理
+            if city == detail:
+                res = city
+            elif city and detail:
+                res = f"{city} {detail}"
+            else:
+                res = city or detail or "指定地点"
+            return res.strip()
         return "指定地点"
     except:
         return "指定地点"
