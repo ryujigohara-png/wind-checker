@@ -721,41 +721,24 @@ def calculate_graph_height(base_height, ratios, show_wind, show_temp, show_tide)
 
 
 # ==========================================================================================
-# 30. 地図UIをダイアログで表示するサブルーチン (比率個別指定・全幅95%抑制版)
+# 30. 地図UIをダイアログで表示するサブルーチン (独立3構成・シンプル復旧版)
 # ==========================================================================================
 @st.dialog("📍 地図で指定")
 def show_location_map_dialog():
     """
-    各セクションで異なる比率を適用しつつ、全ての横幅を95%に抑制して突き抜けを防止する。
-    地図: 1:18:1 / 現在の選定: 1 / ボタン: 12:4:4
+    地図(1:18:1)、選定表示(1列)、ボタン(12:4:4)を完全に分離。
+    スマホでの突き抜けを防ぐため、CSSではなく標準カラム構造を優先。
     """
-    # デザインCSS：全体幅の抑制と重なり防止
+    # 最小限のCSS：折り返し禁止とボタン内文字の維持のみ
     st.markdown("""<style>
-        /* ダイアログ全体のコンテンツ幅を95%に絞り、中央寄せにする */
-        div[data-testid="stVerticalBlock"] > div {
-            width: 95% !important;
-            margin: 0 auto !important;
-        }
-
-        /* 横並びブロックの折り返しを禁止 */
-        div[data-testid="stHorizontalBlock"] { flex-wrap: nowrap !important; gap: 4px !important; }
+        div[data-testid="stHorizontalBlock"] { flex-wrap: nowrap !important; }
         [data-testid="column"] { min-width: 0px !important; }
-        
-        /* 足場(+)：四隅の固定用 */
-        .anchor-plus { color: #dddddd; font-size: 12px; text-align: center; font-weight: bold; }
-        
-        /* 案内矢印 */
-        .guide-arrow-main { color: crimson; font-size: 20px; font-weight: bold; text-align: center; }
-        
-        /* 地名表示ボックス (1列・比率1用) */
-        .temp-info-full { 
+        .anchor-plus { color: #cccccc; font-size: 14px; text-align: center; font-weight: bold; }
+        .temp-info-box { 
             background-color: #f0f2f6; padding: 10px; border-radius: 4px; 
             border-left: 5px solid crimson; font-size: 14px; margin: 5px 0;
-            width: 100%; box-sizing: border-box;
         }
-        
-        /* ボタン内文字設定 */
-        div[data-testid="stColumn"] button p { font-size: 11px !important; white-space: nowrap !important; }
+        div[data-testid="stColumn"] button p { font-size: 12px !important; white-space: nowrap !important; }
         </style>""", unsafe_allow_html=True)
 
     @st.fragment
@@ -764,40 +747,36 @@ def show_location_map_dialog():
         d_lon = st.session_state.get("temp_lon", st.session_state.lon)
         d_basho = st.session_state.get("temp_basho", st.session_state.last_basho)
 
-        # 地図オブジェクト作成
+        # 1. 地図セクション (1:18:1)
+        # 上段
+        t1, t2, t3 = st.columns([1, 18, 1])
+        with t1: st.markdown("<div class='anchor-plus'>+</div>", unsafe_allow_html=True)
+        with t2: st.markdown("<div style='text-align:center; color:crimson; font-size:20px;'>▼</div>", unsafe_allow_html=True)
+        with t3: st.markdown("<div class='anchor-plus'>+</div>", unsafe_allow_html=True)
+        
+        # 中段（地図本体）
         m = folium.Map(location=[d_lat, d_lon], zoom_start=13)
         folium.Marker([d_lat, d_lon], icon=folium.Icon(color='red')).add_to(m)
         
-        # --- [構成1] 地図セクション: 1:18:1 比率 ---
-        t1, t2, t3 = st.columns([1, 18, 1])
-        with t1: st.markdown("<div class='anchor-plus'>+</div>", unsafe_allow_html=True)
-        with t2: st.markdown("<div class='guide-arrow-main'>▼</div>", unsafe_allow_html=True)
-        with t3: st.markdown("<div class='anchor-plus'>+</div>", unsafe_allow_html=True)
-
         m1, m2, m3 = st.columns([1, 18, 1])
-        with m1: st.markdown(f"<div style='line-height:{CONFIG['MAP_HEIGHT']}px; text-align:right;' class='guide-arrow-main'>▶</div>", unsafe_allow_html=True)
-        with m2: map_out = st_folium(m, width="100%", height=CONFIG["MAP_HEIGHT"], key="map_final_95pct", returned_objects=["center"])
-        with m3: st.markdown(f"<div style='line-height:{CONFIG['MAP_HEIGHT']}px; text-align:left;' class='guide-arrow-main'>◀</div>", unsafe_allow_html=True)
-
+        with m1: st.markdown(f"<div style='line-height:{CONFIG['MAP_HEIGHT']}px; text-align:right; color:crimson; font-size:20px;'>▶</div>", unsafe_allow_html=True)
+        with m2: map_out = st_folium(m, width="100%", height=CONFIG["MAP_HEIGHT"], key="map_stable_v17", returned_objects=["center"])
+        with m3: st.markdown(f"<div style='line-height:{CONFIG['MAP_HEIGHT']}px; text-align:left; color:crimson; font-size:20px;'>◀</div>", unsafe_allow_html=True)
+        
+        # 下段
         b1, b2, b3 = st.columns([1, 18, 1])
         with b1: st.markdown("<div class='anchor-plus'>+</div>", unsafe_allow_html=True)
-        with b2: st.markdown("<div class='guide-arrow-main' style='margin-top:-8px;'>▲</div>", unsafe_allow_html=True)
+        with b2: st.markdown("<div style='text-align:center; color:crimson; font-size:20px; margin-top:-10px;'>▲</div>", unsafe_allow_html=True)
         with b3: st.markdown("<div class='anchor-plus'>+</div>", unsafe_allow_html=True)
 
         st.divider()
 
-        # --- [構成2] 現在の選定セクション: 比率 1 (全幅) ---
-        # 1列のブロックとして表示
-        st.markdown(f"""
-            <div class='temp-info-full'>
-                📍 <strong>{d_basho}</strong> ({d_lat:.4f}, {d_lon:.4f})
-            </div>
-        """, unsafe_allow_html=True)
+        # 2. 現在の選定セクション (比率1 / 1行)
+        st.markdown(f"<div class='temp-info-box'>📍 {d_basho} ({d_lat:.4f}, {d_lon:.4f})</div>", unsafe_allow_html=True)
 
         st.divider()
 
-        # --- [構成3] ボタンセクション: 12:4:4 比率 ---
-        # 左右に足場を置かず、直接ダイアログ幅(95%抑制下)で比率を指定
+        # 3. ボタンセクション (12:4:4)
         c1, c2, c3 = st.columns([12, 4, 4])
         with c1:
             if st.button("✅ グラフ描画地点（中心）選定", use_container_width=True):
@@ -828,6 +807,7 @@ def show_location_map_dialog():
                 st.rerun()
 
     map_and_select_section()
+    
 # ==========================================================================================
 # 30_1. 座標から地名を取得するサブルーチン (fetch_location_name)
 # ==========================================================================================
