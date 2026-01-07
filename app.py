@@ -1140,7 +1140,6 @@ def render_update_control_module(basho):
 def handle_current_location_update_integrated():
     """
     「現在地を取得」ボタンを処理し、取得成功時に座標と地名を更新・保存する。
-    空白を最小化するため、メインエリアを占有しない st.toast を使用する。
     """
     if st.button("🔄 📍現在地を取得　　　　　　　　　　", use_container_width=True):
         st.session_state.waiting_loc = True
@@ -1148,18 +1147,19 @@ def handle_current_location_update_integrated():
         st.rerun()
 
     if st.session_state.get("waiting_loc"):
-        # メインエリアに st.info を置かず、toast で通知することで空白の発生を防ぐ
+        # メッセージ表示（toastを使用して余白を最小化）
         st.toast("🛰️ 現在地を取得中...", icon="📍")
         
-        # 高速化案1: get_geolocation ライブラリの代わりに JS を直接叩く
+        # --- ここからロジックを高速版に差し替え ---
+        # 従来の get_geolocation(component_key=...) ではなく、JSを直接実行して高速化
         js_code = """
         new Promise((resolve, reject) => {
             navigator.geolocation.getCurrentPosition(
                 (pos) => {
                     resolve({
-                        coords: {
-                            latitude: pos.coords.latitude,
-                            longitude: pos.coords.longitude
+                        'coords': {
+                            'latitude': pos.coords.latitude,
+                            'longitude': pos.coords.longitude
                         }
                     });
                 },
@@ -1168,42 +1168,32 @@ def handle_current_location_update_integrated():
             );
         })
         """
-        
-        try:
-            loc = streamlit_js_eval(js_expressions=js_code, key=st.session_state.get("geo_key"))
-            
-            if loc:
-                new_lat = round(loc['coords']['latitude'], 4)
-                new_lon = round(loc['coords']['longitude'], 4)
-                
-                # 地名特定中も toast で更新
-                st.toast("🌍 地名を特定しています...", icon="🔍")
+        # 実際の取得実行
+        loc = streamlit_js_eval(js_expressions=js_code, key=st.session_state.get("geo_key"))
+        # --- 差し替えここまで ---
+
+        if loc:
+            new_lat = round(loc['coords']['latitude'], 4)
+            new_lon = round(loc['coords']['longitude'], 4)
+            with st.spinner("現在地の地名を特定中..."):
                 place_name = fetch_location_name(new_lat, new_lon)
-                new_temp_label = f"{place_name} ({new_lat:.4f}, {new_lon:.4f})"
-                
-                st.session_state.waiting_loc = False
-                # 座標が更新されるため、グラフ描画フラグをTrueにして保存
-                update_state_and_save({
-                    "lat": new_lat,
-                    "lon": new_lon,
-                    "last_basho": place_name,
-                    "temp_label": new_temp_label,
-                    "show_map": False,
-                    "needs_graph_update": True
-                })
-                # 最後に確定通知を出してリラン
-                st.toast("✅ 位置を更新しました", icon="🚀")
-                st.rerun()
-                
-            elif loc is False:
-                st.session_state.waiting_loc = False
-                st.error("❌ 位置情報の取得に失敗しました。")
-                if st.button("戻る"):
-                    st.rerun()
-                    
-        except Exception as e:
+            new_temp_label = f"{place_name} ({new_lat:.4f}, {new_lon:.4f})"
             st.session_state.waiting_loc = False
-            st.error(f"エラーが発生しました: {e}")
+            
+            # 座標が更新されるため、グラフ描画フラグをTrueにして保存
+            # update_state_and_save ロジックは一切変更せず維持
+            update_state_and_save({
+                "lat": new_lat,
+                "lon": new_lon,
+                "last_basho": place_name,
+                "temp_label": new_temp_label,
+                "show_map": False,
+                "needs_graph_update": True
+            })
+            st.rerun()
+        elif loc is False:
+            st.session_state.waiting_loc = False
+            st.error("❌ 位置情報の取得に失敗しました。")
             if st.button("キャンセル"):
                 st.rerun()
 
