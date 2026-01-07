@@ -727,11 +727,8 @@ def calculate_graph_height(base_height, ratios, show_wind, show_temp, show_tide)
 def show_location_map_dialog():
     """
     ポップアップで地図を表示し、中心座標を選定して保存する。
-    正規版（サブルーチン14）のデザインと「ボタン押下時に確定」するロジックを完全に再現。
-    選定ボタンでは閉じず、納得いくまで位置を変更・選定できる仕様。
+    「選定」ボタンを押してもダイアログを閉じず、微調整を可能にする。
     """
-    # st.info("地図の中央地点のグラフを描画表示することができます。")
-
     # 正規版のデザイン用CSSを適用
     st.markdown("""<style>
         div[data-testid="stHorizontalBlock"] { flex-wrap: nowrap !important; justify-content: center !important; }
@@ -739,26 +736,23 @@ def show_location_map_dialog():
         .guide-arrow-main { color: crimson; font-size: 24px; font-weight: bold; text-align: center; }
         </style>""", unsafe_allow_html=True)
 
-    # 地図の初期位置（現在確定されている座標を使用）
+    # 地図の初期位置
     m_lat = st.session_state.lat
     m_lon = st.session_state.lon
 
     m = folium.Map(location=[m_lat, m_lon], zoom_start=13)
     folium.Marker([m_lat, m_lon], icon=folium.Icon(color='red')).add_to(m)
     
-    # --- 3×3 レイアウトによる中心示唆記号の描画 (正規版の完全再現) ---
-    # 上段：下向き矢印
+    # --- 3×3 レイアウトによる中心示唆記号の描画 ---
     col_l1, col_m1, col_r1 = st.columns([1, 18, 1])
     with col_m1: 
         st.markdown("<div class='guide-arrow-main'>▼</div>", unsafe_allow_html=True)
     
-    # 中段：左矢印 + 地図 + 右矢印
     col_l2, col_m2, col_r2 = st.columns([1, 18, 1])
     with col_l2: 
         st.markdown(f"<div style='line-height:{CONFIG['MAP_HEIGHT']}px; text-align:right;' class='guide-arrow-main'>▶</div>", unsafe_allow_html=True)
     
     with col_m2: 
-        # 地図描画（keyは正規版と同様に座標を含めることでキャッシュを制御）
         map_out = st_folium(
             m, 
             width=None, 
@@ -770,15 +764,15 @@ def show_location_map_dialog():
     with col_r2: 
         st.markdown(f"<div style='line-height:{CONFIG['MAP_HEIGHT']}px; text-align:left;' class='guide-arrow-main'>◀</div>", unsafe_allow_html=True)
     
-    # 下段：上向き矢印
     col_l3, col_m3, col_r3 = st.columns([1, 18, 1])
     with col_m3: 
         st.markdown("<div class='guide-arrow-main' style='margin-top:-10px;'>▲</div>", unsafe_allow_html=True)
-    # -----------------------------------------------------------
 
     st.divider()
     
-    # 選定ボタン（位置を選定し、session_stateに保存するが閉じない）
+    # 選定ボタン
+    # 注意: ここで st.rerun() が発生するとダイアログが閉じるため、
+    # 保存処理のみを行い、自動的な rerun を防ぐ必要があります。
     if st.button("✅ グラフ描画地点（地図中央）選定", use_container_width=True):
         if map_out and map_out.get("center"):
             target_lat = map_out["center"]["lat"]
@@ -789,17 +783,17 @@ def show_location_map_dialog():
             
             new_temp_label = f"{place_name} ({target_lat:.4f}, {target_lon:.4f})"
             
-            # 統一保存関数を呼び出し
-            update_state_and_save({
-                "lat": target_lat,
-                "lon": target_lon,
-                "last_basho": place_name,
-                "temp_label": new_temp_label,
-                "show_map": False,
-                "needs_graph_update": True
-            })
-            # 納得いくまで変更可能であることを伝える
-            st.toast(f"📍 地点を {place_name} に変更しました。再調整も可能です。")
+            # --- 修正箇所 ---
+            # 内部で st.rerun() を含む可能性のある update_state_and_save の代わりに
+            # 直接 session_state を書き換えることで、ダイアログの即時終了を防ぎます
+            st.session_state.lat = target_lat
+            st.session_state.lon = target_lon
+            st.session_state.last_basho = place_name
+            st.session_state.temp_label = new_temp_label
+            st.session_state.needs_graph_update = True
+            
+            st.toast(f"📍 地点を {place_name} に選定しました（再調整可）")
+            # ここで st.rerun() は絶対に呼び出さない
         else:
             st.warning("地図の読み込みが完了するまでお待ちください。")
 
@@ -807,20 +801,19 @@ def show_location_map_dialog():
     col_end1, col_end2 = st.columns(2)
     with col_end1:
         if st.button("決定して閉じる", use_container_width=True):
+            # 確定させて閉じるためにここで初めてリランをかける
             st.rerun()
     with col_end2:
         if st.button("中止して閉じる", use_container_width=True):
-            # 中止時は session_state を変更せずにリラン（ダイアログを閉じる）
-            # もし「選定」ボタンですでに書き換わってしまった値を元に戻したい場合は
-            # 呼び出し時のバックアップをとる等の処理が必要ですが、
-            # 現在はシンプルにダイアログを閉じる動作を実装しています。
+            # 中止ボタン。本来は元の座標に戻す処理が必要ですが、
+            # まずは「閉じる」動作を優先します。
             st.rerun()
 
 # ==========================================================================================
 # 30_1. 座標から地名を取得するサブルーチン (fetch_location_name)
 # ==========================================================================================
 def fetch_location_name(lat, lon):
-    """Nominatim APIを使用して緯度経度から地名（市区町村レベル）を取得する"""
+    """Nominatim APIを使用して緯度経度から地名を取得する"""
     try:
         url = f"https://nominatim.openstreetmap.org/reverse?format=json&lat={lat}&lon={lon}&zoom=14"
         headers = {"User-Agent": "WindChecker/2.0"}
