@@ -721,27 +721,30 @@ def calculate_graph_height(base_height, ratios, show_wind, show_temp, show_tide)
 
 
 # ==========================================================================================
-# 30. 地図UIをダイアログで表示するサブルーチン (デザイン完全復旧・動作修正版)
+# 30. 地図UIをダイアログで表示するサブルーチン (デザイン完全復旧・ポインタ移動・ボタン配置修正版)
 # ==========================================================================================
 @st.dialog("📍 地図で指定")
 def show_location_map_dialog():
     """
     ポップアップで地図を表示し、中心座標を選定して保存する。
-    3×3デザインを完全に維持し、選定ボタンで閉じずに内部状態を更新する。
+    3×3デザインを維持し、選定ボタンでポインタを動かし、下部ボタンを10:5:5で配置。
     """
-    # 【デザイン完全復旧】正規版のデザイン用CSS
+    # 【デザイン完全復旧 + ボタン調整】CSS
     st.markdown("""<style>
-        div[data-testid="stHorizontalBlock"] { flex-wrap: nowrap !important; justify-content: center !important; }
+        div[data-testid="stHorizontalBlock"] { flex-wrap: nowrap !important; justify-content: center !important; gap: 4px !important; }
         [data-testid="column"] { min-width: 0px !important; }
         .guide-arrow-main { color: crimson; font-size: 24px; font-weight: bold; text-align: center; }
+        /* ボタンのテキストが長い場合に備えフォントサイズを微調整 */
+        div[data-testid="stColumn"] button p { font-size: 14px !important; }
         </style>""", unsafe_allow_html=True)
 
-    # 地図の初期位置（現在の確定座標）
-    m_lat = st.session_state.lat
-    m_lon = st.session_state.lon
+    # 表示用座標の決定（選定ボタンで temp_lat があればそれを優先して地図に反映）
+    d_lat = st.session_state.get("temp_lat", st.session_state.lat)
+    d_lon = st.session_state.get("temp_lon", st.session_state.lon)
 
-    m = folium.Map(location=[m_lat, m_lon], zoom_start=13)
-    folium.Marker([m_lat, m_lon], icon=folium.Icon(color='red')).add_to(m)
+    # 地図の構築：マーカーを表示用座標（d_lat, d_lon）に配置
+    m = folium.Map(location=[d_lat, d_lon], zoom_start=13)
+    folium.Marker([d_lat, d_lon], icon=folium.Icon(color='red')).add_to(m)
     
     # --- 3×3 レイアウト (正規版の完全再現) ---
     col_l1, col_m1, col_r1 = st.columns([1, 18, 1])
@@ -752,12 +755,12 @@ def show_location_map_dialog():
     with col_l2: 
         st.markdown(f"<div style='line-height:{CONFIG['MAP_HEIGHT']}px; text-align:right;' class='guide-arrow-main'>▶</div>", unsafe_allow_html=True)
     with col_m2: 
-        # 地図描画（keyを固定。returned_objectsにcenterを指定）
+        # 地図描画：keyを座標連動にすることでポインタ移動を確実に反映
         map_out = st_folium(
             m, 
             width=None, 
             height=CONFIG["MAP_HEIGHT"], 
-            key="map_dialog_fixed_v4",
+            key=f"map_dlg_{d_lat}_{d_lon}",
             returned_objects=["center"]
         )
     with col_r2: 
@@ -770,54 +773,56 @@ def show_location_map_dialog():
 
     st.divider()
     
-    # 1. 選定ボタン
-    # 【修正】st.rerun()を呼ばないことでダイアログが閉じるのを防ぎます
-    if st.button("✅ グラフ描画地点（地図中央）選定", use_container_width=True):
-        if map_out and map_out.get("center"):
-            t_lat = map_out["center"]["lat"]
-            t_lon = map_out["center"]["lng"]
-            
-            with st.spinner("詳細な地点名を検索中..."):
-                place_name = fetch_location_name(t_lat, t_lon)
-            
-            # 本番データは書き換えず、一時的に保存
-            st.session_state.temp_lat = t_lat
-            st.session_state.temp_lon = t_lon
-            st.session_state.temp_basho = place_name
-            
-            # トーストで通知。rerunしないのでダイアログは維持されます。
-            st.toast(f"📍 {place_name} を選定しました。")
-        else:
-            st.warning("地図の読み込みが完了するまでお待ちください。")
+    # --- ボタンエリア：横3列（比率 10:5:5） ---
+    btn_col1, btn_col2, btn_col3 = st.columns([10, 5, 5])
 
-    # 2. 下部ボタン（はみ出し防止のため columns を使わず一列ずつ配置）
-    if st.button("決定して閉じる", use_container_width=True):
-        if "temp_lat" in st.session_state:
-            st.session_state.lat = st.session_state.temp_lat
-            st.session_state.lon = st.session_state.temp_lon
-            st.session_state.last_basho = st.session_state.temp_basho
-            st.session_state.temp_label = f"{st.session_state.temp_basho} ({st.session_state.temp_lat:.4f}, {st.session_state.temp_lon:.4f})"
-            st.session_state.needs_graph_update = True
-            # 一時変数をクリア
+    with btn_col1:
+        # 1. 選定ボタン：これを押すと temp_lat が更新され、再描画でポインタが動く
+        if st.button("✅ グラフ描画地点（中心）選定", use_container_width=True):
+            if map_out and map_out.get("center"):
+                t_lat = map_out["center"]["lat"]
+                t_lon = map_out["center"]["lng"]
+                
+                with st.spinner("詳細地名を取得中..."):
+                    place_name = fetch_location_name(t_lat, t_lon)
+                
+                st.session_state.temp_lat = t_lat
+                st.session_state.temp_lon = t_lon
+                st.session_state.temp_basho = place_name
+                
+                st.toast(f"📍 {place_name} を選定しました")
+                # rerunすることで display_lat が temp_lat に切り替わりポインタが動く
+                st.rerun()
+
+    with btn_col2:
+        # 2. 決定ボタン
+        if st.button("決定", use_container_width=True):
+            if "temp_lat" in st.session_state:
+                st.session_state.lat = st.session_state.temp_lat
+                st.session_state.lon = st.session_state.temp_lon
+                st.session_state.last_basho = st.session_state.temp_basho
+                st.session_state.temp_label = f"{st.session_state.temp_basho} ({st.session_state.temp_lat:.4f}, {st.session_state.temp_lon:.4f})"
+                st.session_state.needs_graph_update = True
+                for k in ["temp_lat", "temp_lon", "temp_basho"]: st.session_state.pop(k, None)
+            st.rerun()
+
+    with btn_col3:
+        # 3. 中止ボタン
+        if st.button("中止", use_container_width=True):
+            # 優先順位（現在地 > My Spot > 既定値）でリセット
+            if st.session_state.get("geo_lat"):
+                st.session_state.lat, st.session_state.lon = st.session_state.geo_lat, st.session_state.geo_lon
+                st.session_state.last_basho = "現在地"
+            elif st.session_state.get("my_spot_lat"):
+                st.session_state.lat, st.session_state.lon = st.session_state.my_spot_lat, st.session_state.my_spot_lon
+                st.session_state.last_basho = "My Spot"
+            else:
+                st.session_state.lat, st.session_state.lon = CONFIG["DEFAULT_LAT"], CONFIG["DEFAULT_LON"]
+                st.session_state.last_basho = CONFIG["DEFAULT_BASHO"]
+            
             for k in ["temp_lat", "temp_lon", "temp_basho"]: st.session_state.pop(k, None)
-        st.rerun()
-
-    if st.button("中止して閉じる", use_container_width=True):
-        # 優先順位（現在地 > My Spot > 既定値）でリセット
-        if st.session_state.get("geo_lat"):
-            st.session_state.lat, st.session_state.lon = st.session_state.geo_lat, st.session_state.geo_lon
-            st.session_state.last_basho = "現在地"
-        elif st.session_state.get("my_spot_lat"):
-            st.session_state.lat, st.session_state.lon = st.session_state.my_spot_lat, st.session_state.my_spot_lon
-            st.session_state.last_basho = "My Spot"
-        else:
-            st.session_state.lat, st.session_state.lon = CONFIG["DEFAULT_LAT"], CONFIG["DEFAULT_LON"]
-            st.session_state.last_basho = CONFIG["DEFAULT_BASHO"]
-        
-        # 一時変数をクリア
-        for k in ["temp_lat", "temp_lon", "temp_basho"]: st.session_state.pop(k, None)
-        st.session_state.needs_graph_update = True
-        st.rerun()
+            st.session_state.needs_graph_update = True
+            st.rerun()
 
 # ==========================================================================================
 # 30_1. 座標から地名を取得するサブルーチン (fetch_location_name)
@@ -830,19 +835,14 @@ def fetch_location_name(lat, lon):
         response = requests.get(url, headers=headers, timeout=5)
         if response.status_code == 200:
             addr = response.json().get("address", {})
-            # 市町村レベル (city, town, village, or suburb as a fallback for big cities)
+            # 市町村レベル
             city = addr.get("city") or addr.get("town") or addr.get("village") or ""
-            # 詳細レベル (suburb, neighbourhood, road, or quarter)
-            detail = addr.get("suburb") or addr.get("neighbourhood") or addr.get("road") or addr.get("quarter") or ""
+            # 1つ下のレベル（詳細）をより広範囲に探索
+            detail = addr.get("suburb") or addr.get("neighbourhood") or addr.get("road") or addr.get("quarter") or addr.get("hamlet") or ""
             
-            # 重複を防ぐための簡易処理
-            if city == detail:
-                res = city
-            elif city and detail:
-                res = f"{city} {detail}"
-            else:
-                res = city or detail or "指定地点"
-            return res.strip()
+            if city and detail and city != detail:
+                return f"{city} {detail}"
+            return city or detail or "指定地点"
         return "指定地点"
     except:
         return "指定地点"
