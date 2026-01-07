@@ -721,41 +721,30 @@ def calculate_graph_height(base_height, ratios, show_wind, show_temp, show_tide)
 
 
 # ==========================================================================================
-# 30. 地図UIをダイアログで表示するサブルーチン (1:18:1 手法完全統一版)
+# 30. 地図UIをダイアログで表示するサブルーチン (1:18:1 物理ロック・完全復旧版)
 # ==========================================================================================
 @st.dialog("📍 地図で指定")
 def show_location_map_dialog():
     """
     ポップアップで地図を表示。
-    全要素に地図と同じ1:18:1カラム構造を適用し、スマホでの突き抜けを物理的に防ぐ。
+    全セクションの四隅に透明な「足場」を設置し、スマホでの1:18:1比率の崩壊を物理的に防ぐ。
     """
-    # 【デザイン厳守】ボタンを地図と同じ「枠」に閉じ込めるCSS
+    # 【デザイン復旧】横幅の固定と突き抜け防止CSS
     st.markdown("""<style>
-        /* 横並びブロックの折り返しを禁止し、100%幅を維持 */
-        div[data-testid="stHorizontalBlock"] { 
-            flex-wrap: nowrap !important; 
-            width: 100% !important;
-            gap: 4px !important; 
-        }
+        /* 横並びブロックの折り返しを禁止し、100%幅を強制 */
+        div[data-testid="stHorizontalBlock"] { flex-wrap: nowrap !important; width: 100% !important; gap: 0px !important; }
+        [data-testid="column"] { min-width: 0px !important; flex-shrink: 1 !important; }
         
-        /* 地図のカラムと同じく、中身を縮ませて枠内に収める */
-        [data-testid="column"] { 
-            min-width: 0px !important; 
-            flex-shrink: 1 !important;
-        }
-
-        /* 1行地名表示のスタイル */
-        .temp-info-row { 
-            background-color: #f0f2f6; padding: 6px 10px; border-radius: 4px; 
-            border-left: 5px solid crimson; font-size: 13px; margin: 5px 0;
+        /* 案内矢印と地名表示 */
+        .guide-arrow-main { color: crimson; font-size: 24px; font-weight: bold; text-align: center; line-height: 1; }
+        .temp-info-inline { 
+            background-color: #f0f2f6; padding: 8px 10px; border-radius: 4px; 
+            border-left: 5px solid crimson; font-size: 14px; margin: 10px 0;
             white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
         }
         
-        /* ボタン内の文字設定（文言変更なし） */
-        div[data-testid="stColumn"] button p { 
-            font-size: 12px !important; 
-            white-space: nowrap !important;
-        }
+        /* 足場用：透明な文字 */
+        .anchor-text { color: transparent; font-size: 1px; user-select: none; }
         </style>""", unsafe_allow_html=True)
 
     @st.fragment
@@ -770,27 +759,33 @@ def show_location_map_dialog():
         
         # --- 1. 地図 3×3 (1:18:1) ---
         c1, c2, c3 = st.columns([1, 18, 1])
-        with c2: st.markdown("<div style='text-align:center; color:crimson; font-size:24px; font-weight:bold;'>▼</div>", unsafe_allow_html=True)
+        with c1: st.markdown("<div class='anchor-text'>+</div>", unsafe_allow_html=True) # A1: 足場
+        with c2: st.markdown("<div class='guide-arrow-main'>▼</div>", unsafe_allow_html=True)
+        with c3: st.markdown("<div class='anchor-text'>+</div>", unsafe_allow_html=True) # C1: 足場
         
         c4, c5, c6 = st.columns([1, 18, 1])
-        with c4: st.markdown(f"<div style='line-height:{CONFIG['MAP_HEIGHT']}px; text-align:right; color:crimson; font-size:24px; font-weight:bold;'>▶</div>", unsafe_allow_html=True)
-        with c5: map_out = st_folium(m, width=None, height=CONFIG["MAP_HEIGHT"], key="map_unify_v13", returned_objects=["center"])
-        with c6: st.markdown(f"<div style='line-height:{CONFIG['MAP_HEIGHT']}px; text-align:left; color:crimson; font-size:24px; font-weight:bold;'>◀</div>", unsafe_allow_html=True)
+        with c4: st.markdown(f"<div style='line-height:{CONFIG['MAP_HEIGHT']}px; text-align:right;' class='guide-arrow-main'>▶</div>", unsafe_allow_html=True)
+        with c5: map_out = st_folium(m, width=None, height=CONFIG["MAP_HEIGHT"], key="map_locked_v14", returned_objects=["center"])
+        with c6: st.markdown(f"<div style='line-height:{CONFIG['MAP_HEIGHT']}px; text-align:left;' class='guide-arrow-main'>◀</div>", unsafe_allow_html=True)
         
         c7, c8, c9 = st.columns([1, 18, 1])
-        with c8: st.markdown("<div style='text-align:center; color:crimson; font-size:24px; font-weight:bold; margin-top:-10px;'>▲</div>", unsafe_allow_html=True)
+        with c7: st.markdown("<div class='anchor-text'>+</div>", unsafe_allow_html=True) # A3: 足場
+        with c8: st.markdown("<div class='guide-arrow-main' style='margin-top:-10px;'>▲</div>", unsafe_allow_html=True)
+        with c9: st.markdown("<div class='anchor-text'>+</div>", unsafe_allow_html=True) # C3: 足場
 
         st.divider()
 
-        # --- 2. 現在の選定地点 (地図と同じ 1:18:1 の枠に収容) ---
+        # --- 2. 地名表示 (1:18:1) ---
         i_l, i_m, i_r = st.columns([1, 18, 1])
+        with i_l: st.markdown("<div class='anchor-text'>+</div>", unsafe_allow_html=True) # 左の足場
         with i_m:
-            st.markdown(f"<div class='temp-info-row'>現在の選定地点：📍 {d_basho} ({d_lat:.4f}, {d_lon:.4f})</div>", unsafe_allow_html=True)
+            st.markdown(f"<div class='temp-info-inline'>現在の選定地点：<strong>📍 {d_basho} ({d_lat:.4f}, {d_lon:.4f})</strong></div>", unsafe_allow_html=True)
+        with i_r: st.markdown("<div class='anchor-text'>+</div>", unsafe_allow_html=True) # 右の足場
 
-        # --- 3. ボタン列 (地図と同じ 1:18:1 の枠内に 12:4:4 を展開) ---
+        # --- 3. ボタン列 (1:18:1 の器の中に 12:4:4 を展開) ---
         b_l, b_m, b_r = st.columns([1, 18, 1])
+        with b_l: st.markdown("<div class='anchor-text'>+</div>", unsafe_allow_html=True) # 左の足場
         with b_m:
-            # 内側でさらに分割
             b1, b2, b3 = st.columns([12, 4, 4])
             with b1:
                 if st.button("✅ グラフ描画地点（中心）選定", use_container_width=True):
@@ -810,7 +805,6 @@ def show_location_map_dialog():
                     st.rerun()
             with b3:
                 if st.button("中止", use_container_width=True):
-                    # 復元
                     if st.session_state.get("geo_lat"):
                         st.session_state.lat, st.session_state.lon, st.session_state.last_basho = st.session_state.geo_lat, st.session_state.geo_lon, "現在地"
                     elif st.session_state.get("my_spot_lat"):
@@ -820,6 +814,7 @@ def show_location_map_dialog():
                     for k in ["temp_lat", "temp_lon", "temp_basho"]: st.session_state.pop(k, None)
                     st.session_state.needs_graph_update = True
                     st.rerun()
+        with b_r: st.markdown("<div class='anchor-text'>+</div>", unsafe_allow_html=True) # 右の足場
 
     map_and_select_section()
 
