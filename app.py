@@ -721,27 +721,46 @@ def calculate_graph_height(base_height, ratios, show_wind, show_temp, show_tide)
 
 
 # ==========================================================================================
-# 30. # ==========================================================================================
-# 30. 地図UIをダイアログで表示するサブルーチン (情報のリアルタイム表示追加版)
+# 30. 地図UIをダイアログで表示するサブルーチン (最終スリム化・1行情報表示版)
 # ==========================================================================================
 @st.dialog("📍 地図で指定")
 def show_location_map_dialog():
     """
     ポップアップで地図を表示。
-    選定された地点情報をリアルタイムで地図下に表示し、ユーザーが確認できるようにする。
+    情報の1行集約と余白の最小化を行い、上下のスクロールを抑制する。
     """
-    # 【デザイン完全維持】3x3レイアウト用CSS
+    # 【デザイン完全維持＋余白削減】CSS
     st.markdown("""<style>
-        div[data-testid="stHorizontalBlock"] { flex-wrap: nowrap !important; justify-content: center !important; gap: 4px !important; }
+        /* 3x3の構造は変えず、隙間だけを詰める */
+        div[data-testid="stHorizontalBlock"] { flex-wrap: nowrap !important; justify-content: center !important; gap: 2px !important; }
         [data-testid="column"] { min-width: 0px !important; }
-        .guide-arrow-main { color: crimson; font-size: 24px; font-weight: bold; text-align: center; }
-        div[data-testid="stColumn"] button p { font-size: 13px !important; white-space: nowrap !important; }
-        .temp-info-box { background-color: #f0f2f6; padding: 10px; border-radius: 5px; border-left: 5px solid crimson; margin-bottom: 10px; }
+        .guide-arrow-main { color: crimson; font-size: 20px; font-weight: bold; text-align: center; }
+        
+        /* 全体の上下余白を削る */
+        div[data-testid="stVerticalBlock"] > div { margin-top: -10px !important; padding-top: 0px !important; }
+        hr { margin: 0.5rem 0px !important; } /* dividerの余白 */
+        
+        /* 1行情報表示ボックス */
+        .temp-info-inline { 
+            background-color: #f0f2f6; 
+            padding: 4px 10px; 
+            border-radius: 4px; 
+            border-left: 4px solid crimson; 
+            font-size: 13px; 
+            margin-bottom: 5px; 
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        
+        /* ボタンの文字サイズとパディング */
+        div[data-testid="stColumn"] button { padding: 0px !important; }
+        div[data-testid="stColumn"] button p { font-size: 12px !important; }
         </style>""", unsafe_allow_html=True)
 
     @st.fragment
     def map_and_select_section():
-        # 表示座標（選定前は確定値、選定後は一時変数を参照）
+        # 表示座標
         d_lat = st.session_state.get("temp_lat", st.session_state.lat)
         d_lon = st.session_state.get("temp_lon", st.session_state.lon)
         d_basho = st.session_state.get("temp_basho", st.session_state.last_basho)
@@ -761,17 +780,14 @@ def show_location_map_dialog():
         with col_r2: st.markdown(f"<div style='line-height:{CONFIG['MAP_HEIGHT']}px; text-align:left;' class='guide-arrow-main'>◀</div>", unsafe_allow_html=True)
         
         col_l3, col_m3, col_r3 = st.columns([1, 18, 1])
-        with col_m3: st.markdown("<div class='guide-arrow-main' style='margin-top:-10px;'>▲</div>", unsafe_allow_html=True)
+        with col_m3: st.markdown("<div class='guide-arrow-main' style='margin-top:-5px;'>▲</div>", unsafe_allow_html=True)
 
         st.divider()
 
-        # --- 【追加】選定された地点情報の表示エリア ---
-        # ユーザーが現在どの地点を「選定」しているかを一目で確認できるようにします
+        # --- 【修正】選定された地点情報の表示エリア（1行に集約） ---
         st.markdown(f"""
-            <div class='temp-info-box'>
-                <small>現在の選定地点：</small><br>
-                <strong>📍 {d_basho}</strong><br>
-                <small>({d_lat:.4f}, {d_lon:.4f})</small>
+            <div class='temp-info-inline'>
+                現在の選定地点：<strong>📍 {d_basho} ({d_lat:.4f}, {d_lon:.4f})</strong>
             </div>
         """, unsafe_allow_html=True)
 
@@ -784,14 +800,14 @@ def show_location_map_dialog():
                     t_lat = map_out["center"]["lat"]
                     t_lon = map_out["center"]["lng"]
                     
-                    with st.spinner("詳細地名を取得中..."):
+                    with st.spinner("検索中..."):
                         place_name = fetch_location_name(t_lat, t_lon)
                     
                     st.session_state.temp_lat = t_lat
                     st.session_state.temp_lon = t_lon
                     st.session_state.temp_basho = place_name
                     
-                    st.toast(f"📍 {place_name} を選定しました")
+                    st.toast(f"📍 {place_name} 選定")
                     st.rerun(scope="fragment")
 
         with btn_col2:
@@ -807,6 +823,7 @@ def show_location_map_dialog():
 
         with btn_col3:
             if st.button("中止", use_container_width=True):
+                # 優先順位（現在地 > My Spot > 既定値）でリセット
                 if st.session_state.get("geo_lat"):
                     st.session_state.lat, st.session_state.lon = st.session_state.geo_lat, st.session_state.geo_lon
                     st.session_state.last_basho = "現在地"
