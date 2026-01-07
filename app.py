@@ -721,41 +721,45 @@ def calculate_graph_height(base_height, ratios, show_wind, show_temp, show_tide)
 
 
 # ==========================================================================================
-# 30. 地図UIをダイアログで表示するサブルーチン (最終確定・スマホ最適化版)
+# 30. 地図UIをダイアログで表示するサブルーチン (1:18:1 手法完全統一版)
 # ==========================================================================================
 @st.dialog("📍 地図で指定")
 def show_location_map_dialog():
     """
     ポップアップで地図を表示。
-    全ての行を 1:18:1 構造で統一し、スマホでの突き抜け・重なりを排除。
-    不要な緯度経度の2行表示を削除。
+    全要素に地図と同じ1:18:1カラム構造を適用し、スマホでの突き抜けを物理的に防ぐ。
     """
-    # デザインCSS：余白の適正化と横幅の強制収容
+    # 【デザイン厳守】ボタンを地図と同じ「枠」に閉じ込めるCSS
     st.markdown("""<style>
-        /* 横幅の強制収容とカラム間隔の固定 */
-        div[data-testid="stHorizontalBlock"] { flex-wrap: nowrap !important; width: 100% !important; gap: 4px !important; }
-        [data-testid="column"] { min-width: 0px !important; }
-        
-        /* 上下余白を半分程度に圧縮 */
-        div[data-testid="stVerticalBlock"] > div { margin-top: -6px !important; }
-        hr { margin: 0.4rem 0px !important; } 
-
-        /* 案内矢印 */
-        .guide-arrow-main { color: crimson; font-size: 24px; font-weight: bold; text-align: center; }
-        
-        /* 1行地名表示ボックス */
-        .temp-info-inline { 
-            background-color: #f0f2f6; padding: 6px 10px; border-radius: 5px; border-left: 5px solid crimson; 
-            font-size: 13px; margin-bottom: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        /* 横並びブロックの折り返しを禁止し、100%幅を維持 */
+        div[data-testid="stHorizontalBlock"] { 
+            flex-wrap: nowrap !important; 
+            width: 100% !important;
+            gap: 4px !important; 
         }
         
-        /* ボタン内テキストの設定 */
-        div[data-testid="stColumn"] button p { white-space: nowrap !important; font-size: 12px !important; }
+        /* 地図のカラムと同じく、中身を縮ませて枠内に収める */
+        [data-testid="column"] { 
+            min-width: 0px !important; 
+            flex-shrink: 1 !important;
+        }
+
+        /* 1行地名表示のスタイル */
+        .temp-info-row { 
+            background-color: #f0f2f6; padding: 6px 10px; border-radius: 4px; 
+            border-left: 5px solid crimson; font-size: 13px; margin: 5px 0;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        
+        /* ボタン内の文字設定（文言変更なし） */
+        div[data-testid="stColumn"] button p { 
+            font-size: 12px !important; 
+            white-space: nowrap !important;
+        }
         </style>""", unsafe_allow_html=True)
 
     @st.fragment
     def map_and_select_section():
-        # 表示座標と名称
         d_lat = st.session_state.get("temp_lat", st.session_state.lat)
         d_lon = st.session_state.get("temp_lon", st.session_state.lon)
         d_basho = st.session_state.get("temp_basho", st.session_state.last_basho)
@@ -764,45 +768,39 @@ def show_location_map_dialog():
         m = folium.Map(location=[d_lat, d_lon], zoom_start=13)
         folium.Marker([d_lat, d_lon], icon=folium.Icon(color='red')).add_to(m)
         
-        # --- 1. 地図 3×3 エリア (1:18:1 構造を維持) ---
-        r1l, r1m, r1r = st.columns([1, 18, 1])
-        with r1m: st.markdown("<div class='guide-arrow-main'>▼</div>", unsafe_allow_html=True)
+        # --- 1. 地図 3×3 (1:18:1) ---
+        c1, c2, c3 = st.columns([1, 18, 1])
+        with c2: st.markdown("<div style='text-align:center; color:crimson; font-size:24px; font-weight:bold;'>▼</div>", unsafe_allow_html=True)
         
-        r2l, r2m, r2r = st.columns([1, 18, 1])
-        with r2l: st.markdown(f"<div style='line-height:{CONFIG['MAP_HEIGHT']}px; text-align:right;' class='guide-arrow-main'>▶</div>", unsafe_allow_html=True)
-        with r2m: 
-            map_out = st_folium(m, width=None, height=CONFIG["MAP_HEIGHT"], key="map_final_v10", returned_objects=["center"])
-        with r2r: st.markdown(f"<div style='line-height:{CONFIG['MAP_HEIGHT']}px; text-align:left;' class='guide-arrow-main'>◀</div>", unsafe_allow_html=True)
+        c4, c5, c6 = st.columns([1, 18, 1])
+        with c4: st.markdown(f"<div style='line-height:{CONFIG['MAP_HEIGHT']}px; text-align:right; color:crimson; font-size:24px; font-weight:bold;'>▶</div>", unsafe_allow_html=True)
+        with c5: map_out = st_folium(m, width=None, height=CONFIG["MAP_HEIGHT"], key="map_unify_v13", returned_objects=["center"])
+        with c6: st.markdown(f"<div style='line-height:{CONFIG['MAP_HEIGHT']}px; text-align:left; color:crimson; font-size:24px; font-weight:bold;'>◀</div>", unsafe_allow_html=True)
         
-        r3l, r3m, r3r = st.columns([1, 18, 1])
-        with r3m: st.markdown("<div class='guide-arrow-main' style='margin-top:-10px;'>▲</div>", unsafe_allow_html=True)
+        c7, c8, c9 = st.columns([1, 18, 1])
+        with c8: st.markdown("<div style='text-align:center; color:crimson; font-size:24px; font-weight:bold; margin-top:-10px;'>▲</div>", unsafe_allow_html=True)
 
         st.divider()
 
-        # --- 2. 現在の選定地点 (1:18:1 構造に配置) ---
-        r4l, r4m, r4r = st.columns([1, 18, 1])
-        with r4m:
-            # 緯度経度は1行内に集約し、2行目を削除
-            st.markdown(f"""
-                <div class='temp-info-inline'>
-                    現在の選定地点：<strong>📍 {d_basho} ({d_lat:.4f}, {d_lon:.4f})</strong>
-                </div>
-            """, unsafe_allow_html=True)
+        # --- 2. 現在の選定地点 (地図と同じ 1:18:1 の枠に収容) ---
+        i_l, i_m, i_r = st.columns([1, 18, 1])
+        with i_m:
+            st.markdown(f"<div class='temp-info-row'>現在の選定地点：📍 {d_basho} ({d_lat:.4f}, {d_lon:.4f})</div>", unsafe_allow_html=True)
 
-        # --- 3. 操作ボタン (1:18:1 構造の中に 12:4:4 を配置) ---
-        r5l, r5m, r5r = st.columns([1, 18, 1])
-        with r5m:
-            btn_col1, btn_col2, btn_col3 = st.columns([12, 4, 4])
-            with btn_col1:
+        # --- 3. ボタン列 (地図と同じ 1:18:1 の枠内に 12:4:4 を展開) ---
+        b_l, b_m, b_r = st.columns([1, 18, 1])
+        with b_m:
+            # 内側でさらに分割
+            b1, b2, b3 = st.columns([12, 4, 4])
+            with b1:
                 if st.button("✅ グラフ描画地点（中心）選定", use_container_width=True):
                     if map_out and map_out.get("center"):
                         t_lat, t_lon = map_out["center"]["lat"], map_out["center"]["lng"]
-                        with st.spinner("詳細地名を取得中..."):
-                            place_name = fetch_location_name(t_lat, t_lon)
-                        st.session_state.temp_lat, st.session_state.temp_lon, st.session_state.temp_basho = t_lat, t_lon, place_name
-                        st.toast(f"📍 {place_name} を選定しました")
+                        with st.spinner("検索..."):
+                            p_name = fetch_location_name(t_lat, t_lon)
+                        st.session_state.temp_lat, st.session_state.temp_lon, st.session_state.temp_basho = t_lat, t_lon, p_name
                         st.rerun(scope="fragment")
-            with btn_col2:
+            with b2:
                 if st.button("決定", use_container_width=True):
                     if "temp_lat" in st.session_state:
                         st.session_state.lat, st.session_state.lon, st.session_state.last_basho = st.session_state.temp_lat, st.session_state.temp_lon, st.session_state.temp_basho
@@ -810,9 +808,9 @@ def show_location_map_dialog():
                         st.session_state.needs_graph_update = True
                         for k in ["temp_lat", "temp_lon", "temp_basho"]: st.session_state.pop(k, None)
                     st.rerun()
-            with btn_col3:
+            with b3:
                 if st.button("中止", use_container_width=True):
-                    # 優先順位（現在地 > My Spot > 既定値）
+                    # 復元
                     if st.session_state.get("geo_lat"):
                         st.session_state.lat, st.session_state.lon, st.session_state.last_basho = st.session_state.geo_lat, st.session_state.geo_lon, "現在地"
                     elif st.session_state.get("my_spot_lat"):
