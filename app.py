@@ -1148,10 +1148,11 @@ def handle_current_location_update_integrated():
         st.rerun()
 
     if st.session_state.get("waiting_loc"):
-        st.info("🛰️ 現在地を取得中...")
+        # メッセージ表示用の空コンテナを作成
+        msg_placeholder = st.empty()
+        msg_placeholder.info("🛰️ 現在地を取得中...")
         
         # 高速化案1: get_geolocation ライブラリの代わりに JS を直接叩く
-        # タイムアウト5秒、高精度モード、キャッシュなしの設定
         js_code = """
         new Promise((resolve, reject) => {
             navigator.geolocation.getCurrentPosition(
@@ -1175,9 +1176,15 @@ def handle_current_location_update_integrated():
             if loc:
                 new_lat = round(loc['coords']['latitude'], 4)
                 new_lon = round(loc['coords']['longitude'], 4)
-                with st.spinner("現在地の地名を特定中..."):
-                    place_name = fetch_location_name(new_lat, new_lon)
+                
+                # 地名特定中は別のメッセージを表示
+                msg_placeholder.info("🌍 地名を特定しています...")
+                place_name = fetch_location_name(new_lat, new_lon)
                 new_temp_label = f"{place_name} ({new_lat:.4f}, {new_lon:.4f})"
+                
+                # 完了したのでメッセージを完全に消去する
+                msg_placeholder.empty()
+                
                 st.session_state.waiting_loc = False
                 # 座標が更新されるため、グラフ描画フラグをTrueにして保存
                 update_state_and_save({
@@ -1190,11 +1197,13 @@ def handle_current_location_update_integrated():
                 })
                 st.rerun()
             elif loc is False:
+                msg_placeholder.empty()
                 st.error("❌ 位置情報の取得に失敗しました。")
                 if st.button("キャンセル"):
                     st.session_state.waiting_loc = False
                     st.rerun()
         except Exception as e:
+            msg_placeholder.empty()
             st.error(f"エラーが発生しました: {e}")
             if st.button("キャンセル"):
                 st.session_state.waiting_loc = False
@@ -1213,13 +1222,7 @@ def render_header_info(current_basho_name):
     from datetime import datetime, timedelta
 
     # 1. 描画フラグの確認とクリア
-    # グラフ描画が実行されるタイミング（この関数の前後のモジュール）で
-    # フラグがTrueなら描画を行い、終わったらここでFalseにする、
-    # あるいは既に描画済みならFalseとして扱うロジックをここに置く。
     if st.session_state.get("needs_graph_update", True):
-        # ここで実際のグラフ生成ロジックを記述（または既存のサブルーチンを呼び出し）
-        # 例: generate_high_res_graph(...) 
-        
         # 描画が終わったらフラグを下ろす
         st.session_state.needs_graph_update = False
         
@@ -1228,7 +1231,6 @@ def render_header_info(current_basho_name):
     from datetime import datetime, timedelta
 
     # 基準となるブラウザ時刻（メイン処理から渡される now_jst を想定）
-    # もし session_state 等に保持されていない場合の安全策として現在時刻を取得
     now_jst = st.session_state.get('now_jst', datetime.now())
 
     try:
@@ -1258,7 +1260,6 @@ def render_header_info(current_basho_name):
         # 更新ボタン押下時も描画を許可する
         st.session_state.needs_graph_update = True
         st.rerun()
-        
 
 # ======================================================================================
 # 95. 【main機能分離】⑤グラフ描画エリアモジュール
