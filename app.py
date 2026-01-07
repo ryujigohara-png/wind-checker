@@ -1140,6 +1140,7 @@ def render_update_control_module(basho):
 def handle_current_location_update_integrated():
     """
     「現在地を取得」ボタンを処理し、取得成功時に座標と地名を更新・保存する。
+    JavaScriptを直接実行することで、従来の get_geolocation より高速に取得を試みる。
     """
     if st.button("🔄 📍現在地を取得　　　　　　　　　　", use_container_width=True):
         st.session_state.waiting_loc = True
@@ -1148,26 +1149,53 @@ def handle_current_location_update_integrated():
 
     if st.session_state.get("waiting_loc"):
         st.info("🛰️ 現在地を取得中...")
-        loc = get_geolocation(component_key=st.session_state.get("geo_key"))
-        if loc:
-            new_lat = round(loc['coords']['latitude'], 4)
-            new_lon = round(loc['coords']['longitude'], 4)
-            with st.spinner("現在地の地名を特定中..."):
-                place_name = fetch_location_name(new_lat, new_lon)
-            new_temp_label = f"{place_name} ({new_lat:.4f}, {new_lon:.4f})"
-            st.session_state.waiting_loc = False
-            # 座標が更新されるため、グラフ描画フラグをTrueにして保存
-            update_state_and_save({
-                "lat": new_lat,
-                "lon": new_lon,
-                "last_basho": place_name,
-                "temp_label": new_temp_label,
-                "show_map": False,
-                "needs_graph_update": True
-            })
-            st.rerun()
-        elif loc is False:
-            st.error("❌ 位置情報の取得に失敗しました。")
+        
+        # 高速化案1: get_geolocation ライブラリの代わりに JS を直接叩く
+        # タイムアウト5秒、高精度モード、キャッシュなしの設定
+        js_code = """
+        new Promise((resolve, reject) => {
+            navigator.geolocation.getCurrentPosition(
+                (pos) => {
+                    resolve({
+                        coords: {
+                            latitude: pos.coords.latitude,
+                            longitude: pos.coords.longitude
+                        }
+                    });
+                },
+                (err) => { resolve(false); },
+                { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
+            );
+        })
+        """
+        
+        try:
+            loc = streamlit_js_eval(js_expressions=js_code, key=st.session_state.get("geo_key"))
+            
+            if loc:
+                new_lat = round(loc['coords']['latitude'], 4)
+                new_lon = round(loc['coords']['longitude'], 4)
+                with st.spinner("現在地の地名を特定中..."):
+                    place_name = fetch_location_name(new_lat, new_lon)
+                new_temp_label = f"{place_name} ({new_lat:.4f}, {new_lon:.4f})"
+                st.session_state.waiting_loc = False
+                # 座標が更新されるため、グラフ描画フラグをTrueにして保存
+                update_state_and_save({
+                    "lat": new_lat,
+                    "lon": new_lon,
+                    "last_basho": place_name,
+                    "temp_label": new_temp_label,
+                    "show_map": False,
+                    "needs_graph_update": True
+                })
+                st.rerun()
+            elif loc is False:
+                st.error("❌ 位置情報の取得に失敗しました。")
+                if st.button("キャンセル"):
+                    st.session_state.waiting_loc = False
+                    st.rerun()
+        except Exception as e:
+            st.error(f"エラーが発生しました: {e}")
             if st.button("キャンセル"):
                 st.session_state.waiting_loc = False
                 st.rerun()
