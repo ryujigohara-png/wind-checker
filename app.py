@@ -726,8 +726,9 @@ def calculate_graph_height(base_height, ratios, show_wind, show_temp, show_tide)
 @st.dialog("📍 地図で指定")
 def show_location_map_dialog():
     """
-    ポップアップで地図を表示し、中心座標を確定して保存する。
+    ポップアップで地図を表示し、中心座標を選定して保存する。
     正規版（サブルーチン14）のデザインと「ボタン押下時に確定」するロジックを完全に再現。
+    選定ボタンでは閉じず、納得いくまで位置を変更・選定できる仕様。
     """
     # st.info("地図の中央地点のグラフを描画表示することができます。")
 
@@ -777,8 +778,8 @@ def show_location_map_dialog():
 
     st.divider()
     
-    # 確定ボタン（正規版の動作：ボタンが押されたときだけ座標を取得して保存する）
-    if st.button("✅グラフ描画地点（地図中央）確定", use_container_width=True):
+    # 選定ボタン（位置を選定し、session_stateに保存するが閉じない）
+    if st.button("✅ グラフ描画地点（地図中央）選定", use_container_width=True):
         if map_out and map_out.get("center"):
             target_lat = map_out["center"]["lat"]
             target_lon = map_out["center"]["lng"]
@@ -794,10 +795,26 @@ def show_location_map_dialog():
                 "lon": target_lon,
                 "last_basho": place_name,
                 "temp_label": new_temp_label,
-                "show_map": False
+                "show_map": False,
+                "needs_graph_update": True
             })
+            # 納得いくまで変更可能であることを伝える
+            st.toast(f"📍 地点を {place_name} に変更しました。再調整も可能です。")
         else:
             st.warning("地図の読み込みが完了するまでお待ちください。")
+
+    # 下部ボタン：決定と中止
+    col_end1, col_end2 = st.columns(2)
+    with col_end1:
+        if st.button("決定して閉じる", use_container_width=True):
+            st.rerun()
+    with col_end2:
+        if st.button("中止して閉じる", use_container_width=True):
+            # 中止時は session_state を変更せずにリラン（ダイアログを閉じる）
+            # もし「選定」ボタンですでに書き換わってしまった値を元に戻したい場合は
+            # 呼び出し時のバックアップをとる等の処理が必要ですが、
+            # 現在はシンプルにダイアログを閉じる動作を実装しています。
+            st.rerun()
 
 # ==========================================================================================
 # 30_1. 座標から地名を取得するサブルーチン (fetch_location_name)
