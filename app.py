@@ -778,7 +778,7 @@ def show_location_map_dialog():
     st.divider()
     
     # 確定ボタン（正規版の動作：ボタンが押されたときだけ座標を取得して保存する）
-    if st.button("✅ グラフ描画地点（地図の中央）確定", use_container_width=True):
+    if st.button("✅グラフ描画地点（地図中央）確定", use_container_width=True):
         if map_out and map_out.get("center"):
             target_lat = map_out["center"]["lat"]
             target_lon = map_out["center"]["lng"]
