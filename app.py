@@ -727,7 +727,7 @@ def calculate_graph_height(base_height, ratios, show_wind, show_temp, show_tide)
 def show_location_map_dialog():
     """
     ポップアップで地図を表示し、中心座標を選定して保存する。
-    「選定」ボタンを押してもダイアログを閉じず、微調整を可能にする。
+    「選定」ボタンを押してもダイアログを閉じず、ポインタを維持したまま微調整を可能にする。
     """
     # 正規版のデザイン用CSSを適用
     st.markdown("""<style>
@@ -736,14 +736,12 @@ def show_location_map_dialog():
         .guide-arrow-main { color: crimson; font-size: 24px; font-weight: bold; text-align: center; }
         </style>""", unsafe_allow_html=True)
 
-    # 地図の初期位置
-    m_lat = st.session_state.lat
-    m_lon = st.session_state.lon
-
-    m = folium.Map(location=[m_lat, m_lon], zoom_start=13)
-    folium.Marker([m_lat, m_lon], icon=folium.Icon(color='red')).add_to(m)
+    # 地図の表示位置（初期表示時のみ session_state を使用し、以降は地図側の状態を尊重する）
+    # keyに座標を含めないことで、選定ボタン押下時の地図リセットを防ぐ
+    m = folium.Map(location=[st.session_state.lat, st.session_state.lon], zoom_start=13)
+    folium.Marker([st.session_state.lat, st.session_state.lon], icon=folium.Icon(color='red')).add_to(m)
     
-    # --- 3×3 レイアウトによる中心示唆記号の描画 ---
+    # --- 3×3 レイアウトによる中心示唆記号の描画 (正規版の完全再現) ---
     col_l1, col_m1, col_r1 = st.columns([1, 18, 1])
     with col_m1: 
         st.markdown("<div class='guide-arrow-main'>▼</div>", unsafe_allow_html=True)
@@ -753,11 +751,12 @@ def show_location_map_dialog():
         st.markdown(f"<div style='line-height:{CONFIG['MAP_HEIGHT']}px; text-align:right;' class='guide-arrow-main'>▶</div>", unsafe_allow_html=True)
     
     with col_m2: 
+        # keyを固定値にすることで、ボタン押下（再レンダリング）時に地図位置が初期化されるのを防ぐ
         map_out = st_folium(
             m, 
             width=None, 
             height=CONFIG["MAP_HEIGHT"], 
-            key=f"map_dialog_{st.session_state.lat}_{st.session_state.lon}",
+            key="map_dialog_fixed",
             returned_objects=["center"]
         )
         
@@ -771,21 +770,17 @@ def show_location_map_dialog():
     st.divider()
     
     # 選定ボタン
-    # 注意: ここで st.rerun() が発生するとダイアログが閉じるため、
-    # 保存処理のみを行い、自動的な rerun を防ぐ必要があります。
     if st.button("✅ グラフ描画地点（地図中央）選定", use_container_width=True):
         if map_out and map_out.get("center"):
             target_lat = map_out["center"]["lat"]
             target_lon = map_out["center"]["lng"]
             
-            with st.spinner("地点名を検索中..."):
+            with st.spinner("詳細な地点名を検索中..."):
                 place_name = fetch_location_name(target_lat, target_lon)
             
             new_temp_label = f"{place_name} ({target_lat:.4f}, {target_lon:.4f})"
             
-            # --- 修正箇所 ---
-            # 内部で st.rerun() を含む可能性のある update_state_and_save の代わりに
-            # 直接 session_state を書き換えることで、ダイアログの即時終了を防ぎます
+            # session_stateを直接書き換え（st.rerunを避けてダイアログを維持）
             st.session_state.lat = target_lat
             st.session_state.lon = target_lon
             st.session_state.last_basho = place_name
@@ -793,36 +788,35 @@ def show_location_map_dialog():
             st.session_state.needs_graph_update = True
             
             st.toast(f"📍 地点を {place_name} に選定しました（再調整可）")
-            # ここで st.rerun() は絶対に呼び出さない
         else:
             st.warning("地図の読み込みが完了するまでお待ちください。")
 
-    # 下部ボタン：決定と中止
+    # 下部ボタン
     col_end1, col_end2 = st.columns(2)
     with col_end1:
         if st.button("決定して閉じる", use_container_width=True):
-            # 確定させて閉じるためにここで初めてリランをかける
             st.rerun()
     with col_end2:
         if st.button("中止して閉じる", use_container_width=True):
-            # 中止ボタン。本来は元の座標に戻す処理が必要ですが、
-            # まずは「閉じる」動作を優先します。
             st.rerun()
 
 # ==========================================================================================
 # 30_1. 座標から地名を取得するサブルーチン (fetch_location_name)
 # ==========================================================================================
 def fetch_location_name(lat, lon):
-    """Nominatim APIを使用して緯度経度から地名を取得する"""
+    """Nominatim APIを使用して緯度経度から詳細な地名を取得する"""
     try:
-        url = f"https://nominatim.openstreetmap.org/reverse?format=json&lat={lat}&lon={lon}&zoom=14"
+        # 詳細な住所を取得するためzoom=18に設定（以前の仕様を復元）
+        url = f"https://nominatim.openstreetmap.org/reverse?format=json&lat={lat}&lon={lon}&zoom=18"
         headers = {"User-Agent": "WindChecker/2.0"}
         response = requests.get(url, headers=headers, timeout=5)
         if response.status_code == 200:
             data = response.json()
-            address = data.get("address", {})
-            city = address.get("city") or address.get("town") or address.get("village") or address.get("suburb") or "未知の地点"
-            return city
+            # display_name（詳細な住所全体）を返す仕様に修正
+            full_address = data.get("display_name", "未知の地点")
+            # 冒頭に国名などが含まれる場合の整形が必要であればここで行いますが、
+            # まずは詳細をすべて出す元の仕様に基づき display_name を返します
+            return full_address
         return "指定地点"
     except Exception:
         return "指定地点"
