@@ -1140,7 +1140,7 @@ def render_update_control_module(basho):
 def handle_current_location_update_integrated():
     """
     「現在地を取得」ボタンを処理し、取得成功時に座標と地名を更新・保存する。
-    JavaScriptを直接実行することで、従来の get_geolocation より高速に取得を試みる。
+    空白を最小化するため、メインエリアを占有しない st.toast を使用する。
     """
     if st.button("🔄 📍現在地を取得　　　　　　　　　　", use_container_width=True):
         st.session_state.waiting_loc = True
@@ -1148,9 +1148,8 @@ def handle_current_location_update_integrated():
         st.rerun()
 
     if st.session_state.get("waiting_loc"):
-        # メッセージ表示用の空コンテナを作成
-        msg_placeholder = st.empty()
-        msg_placeholder.info("🛰️ 現在地を取得中...")
+        # メインエリアに st.info を置かず、toast で通知することで空白の発生を防ぐ
+        st.toast("🛰️ 現在地を取得中...", icon="📍")
         
         # 高速化案1: get_geolocation ライブラリの代わりに JS を直接叩く
         js_code = """
@@ -1177,13 +1176,10 @@ def handle_current_location_update_integrated():
                 new_lat = round(loc['coords']['latitude'], 4)
                 new_lon = round(loc['coords']['longitude'], 4)
                 
-                # 地名特定中は別のメッセージを表示
-                msg_placeholder.info("🌍 地名を特定しています...")
+                # 地名特定中も toast で更新
+                st.toast("🌍 地名を特定しています...", icon="🔍")
                 place_name = fetch_location_name(new_lat, new_lon)
                 new_temp_label = f"{place_name} ({new_lat:.4f}, {new_lon:.4f})"
-                
-                # 完了したのでメッセージを完全に消去する
-                msg_placeholder.empty()
                 
                 st.session_state.waiting_loc = False
                 # 座標が更新されるため、グラフ描画フラグをTrueにして保存
@@ -1195,18 +1191,20 @@ def handle_current_location_update_integrated():
                     "show_map": False,
                     "needs_graph_update": True
                 })
+                # 最後に確定通知を出してリラン
+                st.toast("✅ 位置を更新しました", icon="🚀")
                 st.rerun()
+                
             elif loc is False:
-                msg_placeholder.empty()
+                st.session_state.waiting_loc = False
                 st.error("❌ 位置情報の取得に失敗しました。")
-                if st.button("キャンセル"):
-                    st.session_state.waiting_loc = False
+                if st.button("戻る"):
                     st.rerun()
+                    
         except Exception as e:
-            msg_placeholder.empty()
+            st.session_state.waiting_loc = False
             st.error(f"エラーが発生しました: {e}")
             if st.button("キャンセル"):
-                st.session_state.waiting_loc = False
                 st.rerun()
 
 # ======================================================================================
