@@ -721,30 +721,41 @@ def calculate_graph_height(base_height, ratios, show_wind, show_temp, show_tide)
 
 
 # ==========================================================================================
-# 30. 地図UIをダイアログで表示するサブルーチン (1:18:1 物理ロック・完全復旧版)
+# 30. 地図UIをダイアログで表示するサブルーチン (比率個別指定・全幅95%抑制版)
 # ==========================================================================================
 @st.dialog("📍 地図で指定")
 def show_location_map_dialog():
     """
-    ポップアップで地図を表示。
-    全セクションの四隅に透明な「足場」を設置し、スマホでの1:18:1比率の崩壊を物理的に防ぐ。
+    各セクションで異なる比率を適用しつつ、全ての横幅を95%に抑制して突き抜けを防止する。
+    地図: 1:18:1 / 現在の選定: 1 / ボタン: 12:4:4
     """
-    # 【デザイン復旧】横幅の固定と突き抜け防止CSS
+    # デザインCSS：全体幅の抑制と重なり防止
     st.markdown("""<style>
-        /* 横並びブロックの折り返しを禁止し、100%幅を強制 */
-        div[data-testid="stHorizontalBlock"] { flex-wrap: nowrap !important; width: 100% !important; gap: 0px !important; }
-        [data-testid="column"] { min-width: 0px !important; flex-shrink: 1 !important; }
+        /* ダイアログ全体のコンテンツ幅を95%に絞り、中央寄せにする */
+        div[data-testid="stVerticalBlock"] > div {
+            width: 95% !important;
+            margin: 0 auto !important;
+        }
+
+        /* 横並びブロックの折り返しを禁止 */
+        div[data-testid="stHorizontalBlock"] { flex-wrap: nowrap !important; gap: 4px !important; }
+        [data-testid="column"] { min-width: 0px !important; }
         
-        /* 案内矢印と地名表示 */
-        .guide-arrow-main { color: crimson; font-size: 24px; font-weight: bold; text-align: center; line-height: 1; }
-        .temp-info-inline { 
-            background-color: #f0f2f6; padding: 8px 10px; border-radius: 4px; 
-            border-left: 5px solid crimson; font-size: 14px; margin: 10px 0;
-            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        /* 足場(+)：四隅の固定用 */
+        .anchor-plus { color: #dddddd; font-size: 12px; text-align: center; font-weight: bold; }
+        
+        /* 案内矢印 */
+        .guide-arrow-main { color: crimson; font-size: 20px; font-weight: bold; text-align: center; }
+        
+        /* 地名表示ボックス (1列・比率1用) */
+        .temp-info-full { 
+            background-color: #f0f2f6; padding: 10px; border-radius: 4px; 
+            border-left: 5px solid crimson; font-size: 14px; margin: 5px 0;
+            width: 100%; box-sizing: border-box;
         }
         
-        /* 足場用：透明な文字 */
-        .anchor-text { color: transparent; font-size: 1px; user-select: none; }
+        /* ボタン内文字設定 */
+        div[data-testid="stColumn"] button p { font-size: 11px !important; white-space: nowrap !important; }
         </style>""", unsafe_allow_html=True)
 
     @st.fragment
@@ -753,71 +764,70 @@ def show_location_map_dialog():
         d_lon = st.session_state.get("temp_lon", st.session_state.lon)
         d_basho = st.session_state.get("temp_basho", st.session_state.last_basho)
 
-        # 地図構築
+        # 地図オブジェクト作成
         m = folium.Map(location=[d_lat, d_lon], zoom_start=13)
         folium.Marker([d_lat, d_lon], icon=folium.Icon(color='red')).add_to(m)
         
-        # --- 1. 地図 3×3 (1:18:1) ---
-        c1, c2, c3 = st.columns([1, 18, 1])
-        with c1: st.markdown("<div class='anchor-text'>+</div>", unsafe_allow_html=True) # A1: 足場
-        with c2: st.markdown("<div class='guide-arrow-main'>▼</div>", unsafe_allow_html=True)
-        with c3: st.markdown("<div class='anchor-text'>+</div>", unsafe_allow_html=True) # C1: 足場
-        
-        c4, c5, c6 = st.columns([1, 18, 1])
-        with c4: st.markdown(f"<div style='line-height:{CONFIG['MAP_HEIGHT']}px; text-align:right;' class='guide-arrow-main'>▶</div>", unsafe_allow_html=True)
-        with c5: map_out = st_folium(m, width=None, height=CONFIG["MAP_HEIGHT"], key="map_locked_v14", returned_objects=["center"])
-        with c6: st.markdown(f"<div style='line-height:{CONFIG['MAP_HEIGHT']}px; text-align:left;' class='guide-arrow-main'>◀</div>", unsafe_allow_html=True)
-        
-        c7, c8, c9 = st.columns([1, 18, 1])
-        with c7: st.markdown("<div class='anchor-text'>+</div>", unsafe_allow_html=True) # A3: 足場
-        with c8: st.markdown("<div class='guide-arrow-main' style='margin-top:-10px;'>▲</div>", unsafe_allow_html=True)
-        with c9: st.markdown("<div class='anchor-text'>+</div>", unsafe_allow_html=True) # C3: 足場
+        # --- [構成1] 地図セクション: 1:18:1 比率 ---
+        t1, t2, t3 = st.columns([1, 18, 1])
+        with t1: st.markdown("<div class='anchor-plus'>+</div>", unsafe_allow_html=True)
+        with t2: st.markdown("<div class='guide-arrow-main'>▼</div>", unsafe_allow_html=True)
+        with t3: st.markdown("<div class='anchor-plus'>+</div>", unsafe_allow_html=True)
+
+        m1, m2, m3 = st.columns([1, 18, 1])
+        with m1: st.markdown(f"<div style='line-height:{CONFIG['MAP_HEIGHT']}px; text-align:right;' class='guide-arrow-main'>▶</div>", unsafe_allow_html=True)
+        with m2: map_out = st_folium(m, width="100%", height=CONFIG["MAP_HEIGHT"], key="map_final_95pct", returned_objects=["center"])
+        with m3: st.markdown(f"<div style='line-height:{CONFIG['MAP_HEIGHT']}px; text-align:left;' class='guide-arrow-main'>◀</div>", unsafe_allow_html=True)
+
+        b1, b2, b3 = st.columns([1, 18, 1])
+        with b1: st.markdown("<div class='anchor-plus'>+</div>", unsafe_allow_html=True)
+        with b2: st.markdown("<div class='guide-arrow-main' style='margin-top:-8px;'>▲</div>", unsafe_allow_html=True)
+        with b3: st.markdown("<div class='anchor-plus'>+</div>", unsafe_allow_html=True)
 
         st.divider()
 
-        # --- 2. 地名表示 (1:18:1) ---
-        i_l, i_m, i_r = st.columns([1, 18, 1])
-        with i_l: st.markdown("<div class='anchor-text'>+</div>", unsafe_allow_html=True) # 左の足場
-        with i_m:
-            st.markdown(f"<div class='temp-info-inline'>現在の選定地点：<strong>📍 {d_basho} ({d_lat:.4f}, {d_lon:.4f})</strong></div>", unsafe_allow_html=True)
-        with i_r: st.markdown("<div class='anchor-text'>+</div>", unsafe_allow_html=True) # 右の足場
+        # --- [構成2] 現在の選定セクション: 比率 1 (全幅) ---
+        # 1列のブロックとして表示
+        st.markdown(f"""
+            <div class='temp-info-full'>
+                📍 <strong>{d_basho}</strong> ({d_lat:.4f}, {d_lon:.4f})
+            </div>
+        """, unsafe_allow_html=True)
 
-        # --- 3. ボタン列 (1:18:1 の器の中に 12:4:4 を展開) ---
-        b_l, b_m, b_r = st.columns([1, 18, 1])
-        with b_l: st.markdown("<div class='anchor-text'>+</div>", unsafe_allow_html=True) # 左の足場
-        with b_m:
-            b1, b2, b3 = st.columns([12, 4, 4])
-            with b1:
-                if st.button("✅ グラフ描画地点（中心）選定", use_container_width=True):
-                    if map_out and map_out.get("center"):
-                        t_lat, t_lon = map_out["center"]["lat"], map_out["center"]["lng"]
-                        with st.spinner("検索..."):
-                            p_name = fetch_location_name(t_lat, t_lon)
-                        st.session_state.temp_lat, st.session_state.temp_lon, st.session_state.temp_basho = t_lat, t_lon, p_name
-                        st.rerun(scope="fragment")
-            with b2:
-                if st.button("決定", use_container_width=True):
-                    if "temp_lat" in st.session_state:
-                        st.session_state.lat, st.session_state.lon, st.session_state.last_basho = st.session_state.temp_lat, st.session_state.temp_lon, st.session_state.temp_basho
-                        st.session_state.temp_label = f"{st.session_state.temp_basho} ({st.session_state.temp_lat:.4f}, {st.session_state.temp_lon:.4f})"
-                        st.session_state.needs_graph_update = True
-                        for k in ["temp_lat", "temp_lon", "temp_basho"]: st.session_state.pop(k, None)
-                    st.rerun()
-            with b3:
-                if st.button("中止", use_container_width=True):
-                    if st.session_state.get("geo_lat"):
-                        st.session_state.lat, st.session_state.lon, st.session_state.last_basho = st.session_state.geo_lat, st.session_state.geo_lon, "現在地"
-                    elif st.session_state.get("my_spot_lat"):
-                        st.session_state.lat, st.session_state.lon, st.session_state.last_basho = st.session_state.my_spot_lat, st.session_state.my_spot_lon, "My Spot"
-                    else:
-                        st.session_state.lat, st.session_state.lon, st.session_state.last_basho = CONFIG["DEFAULT_LAT"], CONFIG["DEFAULT_LON"], CONFIG["DEFAULT_BASHO"]
-                    for k in ["temp_lat", "temp_lon", "temp_basho"]: st.session_state.pop(k, None)
+        st.divider()
+
+        # --- [構成3] ボタンセクション: 12:4:4 比率 ---
+        # 左右に足場を置かず、直接ダイアログ幅(95%抑制下)で比率を指定
+        c1, c2, c3 = st.columns([12, 4, 4])
+        with c1:
+            if st.button("✅ グラフ描画地点（中心）選定", use_container_width=True):
+                if map_out and map_out.get("center"):
+                    t_lat, t_lon = map_out["center"]["lat"], map_out["center"]["lng"]
+                    with st.spinner("検索..."):
+                        p_name = fetch_location_name(t_lat, t_lon)
+                    st.session_state.temp_lat, st.session_state.temp_lon, st.session_state.temp_basho = t_lat, t_lon, p_name
+                    st.rerun(scope="fragment")
+        with c2:
+            if st.button("決定", use_container_width=True):
+                if "temp_lat" in st.session_state:
+                    st.session_state.lat, st.session_state.lon, st.session_state.last_basho = st.session_state.temp_lat, st.session_state.temp_lon, st.session_state.temp_basho
+                    st.session_state.temp_label = f"{st.session_state.temp_basho} ({st.session_state.temp_lat:.4f}, {st.session_state.temp_lon:.4f})"
                     st.session_state.needs_graph_update = True
-                    st.rerun()
-        with b_r: st.markdown("<div class='anchor-text'>+</div>", unsafe_allow_html=True) # 右の足場
+                    for k in ["temp_lat", "temp_lon", "temp_basho"]: st.session_state.pop(k, None)
+                st.rerun()
+        with c3:
+            if st.button("中止", use_container_width=True):
+                if st.session_state.get("geo_lat"):
+                    st.session_state.lat, st.session_state.lon, st.session_state.last_basho = st.session_state.geo_lat, st.session_state.geo_lon, "現在地"
+                elif st.session_state.get("my_spot_lat"):
+                    st.session_state.lat, st.session_state.lon, st.session_state.last_basho = st.session_state.my_spot_lat, st.session_state.my_spot_lon, "My Spot"
+                else:
+                    st.session_state.lat, st.session_state.lon, st.session_state.last_basho = CONFIG["DEFAULT_LAT"], CONFIG["DEFAULT_LON"], CONFIG["DEFAULT_BASHO"]
+                for k in ["temp_lat", "temp_lon", "temp_basho"]: st.session_state.pop(k, None)
+                st.session_state.needs_graph_update = True
+                st.rerun()
 
     map_and_select_section()
-
 # ==========================================================================================
 # 30_1. 座標から地名を取得するサブルーチン (fetch_location_name)
 # ==========================================================================================
