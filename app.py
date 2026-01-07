@@ -721,15 +721,15 @@ def calculate_graph_height(base_height, ratios, show_wind, show_temp, show_tide)
 
 
 # ==========================================================================================
-# 30. 地図UIをダイアログで表示するサブルーチン (デザイン完全維持・動作保証版)
+# 30. 地図UIをダイアログで表示するサブルーチン (正規版：閉じない・動く・地名詳細化)
 # ==========================================================================================
 @st.dialog("📍 地図で指定")
 def show_location_map_dialog():
     """
     ポップアップで地図を表示し、中心座標を選定して保存する。
-    3×3デザインを完全に維持し、選定ボタンで閉じずにポインタを移動させ、下部を12:4:4で配置。
+    3×3デザインを完全に維持し、選定ボタンでポインタを移動、地名を2階層表示する。
     """
-    # 【デザイン完全維持】CSS
+    # デザインCSS（3×3レイアウトを完全維持）
     st.markdown("""<style>
         div[data-testid="stHorizontalBlock"] { flex-wrap: nowrap !important; justify-content: center !important; gap: 4px !important; }
         [data-testid="column"] { min-width: 0px !important; }
@@ -737,48 +737,38 @@ def show_location_map_dialog():
         div[data-testid="stColumn"] button p { font-size: 13px !important; white-space: nowrap !important; }
         </style>""", unsafe_allow_html=True)
 
-    # 1. 表示座標の決定
-    # 選定ボタンでセットされた temp 座標があればそれを使用し、なければ現在の確定値を使用
+    # 表示座標の決定（選定ボタン押下後はその座標を地図の中心とポインタに据える）
     d_lat = st.session_state.get("temp_lat", st.session_state.lat)
     d_lon = st.session_state.get("temp_lon", st.session_state.lon)
 
-    # 2. 地図の構築 (ポインタを表示座標 d_lat, d_lon に配置)
+    # 地図オブジェクトの作成
     m = folium.Map(location=[d_lat, d_lon], zoom_start=13)
     folium.Marker([d_lat, d_lon], icon=folium.Icon(color='red')).add_to(m)
     
     # --- 3×3 レイアウト (正規版の完全再現) ---
     col_l1, col_m1, col_r1 = st.columns([1, 18, 1])
-    with col_m1: 
-        st.markdown("<div class='guide-arrow-main'>▼</div>", unsafe_allow_html=True)
+    with col_m1: st.markdown("<div class='guide-arrow-main'>▼</div>", unsafe_allow_html=True)
     
     col_l2, col_m2, col_r2 = st.columns([1, 18, 1])
-    with col_l2: 
-        st.markdown(f"<div style='line-height:{CONFIG['MAP_HEIGHT']}px; text-align:right;' class='guide-arrow-main'>▶</div>", unsafe_allow_html=True)
+    with col_l2: st.markdown(f"<div style='line-height:{CONFIG['MAP_HEIGHT']}px; text-align:right;' class='guide-arrow-main'>▶</div>", unsafe_allow_html=True)
     with col_m2: 
-        # 地図描画：keyを座標と連動させることで、再描画時にポインタ位置を更新する
-        # ※ダイアログを閉じないよう内部変数の変化のみを利用
+        # keyに座標を含めることで、選定ボタン押下後の再描画でポインタを中央に移動させる
         map_out = st_folium(
-            m, 
-            width=None, 
-            height=CONFIG["MAP_HEIGHT"], 
-            key=f"map_dlg_v5_{d_lat}_{d_lon}",
+            m, width=None, height=CONFIG["MAP_HEIGHT"], 
+            key=f"map_dialog_{d_lat}_{d_lon}",
             returned_objects=["center"]
         )
-    with col_r2: 
-        st.markdown(f"<div style='line-height:{CONFIG['MAP_HEIGHT']}px; text-align:left;' class='guide-arrow-main'>◀</div>", unsafe_allow_html=True)
+    with col_r2: st.markdown(f"<div style='line-height:{CONFIG['MAP_HEIGHT']}px; text-align:left;' class='guide-arrow-main'>◀</div>", unsafe_allow_html=True)
     
     col_l3, col_m3, col_r3 = st.columns([1, 18, 1])
-    with col_m3: 
-        st.markdown("<div class='guide-arrow-main' style='margin-top:-10px;'>▲</div>", unsafe_allow_html=True)
-    # -----------------------------------------------------------
+    with col_m3: st.markdown("<div class='guide-arrow-main' style='margin-top:-10px;'>▲</div>", unsafe_allow_html=True)
 
     st.divider()
     
-    # --- 3. 下部ボタンエリア：比率 12:4:4 ---
+    # --- 下部ボタンエリア：比率 12:4:4 ---
     btn_col1, btn_col2, btn_col3 = st.columns([12, 4, 4])
 
     with btn_col1:
-        # 選定ボタン：st.rerun()を呼ばないことでダイアログ維持を最優先
         if st.button("✅ グラフ描画地点（中心）選定", use_container_width=True):
             if map_out and map_out.get("center"):
                 t_lat = map_out["center"]["lat"]
@@ -787,15 +777,14 @@ def show_location_map_dialog():
                 with st.spinner("詳細地名を取得中..."):
                     place_name = fetch_location_name(t_lat, t_lon)
                 
-                # 座標を temp に保存。この後スクリプトが自然に再実行され、
-                # keyが変わり地図が新座標（ポインタ中央）で描画されます。
+                # tempに保存（これにより再描画時にポインタが動く）
                 st.session_state.temp_lat = t_lat
                 st.session_state.temp_lon = t_lon
                 st.session_state.temp_basho = place_name
                 
                 st.toast(f"📍 {place_name} を選定しました")
-                # ここで st.rerun() を呼ぶと閉じる可能性があるため、呼びません。
-                # Streamlitの仕様上、ボタン押下で再実行されるため、ポインタは動きます。
+                # rerunで地図を更新（keyが座標連動なのでポインタが中央に移動し、ダイアログは維持されます）
+                st.rerun()
 
     with btn_col2:
         if st.button("決定", use_container_width=True):
@@ -806,11 +795,11 @@ def show_location_map_dialog():
                 st.session_state.temp_label = f"{st.session_state.temp_basho} ({st.session_state.temp_lat:.4f}, {st.session_state.temp_lon:.4f})"
                 st.session_state.needs_graph_update = True
                 for k in ["temp_lat", "temp_lon", "temp_basho"]: st.session_state.pop(k, None)
-            st.rerun() # ここでは確定して閉じたいので呼ぶ
+            st.rerun()
 
     with btn_col3:
         if st.button("中止", use_container_width=True):
-            # 優先順位（現在地 > My Spot > 既定値）で復元
+            # 優先順位に基づき再設定
             if st.session_state.get("geo_lat"):
                 st.session_state.lat, st.session_state.lon = st.session_state.geo_lat, st.session_state.geo_lon
                 st.session_state.last_basho = "現在地"
@@ -829,24 +818,29 @@ def show_location_map_dialog():
 # 30_1. 座標から地名を取得するサブルーチン (fetch_location_name)
 # ==========================================================================================
 def fetch_location_name(lat, lon):
-    """Nominatim APIを使用して「市町村名＋その1つ下のレベル」を取得する"""
+    """Nominatim APIから「当該レベル（市町村等）＋その1つ下のレベル」を取得する"""
     try:
         url = f"https://nominatim.openstreetmap.org/reverse?format=json&lat={lat}&lon={lon}&zoom=18"
         headers = {"User-Agent": "WindChecker/2.0"}
         response = requests.get(url, headers=headers, timeout=5)
         if response.status_code == 200:
             addr = response.json().get("address", {})
-            # 市町村レベル: city, town, village の順。政令指定都市の場合は suburb が「区」になる
-            city = addr.get("city") or addr.get("town") or addr.get("village") or ""
-            # 詳細レベル: 町名(suburb)、地区(neighbourhood)、道路(road)
-            # cityが空でsuburbがある場合はsuburbを市町村扱いにする等の微調整
-            detail = addr.get("suburb") or addr.get("neighbourhood") or addr.get("road") or ""
             
-            if not city and detail: # 大きな市でcityが取れないケース対策
-                return detail
-            if city and detail and city != detail:
-                return f"{city} {detail}"
-            return city or detail or "指定地点"
+            # 1. 市町村レベル（当該レベル）
+            base = addr.get("city") or addr.get("town") or addr.get("village") or addr.get("suburb") or ""
+            
+            # 2. その1つ下のレベル（詳細）
+            # baseがsuburb（区）の場合はneighbourhood（町丁）を探す、といった優先順位
+            sub = ""
+            if base == addr.get("suburb"):
+                sub = addr.get("neighbourhood") or addr.get("road") or ""
+            else:
+                sub = addr.get("suburb") or addr.get("neighbourhood") or addr.get("road") or ""
+            
+            # 重複チェックをして結合
+            if base and sub and base != sub:
+                return f"{base} {sub}"
+            return base or sub or "指定地点"
         return "指定地点"
     except:
         return "指定地点"
