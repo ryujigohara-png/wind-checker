@@ -728,13 +728,13 @@ def calculate_graph_height(base_height, ratios, show_wind, show_temp, show_tide)
 
 
 # ==========================================================================================
-# 30. 地図UIをダイアログで表示するサブルーチン (4列構成：右側空白バッファ版)
+# 30. 地図UIをダイアログで表示するサブルーチン (HTMLテーブルによる物理比率固定版)
 # ==========================================================================================
 @st.dialog("📍 地図で指定")
 def show_location_map_dialog():
     """
-    1:18:1:21 の比率を用い、右側に巨大な空白カラムを配置。
-    スマホでの右側突き抜けを物理的に「空振り」させ、左側のUIを保護する。
+    st.columnsを使わず、HTMLテーブルでレベル3を構築。
+    スマホの「勝手に縦並び」を封じ込め、1:18:1 および 1:9:9:1 を物理的に強制する。
     """
     import folium
     from streamlit_folium import st_folium
@@ -744,7 +744,7 @@ def show_location_map_dialog():
     d_lon = st.session_state.get("temp_lon", st.session_state.lon)
     d_basho = st.session_state.get("temp_basho", st.session_state.last_basho)
 
-    # 2. ヘッダー表示（ダイアログ上部に固定）
+    # 2. ヘッダー表示 (ダイアログ上部固定)
     st.markdown(f"""
         <div style='margin-top:-20px; margin-bottom:10px; border-bottom:1px solid #eee;'>
             <div style='font-size:12px; font-weight:bold; color:#333;'>📍 {d_basho}</div>
@@ -752,72 +752,61 @@ def show_location_map_dialog():
         </div>
     """, unsafe_allow_html=True)
 
-    # 3. 物理制約CSS
-    # 縦余白はご指摘の通り「8」に設定
-    h_gap = st.session_state.get("dial_h_gap", CONFIG["DIAL_H_GAP"])
-    v_gap = 8 
-
-    st.markdown(f"""<style>
-        /* レベル3(Column)のはみ出しを物理的にカット */
-        [data-testid="column"] {{ min-width: 0px !important; overflow: hidden !important; }}
-        /* カラム間の隙間制御 */
-        div[data-testid="stHorizontalBlock"] {{ gap: {h_gap}px !important; flex-wrap: nowrap !important; }}
-        div[data-testid="stVerticalBlock"] {{ gap: {v_gap}px !important; }}
-        /* 装飾 */
-        .guide-arrow {{ color: crimson; font-size: 20px; font-weight: bold; text-align: center; }}
-        .anchor-mark {{ color: #eeeeee; font-size: 14px; text-align: center; }}
-        </style>""", unsafe_allow_html=True)
+    # 3. 物理制約CSS (テーブルの幅とはみ出しを完全制御)
+    st.markdown("""<style>
+        /* テーブル自体の幅をダイアログに100%フィットさせる */
+        .fixed-layout { width: 100%; border-collapse: collapse; table-layout: fixed; }
+        .fixed-layout td { padding: 0px; margin: 0px; overflow: hidden; vertical-align: middle; }
+        /* 矢印とマーカーの装飾 */
+        .guide-arrow { color: crimson; font-size: 20px; font-weight: bold; text-align: center; width: 100%; }
+        .anchor-mark { color: #eeeeee; font-size: 14px; text-align: center; width: 100%; }
+        /* ボタンの余白調整 */
+        .stButton button { width: 100% !important; margin: 2px 0px; }
+    </style>""", unsafe_allow_html=True)
 
     @st.fragment
-    def unified_map_fragment():
-        # --- 比率設定 ---
-        # 1〜4行目は合計41 (1:18:1:21)
-        # 5行目も合計41 (1:9:9:1:21)
-        ratio_main = [1, 18, 1, 21]
-        ratio_btns = [1, 9, 9, 1, 21]
+    def physical_fixed_fragment():
+        # --- 1行目: [1:18:1] ＋, ▼, ＋ ---
+        st.markdown("""<table class='fixed-layout'><tr>
+            <td style='width:5%;'><div class='anchor-mark'>+</div></td>
+            <td style='width:90%;'><div class='guide-arrow'>▼</div></td>
+            <td style='width:5%;'><div class='anchor-mark'>+</div></td>
+        </tr></table>""", unsafe_allow_html=True)
 
-        # --- 1行目: ＋, ▼, ＋, (空白) ---
-        t1, t2, t3, t4 = st.columns(ratio_main)
-        with t1: st.markdown("<div class='anchor-mark'>+</div>", unsafe_allow_html=True)
-        with t2: st.markdown("<div class='guide-arrow'>▼</div>", unsafe_allow_html=True)
-        with t3: st.markdown("<div class='anchor-mark'>+</div>", unsafe_allow_html=True)
-        # t4 は空白
-
-        # --- 2行目: ▶, 地図, ◀, (空白) ---
+        # --- 2行目: [1:18:1] ▶, 地図, ◀ ---
+        # 地図だけはStreamlitコンポーネントなので、テーブルのセル内に配置する
         m = folium.Map(location=[d_lat, d_lon], zoom_start=13)
         folium.Marker([d_lat, d_lon], icon=folium.Icon(color='red')).add_to(m)
         
-        m1, m2, m3, m4 = st.columns(ratio_main)
-        with m1: st.markdown(f"<div style='line-height:{CONFIG['MAP_HEIGHT']}px; text-align:right;' class='guide-arrow'>▶</div>", unsafe_allow_html=True)
-        with m2: 
-            # width=None で親(比率18の枠)に追従
-            map_out = st_folium(m, width=None, height=CONFIG["MAP_HEIGHT"], key=f"map_v23_{d_lat}_{d_lon}", returned_objects=["center"])
-        with m3: st.markdown(f"<div style='line-height:{CONFIG['MAP_HEIGHT']}px; text-align:left;' class='guide-arrow'>◀</div>", unsafe_allow_html=True)
-        # m4 は空白
+        c1, c2, c3 = st.columns([1, 18, 1])
+        with c1: st.markdown(f"<div style='line-height:{CONFIG['MAP_HEIGHT']}px; text-align:right;' class='guide-arrow'>▶</div>", unsafe_allow_html=True)
+        with c2: 
+            map_out = st_folium(m, width=None, height=CONFIG["MAP_HEIGHT"], key=f"map_v24_{d_lat}_{d_lon}", returned_objects=["center"])
+        with c3: st.markdown(f"<div style='line-height:{CONFIG['MAP_HEIGHT']}px; text-align:left;' class='guide-arrow'>◀</div>", unsafe_allow_html=True)
 
-        # --- 3行目: ＋, ▲, ＋, (空白) ---
-        b1, b2, b3, b4 = st.columns(ratio_main)
-        with b1: st.markdown("<div class='anchor-mark'>+</div>", unsafe_allow_html=True)
-        with b2: st.markdown("<div class='guide-arrow' style='margin-top:-10px;'>▲</div>", unsafe_allow_html=True)
-        with b3: st.markdown("<div class='anchor-mark'>+</div>", unsafe_allow_html=True)
-        # b4 は空白
+        # --- 3行目: [1:18:1] ＋, ▲, ＋ ---
+        st.markdown("""<table class='fixed-layout'><tr>
+            <td style='width:5%;'><div class='anchor-mark'>+</div></td>
+            <td style='width:90%;'><div class='guide-arrow' style='margin-top:-5px;'>▲</div></td>
+            <td style='width:5%;'><div class='anchor-mark'>+</div></td>
+        </tr></table>""", unsafe_allow_html=True)
 
-        # --- 4行目: ＋, 地図中心に📍, ＋, (空白) ---
-        l1, l2, l3, l4 = st.columns(ratio_main)
-        with l1: st.markdown("<div class='anchor-mark'>+</div>", unsafe_allow_html=True)
-        with l2: btn_sel = st.button("地図中心に📍", use_container_width=True)
-        with l3: st.markdown("<div class='anchor-mark'>+</div>", unsafe_allow_html=True)
-        # l4 は空白
+        # --- 4行目: [1:18:1] ＋, 地図中心に📍, ＋ ---
+        # ボタンを配置する行。ここも比率を死守する。
+        # 左右に余白用カラムを作り、中央にボタンを置く
+        b_c1, b_c2, b_c3 = st.columns([1, 18, 1])
+        with b_c1: st.markdown("<div class='anchor-mark'>+</div>", unsafe_allow_html=True)
+        with b_c2: btn_sel = st.button("地図中心に📍", use_container_width=True)
+        with b_c3: st.markdown("<div class='anchor-mark'>+</div>", unsafe_allow_html=True)
 
-        # --- 5行目: ＋, 確定, 中止, ＋, (空白) ---
-        f1, f2, f3, f4, f5 = st.columns(ratio_btns)
-        with f1: st.markdown("<div class='anchor-mark'>+</div>", unsafe_allow_html=True)
-        with f2: btn_ok = st.button("確定", use_container_width=True)
-        with f3: btn_can = st.button("中止", use_container_width=True)
-        with f4: st.markdown("<div class='anchor-mark'>+</div>", unsafe_allow_html=True)
-        # f5 は空白
+        # --- 5行目: [1:9:9:1] ＋, 確定, 中止, ＋ ---
+        f_c1, f_c2, f_c3, f_c4 = st.columns([1, 9, 9, 1])
+        with f_c1: st.markdown("<div class='anchor-mark'>+</div>", unsafe_allow_html=True)
+        with f_c2: btn_ok = st.button("確定", use_container_width=True)
+        with f_c3: btn_can = st.button("中止", use_container_width=True)
+        with f_c4: st.markdown("<div class='anchor-mark'>+</div>", unsafe_allow_html=True)
 
-        # --- ロジック部 ---
+        # --- ロジック部 (変更なし) ---
         if btn_sel and map_out and map_out.get("center"):
             t_lat, t_lon = map_out["center"]["lat"], map_out["center"]["lng"]
             with st.spinner("名称取得中..."):
@@ -836,7 +825,7 @@ def show_location_map_dialog():
             for k in ["temp_lat", "temp_lon", "temp_basho"]: st.session_state.pop(k, None)
             st.rerun()
 
-    unified_map_fragment()
+    physical_fixed_fragment()
     
 # ==========================================================================================
 # 30_1. 座標から地名を取得するサブルーチン (fetch_location_name)
