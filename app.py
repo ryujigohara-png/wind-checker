@@ -34,6 +34,7 @@ CONFIG = {
     "DPI": 200,
     "DIAL_H_GAP": 0,      # ダイアログ内カラムの水平余白（初期値）
     "DIAL_V_GAP": 0,      # ダイアログ内セクションの垂直余白（初期値）
+    "MAP_WIDTH": 280,     # 地図の幅
     "MAP_HEIGHT": 350,    # 地図の高さ
     "DEFAULT_RATIOS": [4.4, 1.2, 0.8],
     "SHOW_WIND": True,
@@ -728,80 +729,123 @@ def calculate_graph_height(base_height, ratios, show_wind, show_temp, show_tide)
 
 
 # ==========================================================================================
-# 30. 地図UIをダイアログで表示するサブルーチン (完全1テーブル・物理封印版)
+# 30. 地図UIをダイアログで表示するサブルーチン (既存CONFIG優先・物理サイズ固定版)
 # ==========================================================================================
 @st.dialog("📍 地図で指定")
 def show_location_map_dialog():
     """
-    5つの行をすべて単一のHTMLテーブル内に配置。
-    Streamlitの自動カラム解除(スタック)を物理的に封じ込め、1:18:1を絶対維持する。
+    既存の CONFIG["MAP_HEIGHT"] を初期値として使用。
+    地図の物理幅(width)を直接指定し、スマホでの縦崩壊（強制スタック）を阻止する。
     """
     import folium
     from streamlit_folium import st_folium
 
-    # 1. データの準備
+    # --- 1. 初期設定（既存のCONFIG["MAP_HEIGHT"]を活用） ---
+    # 横幅の初期値がない場合は、スマホで安全な 280 をデフォルトとする
+    if "map_width_px" not in st.session_state:
+        st.session_state.map_width_px = CONFIG.get("MAP_WIDTH", 280)
+    if "map_height_px" not in st.session_state:
+        st.session_state.map_height_px = CONFIG.get("MAP_HEIGHT", 350)
+
     d_lat = st.session_state.get("temp_lat", st.session_state.lat)
     d_lon = st.session_state.get("temp_lon", st.session_state.lon)
     d_basho = st.session_state.get("temp_basho", st.session_state.last_basho)
 
-    # 2. 物理制約CSS (絶対に横幅を広げさせない)
-    st.markdown("""<style>
-        .map-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
-        .map-table td { padding: 0px; margin: 0px; text-align: center; vertical-align: middle; overflow: hidden; }
-        .guide-arrow { color: crimson; font-size: 20px; font-weight: bold; }
-        .anchor-mark { color: #eeeeee; font-size: 14px; }
-        /* ボタンがテーブルセルからはみ出さないよう強制 */
-        div.stButton > button { width: 100% !important; padding: 4px 0px !important; min-width: 0px !important; }
+    # --- 2. 画面サイズ最適化設定 (隠し設定) ---
+    with st.expander("⚙️ 画面表示の微調整 (崩れる場合に調整)"):
+        st.write("地図が右にはみ出したり縦に並ぶ場合は、横幅を小さくしてください。")
+        col_set1, col_set2 = st.columns(2)
+        with col_set1:
+            st.session_state.map_width_px = st.slider(
+                "地図の横幅(px)", 200, 500, st.session_state.map_width_px, step=10
+            )
+        with col_set2:
+            st.session_state.map_height_px = st.slider(
+                "地図の高さ(px)", 150, 600, st.session_state.map_height_px, step=10
+            )
+        if st.button("このサイズで固定して再描画"):
+            st.rerun(scope="fragment")
+
+    # --- 3. 物理制約CSS (縦余白 8px) ---
+    st.markdown(f"""<style>
+        /* カラムの自動スタックを抑制するための最小幅解除 */
+        [data-testid="column"] {{ min-width: 0px !important; overflow: visible !important; }}
+        div[data-testid="stHorizontalBlock"] {{ gap: 0px !important; }}
+        div[data-testid="stVerticalBlock"] {{ gap: 8px !important; }}
+        .guide-arrow {{ color: crimson; font-size: 20px; font-weight: bold; text-align: center; }}
+        .anchor-mark {{ color: #eeeeee; font-size: 14px; text-align: center; }}
     </style>""", unsafe_allow_html=True)
 
     @st.fragment
-    def physical_lock_fragment():
-        # A. 1行目: [1:18:1] ＋, ▼, ＋
-        st.markdown("<table class='map-table'><tr><td style='width:5%;' class='anchor-mark'>+</td><td style='width:90%;' class='guide-arrow'>▼</td><td style='width:5%;' class='anchor-mark'>+</td></tr></table>", unsafe_allow_html=True)
+    def map_control_fragment():
+        # --- 1行目: [1:18:1] ＋, ▼, ＋ ---
+        t1, t2, t3 = st.columns([1, 18, 1])
+        with t1: st.markdown("<div class='anchor-mark'>+</div>", unsafe_allow_html=True)
+        with t2: st.markdown("<div class='guide-arrow'>▼</div>", unsafe_allow_html=True)
+        with t3: st.markdown("<div class='anchor-mark'>+</div>", unsafe_allow_html=True)
 
-        # B. 2行目: [1:18:1] ▶, 地図, ◀
-        # 左右の矢印と地図を st.columns で「1つのユニット」として配置
+        # --- 2行目: [1:18:1] ▶, 地図, ◀ ---
         m = folium.Map(location=[d_lat, d_lon], zoom_start=13)
         folium.Marker([d_lat, d_lon], icon=folium.Icon(color='red')).add_to(m)
         
-        m_col = st.columns([1, 18, 1])
-        with m_col[0]: st.markdown(f"<div style='line-height:{CONFIG['MAP_HEIGHT']}px; text-align:right;' class='guide-arrow'>▶</div>", unsafe_allow_html=True)
-        with m_col[1]: map_out = st_folium(m, width=None, height=CONFIG["MAP_HEIGHT"], key=f"map_v25_{d_lat}_{d_lon}", returned_objects=["center"])
-        with m_col[2]: st.markdown(f"<div style='line-height:{CONFIG['MAP_HEIGHT']}px; text-align:left;' class='guide-arrow'>◀</div>", unsafe_allow_html=True)
+        m1, m2, m3 = st.columns([1, 18, 1])
+        # 高さ(height)はセッション状態（初期値はMAP_HEIGHT）を使用
+        h_px = st.session_state.map_height_px
+        w_px = st.session_state.map_width_px
 
-        # C. 3行目: [1:18:1] ＋, ▲, ＋
-        st.markdown("<table class='map-table'><tr><td style='width:5%;' class='anchor-mark'>+</td><td style='width:90%;' class='guide-arrow'>▲</td><td style='width:5%;' class='anchor-mark'>+</td></tr></table>", unsafe_allow_html=True)
+        with m1: st.markdown(f"<div style='line-height:{h_px}px; text-align:right;' class='guide-arrow'>▶</div>", unsafe_allow_html=True)
+        with m2: 
+            # widthを数値で指定し、スマホの「物理的な入り切らなさ」を解消
+            map_out = st_folium(
+                m, 
+                width=w_px, 
+                height=h_px, 
+                key=f"map_v28_{w_px}_{h_px}", 
+                returned_objects=["center"]
+            )
+        with m3: st.markdown(f"<div style='line-height:{h_px}px; text-align:left;' class='guide-arrow'>◀</div>", unsafe_allow_html=True)
 
-        # D. 4行目: [1:18:1] ＋, 地図中心に📍, ＋
-        b_col = st.columns([1, 18, 1])
-        with b_col[0]: st.markdown("<div class='anchor-mark'>+</div>", unsafe_allow_html=True)
-        with b_col[1]: btn_sel = st.button("地図中心に📍", use_container_width=True)
-        with b_col[2]: st.markdown("<div class='anchor-mark'>+</div>", unsafe_allow_html=True)
+        # --- 3行目: [1:18:1] ＋, ▲, ＋ ---
+        b1, b2, b3 = st.columns([1, 18, 1])
+        with b1: st.markdown("<div class='anchor-mark'>+</div>", unsafe_allow_html=True)
+        with b2: st.markdown("<div class='guide-arrow' style='margin-top:-5px;'>▲</div>", unsafe_allow_html=True)
+        with b3: st.markdown("<div class='anchor-mark'>+</div>", unsafe_allow_html=True)
 
-        # E. 5行目: [1:9:9:1] ＋, 確定, 中止, ＋
-        f_col = st.columns([1, 9, 9, 1])
-        with f_col[0]: st.markdown("<div class='anchor-mark'>+</div>", unsafe_allow_html=True)
-        with f_col[1]: btn_ok = st.button("確定", use_container_width=True)
-        with f_col[2]: btn_can = st.button("中止", use_container_width=True)
-        with f_col[3]: st.markdown("<div class='anchor-mark'>+</div>", unsafe_allow_html=True)
+        # --- 4行目: [1:18:1] ＋, 地図中心に📍, ＋ ---
+        l1, l2, l3 = st.columns([1, 18, 1])
+        with l1: st.markdown("<div class='anchor-mark'>+</div>", unsafe_allow_html=True)
+        with l2: btn_sel = st.button("地図中心に📍", use_container_width=True)
+        with l3: st.markdown("<div class='anchor-mark'>+</div>", unsafe_allow_html=True)
 
-        # ロジック (略)
+        # --- 5行目: [1:9:9:1] ＋, 確定, 中止, ＋ ---
+        f1, f2, f3, f4 = st.columns([1, 9, 9, 1])
+        with f1: st.markdown("<div class='anchor-mark'>+</div>", unsafe_allow_html=True)
+        with f2: btn_ok = st.button("確定", use_container_width=True)
+        with f3: btn_can = st.button("中止", use_container_width=True)
+        with f4: st.markdown("<div class='anchor-mark'>+</div>", unsafe_allow_html=True)
+
+        # --- ロジック部 (状態更新) ---
         if btn_sel and map_out and map_out.get("center"):
             t_lat, t_lon = map_out["center"]["lat"], map_out["center"]["lng"]
-            with st.spinner("名称取得中..."): p_name = fetch_location_name(t_lat, t_lon)
+            with st.spinner("名称取得中..."):
+                p_name = fetch_location_name(t_lat, t_lon)
             st.session_state.temp_lat, st.session_state.temp_lon, st.session_state.temp_basho = t_lat, t_lon, p_name
             st.rerun(scope="fragment")
+        
         if btn_ok:
             if "temp_lat" in st.session_state:
-                st.session_state.lat, st.session_state.lon, st.session_state.last_basho = st.session_state.temp_lat, st.session_state.temp_lon, st.session_state.temp_basho
+                st.session_state.lat = st.session_state.temp_lat
+                st.session_state.lon = st.session_state.temp_lon
+                st.session_state.last_basho = st.session_state.temp_basho
                 st.session_state.needs_graph_update = True
                 for k in ["temp_lat", "temp_lon", "temp_basho"]: st.session_state.pop(k, None)
             st.rerun()
+
         if btn_can:
             for k in ["temp_lat", "temp_lon", "temp_basho"]: st.session_state.pop(k, None)
             st.rerun()
 
-    physical_lock_fragment()
+    map_control_fragment()
     
 # ==========================================================================================
 # 30_1. 座標から地名を取得するサブルーチン (fetch_location_name)
