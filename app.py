@@ -32,7 +32,9 @@ CONFIG = {
     "LABEL_PAD": 0,
     "ANNOT_SIZE": 10,
     "DPI": 200,
-    "MAP_HEIGHT": 350,
+    "DIAL_H_GAP": 0,      # ダイアログ内カラムの水平余白（初期値）
+    "DIAL_V_GAP": 0,      # ダイアログ内セクションの垂直余白（初期値）
+    "MAP_HEIGHT": 350,    # 地図の高さ
     "DEFAULT_RATIOS": [4.4, 1.2, 0.8],
     "SHOW_WIND": True,
     "SHOW_TEMP": True,
@@ -570,6 +572,7 @@ def generate_weather_icons_html(df, ratio_info, display_width, start_idx, icon_m
 def show_settings_dialog():
     """
     正規版のスクリーンショットに基づき、文言・順序・刻み値を完全に復元したダイアログ。
+    開発者モード時のみ、地図ダイアログ用の余白調整スライダーを表示する。
     適用ボタン押下時にのみ session_state と localStorage を更新する。
     """
     import streamlit as st
@@ -602,36 +605,39 @@ def show_settings_dialog():
             if st.checkbox(d, value=(d in current_sel), key=f"dlg_dir_{d}"):
                 new_sel_dirs.append(d)
 
-    # --- 4. 開発者用調整（スクリーンショットの文言を完全再現） ---
+    # --- 4. 開発者用調整（地図ダイアログ余白調整を追加） ---
     is_dev_url = st.query_params.get("mode") == "dev"
     if is_dev_url:
         st.markdown("---")
-        # セクション：開発用詳細設定
         st.subheader("開発用詳細設定")
         d_min_w = st.slider("コンテナ最小幅 (px)", 500, 5000, int(st.session_state.get("min_container_width", 2500)), 100)
         d_dpi = st.radio("解像度 (DPI)", [200, 300], index=0 if st.session_state.get("graph_dpi", 200) == 200 else 1, horizontal=True)
         d_hspace = st.slider("グラフ間余白", -0.2, 1.5, float(st.session_state.get("hspace", CONFIG["HSPACE"])), 0.05)
         d_label_pad = st.slider("ラベル距離", -5, 10, int(st.session_state.get("label_pad", CONFIG["LABEL_PAD"])))
 
-        # セクション：降水量・アイコン位置調整
+        # --- 新設：地図ダイアログ物理調整 ---
+        st.subheader("地図ダイアログ物理調整")
+        d_dial_h = st.slider("地図横余白 (H-Gap)", 0, 20, int(st.session_state.get("dial_h_gap", CONFIG["DIAL_H_GAP"])))
+        d_dial_v = st.slider("地図縦余白 (V-Gap)", 0, 20, int(st.session_state.get("dial_v_gap", CONFIG["DIAL_V_GAP"])))
+
         st.subheader("降水量・アイコン位置調整")
         d_precip_y = st.slider("降水量ラベル高さ", 0.0, 2.0, float(st.session_state.get("precip_y", 1.0)), 0.05)
         d_icon_margin = st.slider("天気アイコン下余白", 0, 100, int(st.session_state.get("icon_margin", 10)), 5)
 
-        # セクション：比率設定
+        st.subheader("比率設定")
         r = st.session_state.get("ratios", CONFIG["DEFAULT_RATIOS"])
         r0 = st.number_input("比率:風向", 0.5, 10.0, float(r[0]), 0.1)
         r1 = st.number_input("比率:気温", 0.5, 5.0, float(r[1]), 0.1)
         r2 = st.number_input("比率:潮位", 0.5, 5.0, float(r[2]), 0.1)
         d_ratios = [r0, r1, r2]
     else:
-        # 非開発者モード時は現在の値を引き継ぐ
+        # 非開発者モード時は現在の値またはCONFIG値を引き継ぐ
         d_min_w = st.session_state.get("min_container_width", 2500)
         d_dpi = st.session_state.get("graph_dpi", 200)
-        # d_show_w_text = st.session_state.get("show_w_text", CONFIG["SHOW_W_TEXT"])
-        # d_show_dir_name = st.session_state.get("show_dir_name", CONFIG["SHOW_DIR_NAME"])
         d_hspace = st.session_state.get("hspace", CONFIG["HSPACE"])
         d_label_pad = st.session_state.get("label_pad", CONFIG["LABEL_PAD"])
+        d_dial_h = st.session_state.get("dial_h_gap", CONFIG["DIAL_H_GAP"])
+        d_dial_v = st.session_state.get("dial_v_gap", CONFIG["DIAL_V_GAP"])
         d_precip_y = st.session_state.get("precip_y", 1.0)
         d_icon_margin = st.session_state.get("icon_margin", 10)
         d_ratios = st.session_state.get("ratios", CONFIG["DEFAULT_RATIOS"])
@@ -646,10 +652,11 @@ def show_settings_dialog():
             "label_font_size": d_label_f, "danger_v": d_danger_v, "sel_dirs": new_sel_dirs,
             "min_container_width": d_min_w, "graph_dpi": d_dpi, "show_w_text": d_show_w_text,
             "show_dir_name": d_show_dir_name, "hspace": d_hspace, "label_pad": d_label_pad,
+            "dial_h_gap": d_dial_h, "dial_v_gap": d_dial_v,
             "precip_y": d_precip_y, "icon_margin": d_icon_margin, "ratios": d_ratios
         })
-        save_settings_to_browser() # F12 localStorage へ書き込み
-        st.cache_data.clear()      # キャッシュをクリアして再描画を強制
+        save_settings_to_browser() # localStorage へ書き込み
+        st.cache_data.clear()      # キャッシュクリア
         st.rerun()
 
 # ======================================================================================
@@ -721,24 +728,48 @@ def calculate_graph_height(base_height, ratios, show_wind, show_temp, show_tide)
 
 
 # ==========================================================================================
-# 30. 地図UIをダイアログで表示するサブルーチン (独立3構成・シンプル復旧版)
+# 30. 地図UIをダイアログで表示するサブルーチン (独立3構成・余白可変・スマホ縦並び版)
 # ==========================================================================================
 @st.dialog("📍 地図で指定")
 def show_location_map_dialog():
     """
-    地図(1:18:1)、選定表示(1列)、ボタン(12:4:4)を完全に分離。
-    スマホでの突き抜けを防ぐため、CSSではなく標準カラム構造を優先。
+    地図(1:18:1)、地名(1)、ボタン(12:4:4 or 縦並び)を独立構成。
+    開発者メニューの hspace, label_pad を反映し、スマホでの右ズレを物理的に解消する。
     """
-    # 最小限のCSS：折り返し禁止とボタン内文字の維持のみ
-    st.markdown("""<style>
-        div[data-testid="stHorizontalBlock"] { flex-wrap: nowrap !important; }
-        [data-testid="column"] { min-width: 0px !important; }
-        .anchor-plus { color: #cccccc; font-size: 14px; text-align: center; font-weight: bold; }
-        .temp-info-box { 
-            background-color: #f0f2f6; padding: 10px; border-radius: 4px; 
-            border-left: 5px solid crimson; font-size: 14px; margin: 5px 0;
-        }
-        div[data-testid="stColumn"] button p { font-size: 12px !important; white-space: nowrap !important; }
+    from streamlit_javascript import st_javascript
+    
+    # 画面幅の取得と判定
+    page_width = st_javascript("window.innerWidth")
+    is_mobile = page_width < 500 if page_width else False
+
+    # 開発者設定（セッション状態）から取得。なければ CONFIG の初期値を使用。
+    h_gap = st.session_state.get("hspace", CONFIG["DIAL_H_GAP"])
+    v_gap = st.session_state.get("label_pad", CONFIG["DIAL_V_GAP"])
+
+    # デザインCSS：余白の動的反映
+    st.markdown(f"""<style>
+        /* 縦方向のセクション間余白を制御 */
+        div[data-testid="stVerticalBlock"] {{ gap: {v_gap}px !important; }}
+        
+        /* 横方向のカラム間余白を制御 */
+        div[data-testid="stHorizontalBlock"] {{ 
+            flex-wrap: nowrap !important; 
+            gap: {h_gap}px !important; 
+        }}
+        
+        /* 地図行が潰れないための最小設定 */
+        [data-testid="column"] {{ min-width: 0px !important; }}
+        .anchor-plus {{ color: #dddddd; font-size: 14px; text-align: center; font-weight: bold; }}
+        
+        /* 地名表示ボックス */
+        .temp-info-box {{ 
+            background-color: #f0f2f6; padding: 8px 10px; border-radius: 4px; 
+            border-left: 5px solid crimson; font-size: 13px; margin: 0;
+            width: 100%;
+        }}
+        
+        /* ボタン文字がはみ出さないよう微調整 */
+        div[data-testid="stColumn"] button p {{ font-size: 11px !important; white-space: nowrap !important; }}
         </style>""", unsafe_allow_html=True)
 
     @st.fragment
@@ -747,23 +778,20 @@ def show_location_map_dialog():
         d_lon = st.session_state.get("temp_lon", st.session_state.lon)
         d_basho = st.session_state.get("temp_basho", st.session_state.last_basho)
 
-        # 1. 地図セクション (1:18:1)
-        # 上段
+        # --- [A] 地図セクション (現状維持 1:18:1) ---
         t1, t2, t3 = st.columns([1, 18, 1])
         with t1: st.markdown("<div class='anchor-plus'>+</div>", unsafe_allow_html=True)
         with t2: st.markdown("<div style='text-align:center; color:crimson; font-size:20px;'>▼</div>", unsafe_allow_html=True)
         with t3: st.markdown("<div class='anchor-plus'>+</div>", unsafe_allow_html=True)
         
-        # 中段（地図本体）
         m = folium.Map(location=[d_lat, d_lon], zoom_start=13)
         folium.Marker([d_lat, d_lon], icon=folium.Icon(color='red')).add_to(m)
         
         m1, m2, m3 = st.columns([1, 18, 1])
         with m1: st.markdown(f"<div style='line-height:{CONFIG['MAP_HEIGHT']}px; text-align:right; color:crimson; font-size:20px;'>▶</div>", unsafe_allow_html=True)
-        with m2: map_out = st_folium(m, width="100%", height=CONFIG["MAP_HEIGHT"], key="map_stable_v17", returned_objects=["center"])
+        with m2: map_out = st_folium(m, width="100%", height=CONFIG["MAP_HEIGHT"], key="map_v18_final", returned_objects=["center"])
         with m3: st.markdown(f"<div style='line-height:{CONFIG['MAP_HEIGHT']}px; text-align:left; color:crimson; font-size:20px;'>◀</div>", unsafe_allow_html=True)
         
-        # 下段
         b1, b2, b3 = st.columns([1, 18, 1])
         with b1: st.markdown("<div class='anchor-plus'>+</div>", unsafe_allow_html=True)
         with b2: st.markdown("<div style='text-align:center; color:crimson; font-size:20px; margin-top:-10px;'>▲</div>", unsafe_allow_html=True)
@@ -771,41 +799,40 @@ def show_location_map_dialog():
 
         st.divider()
 
-        # 2. 現在の選定セクション (比率1 / 1行)
+        # --- [B] 現在の選定セクション (比率1 / 1列) ---
         st.markdown(f"<div class='temp-info-box'>📍 {d_basho} ({d_lat:.4f}, {d_lon:.4f})</div>", unsafe_allow_html=True)
 
         st.divider()
 
-        # 3. ボタンセクション (12:4:4)
-        c1, c2, c3 = st.columns([12, 4, 4])
-        with c1:
-#             if st.button("✅ グラフ描画地点（中心）選定", use_container_width=True):
-            if st.button("✅地図選定", use_container_width=True):
-                if map_out and map_out.get("center"):
-                    t_lat, t_lon = map_out["center"]["lat"], map_out["center"]["lng"]
-                    with st.spinner("検索..."):
-                        p_name = fetch_location_name(t_lat, t_lon)
-                    st.session_state.temp_lat, st.session_state.temp_lon, st.session_state.temp_basho = t_lat, t_lon, p_name
-                    st.rerun(scope="fragment")
-        with c2:
-            if st.button("決定", use_container_width=True):
-                if "temp_lat" in st.session_state:
-                    st.session_state.lat, st.session_state.lon, st.session_state.last_basho = st.session_state.temp_lat, st.session_state.temp_lon, st.session_state.temp_basho
-                    st.session_state.temp_label = f"{st.session_state.temp_basho} ({st.session_state.temp_lat:.4f}, {st.session_state.temp_lon:.4f})"
-                    st.session_state.needs_graph_update = True
-                    for k in ["temp_lat", "temp_lon", "temp_basho"]: st.session_state.pop(k, None)
-                st.rerun()
-        with c3:
-            if st.button("中止", use_container_width=True):
-                if st.session_state.get("geo_lat"):
-                    st.session_state.lat, st.session_state.lon, st.session_state.last_basho = st.session_state.geo_lat, st.session_state.geo_lon, "現在地"
-                elif st.session_state.get("my_spot_lat"):
-                    st.session_state.lat, st.session_state.lon, st.session_state.last_basho = st.session_state.my_spot_lat, st.session_state.my_spot_lon, "My Spot"
-                else:
-                    st.session_state.lat, st.session_state.lon, st.session_state.last_basho = CONFIG["DEFAULT_LAT"], CONFIG["DEFAULT_LON"], CONFIG["DEFAULT_BASHO"]
-                for k in ["temp_lat", "temp_lon", "temp_basho"]: st.session_state.pop(k, None)
-                st.session_state.needs_graph_update = True
-                st.rerun()
+        # --- [C] ボタンセクション (12:4:4 or 縦並び) ---
+        if not is_mobile:
+            c1, c2, c3 = st.columns([12, 4, 4])
+            with c1: btn_sel = st.button("✅ グラフ描画地点選定", use_container_width=True)
+            with c2: btn_ok = st.button("決定", use_container_width=True)
+            with c3: btn_can = st.button("中止", use_container_width=True)
+        else:
+            # スマホ時はカラムを使わず、縦に並べる（横への圧迫を排除）
+            btn_sel = st.button("✅ グラフ描画地点選定", use_container_width=True)
+            btn_ok = st.button("決定", use_container_width=True)
+            btn_can = st.button("中止", use_container_width=True)
+
+        # ロジック処理
+        if btn_sel and map_out and map_out.get("center"):
+            t_lat, t_lon = map_out["center"]["lat"], map_out["center"]["lng"]
+            with st.spinner("検索..."):
+                p_name = fetch_location_name(t_lat, t_lon)
+            st.session_state.temp_lat, st.session_state.temp_lon, st.session_state.temp_basho = t_lat, t_lon, p_name
+            st.rerun(scope="fragment")
+        
+        if btn_ok and "temp_lat" in st.session_state:
+            st.session_state.lat, st.session_state.lon, st.session_state.last_basho = st.session_state.temp_lat, st.session_state.temp_lon, st.session_state.temp_basho
+            st.session_state.needs_graph_update = True
+            for k in ["temp_lat", "temp_lon", "temp_basho"]: st.session_state.pop(k, None)
+            st.rerun()
+
+        if btn_can:
+            for k in ["temp_lat", "temp_lon", "temp_basho"]: st.session_state.pop(k, None)
+            st.rerun()
 
     map_and_select_section()
     
