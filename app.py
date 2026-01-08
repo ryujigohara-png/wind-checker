@@ -780,7 +780,7 @@ def show_location_map_dialog():
         c1, c2, c3 = st.columns([12, 4, 4])
         with c1:
 #             if st.button("✅ グラフ描画地点（中心）選定", use_container_width=True):
-            if st.button("✅地図中心選定", use_container_width=True):
+            if st.button("✅地図選定", use_container_width=True):
                 if map_out and map_out.get("center"):
                     t_lat, t_lon = map_out["center"]["lat"], map_out["center"]["lng"]
                     with st.spinner("検索..."):
