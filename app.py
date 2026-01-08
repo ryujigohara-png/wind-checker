@@ -729,72 +729,91 @@ def calculate_graph_height(base_height, ratios, show_wind, show_temp, show_tide)
 
 
 # ==========================================================================================
-# 30. 地図UIをダイアログで表示するサブルーチン (シンプル構成版)
+# 30. 地図UIをダイアログで表示するサブルーチン (完全復旧・安定版)
 # ==========================================================================================
 @st.dialog("📍 地図で指定")
 def show_location_map_dialog():
     """
-    ガイド矢印をすべて撤去し、地図とボタンのみの構成に変更。
-    スマホでの縦崩壊を回避し、最も安定した表示を実現する。
+    既存の仕様（地名表示、📍移動、確定処理）をすべて復旧。
+    崩れの原因となっていた矢印のみを排除し、地図幅は環境に合わせて自動最適化。
     """
     import folium
     from streamlit_folium import st_folium
 
-    # --- 1. 初期設定 ---
-    w_px = st.session_state.get("map_w", CONFIG.get("MAP_WIDTH", 400))
-    h_px = st.session_state.get("map_h", CONFIG.get("MAP_HEIGHT", 350))
+    # --- 1. 座標と名称の取得 (一時保存領域 temp を活用) ---
+    # 開いた直後は現在の値を temp にコピー
+    if "temp_lat" not in st.session_state:
+        st.session_state.temp_lat = st.session_state.lat
+    if "temp_lon" not in st.session_state:
+        st.session_state.temp_lon = st.session_state.lon
+    if "temp_basho" not in st.session_state:
+        st.session_state.temp_basho = st.session_state.last_basho
 
-    d_lat = st.session_state.get("temp_lat", st.session_state.lat)
-    d_lon = st.session_state.get("temp_lon", st.session_state.lon)
+    # 画面表示用の現在値
+    d_lat = st.session_state.temp_lat
+    d_lon = st.session_state.temp_lon
+    d_basho = st.session_state.temp_basho
 
-    # --- 2. 最小限のCSS ---
-    st.markdown("""<style>
-        div[data-testid="stVerticalBlock"] { gap: 12px !important; }
-        /* 地図を中央寄せ */
-        div.stFolium { margin: 0 auto; }
-    </style>""", unsafe_allow_html=True)
+    # --- 2. 既存仕様: タイトル下の地点情報表示 ---
+    st.markdown(f"📍 **{d_basho}**")
+    st.caption(f"({d_lat:.4f}, {d_lon:.4f})")
 
-    # --- 3. メインUI (Fragment構造を維持) ---
+    # --- 3. メインUI (Fragment構造) ---
     @st.fragment
-    def map_simple_fragment():
-        # 地図の表示 (1カラムで最大幅を使用)
+    def map_restore_fragment():
+        # 地図の高さ設定 (幅はNoneで自動追従)
+        h_px = st.session_state.get("map_h", 350)
+
+        # 地図オブジェクト作成
         m = folium.Map(location=[d_lat, d_lon], zoom_start=13)
-        folium.Marker([d_lat, d_lon], icon=folium.Icon(color='red')).add_to(m)
+        # 📍マーカーを中心座標に固定して描画 (ここが動かない原因でした)
+        folium.Marker(
+            [st.session_state.temp_lat, st.session_state.temp_lon], 
+            icon=folium.Icon(color='red')
+        ).add_to(m)
         
+        # 地図の描画 (width=Noneで親コンテナに合わせる)
         map_out = st_folium(
-            m, width=w_px, height=h_px, 
-            key=f"map_simple_{w_px}_{h_px}",
+            m, width=None, height=h_px, 
+            key=f"map_v35_fixed",
             returned_objects=["center"]
         )
 
-        # 地図中心に📍 ボタン
-        btn_sel = st.button("地図中心に📍", use_container_width=True)
+        st.write("") # スペーサー
 
-        # 確定, 中止 ボタン
+        # 既存仕様: 「地図中心に📍」ボタン
+        if st.button("地図中心に📍", use_container_width=True):
+            if map_out and map_out.get("center"):
+                # 地図の中心座標を取得して temp に保存
+                st.session_state.temp_lat = map_out["center"]["lat"]
+                st.session_state.temp_lon = map_out["center"]["lng"]
+                # 名称を再取得
+                with st.spinner("地名取得中..."):
+                    st.session_state.temp_basho = fetch_location_name(
+                        st.session_state.temp_lat, st.session_state.temp_lon
+                    )
+                st.rerun(scope="fragment") # 📍を移動させるためにフラグメント内を再描画
+
+        # 確定・中止ボタン
         c1, c2 = st.columns(2)
-        with c1: btn_ok = st.button("確定", use_container_width=True)
-        with c2: btn_can = st.button("中止", use_container_width=True)
-
-        # --- ロジック部 (保存処理) ---
-        if btn_sel and map_out and map_out.get("center"):
-            st.session_state.temp_lat = map_out["center"]["lat"]
-            st.session_state.temp_lon = map_out["center"]["lng"]
-            with st.spinner("名称取得中..."):
-                st.session_state.temp_basho = fetch_location_name(st.session_state.temp_lat, st.session_state.temp_lon)
-            st.rerun(scope="fragment")
-        
-        if btn_ok:
-            if "temp_lat" in st.session_state:
-                st.session_state.lat, st.session_state.lon, st.session_state.last_basho = st.session_state.temp_lat, st.session_state.temp_lon, st.session_state.temp_basho
+        with c1:
+            if st.button("確定", use_container_width=True):
+                # temp から本番環境へ書き戻し
+                st.session_state.lat = st.session_state.temp_lat
+                st.session_state.lon = st.session_state.temp_lon
+                st.session_state.last_basho = st.session_state.temp_basho
+                # メイン画面の更新フラグを立てる
                 st.session_state.needs_graph_update = True
+                # tempを掃除して閉じる
                 for k in ["temp_lat", "temp_lon", "temp_basho"]: st.session_state.pop(k, None)
-            st.rerun()
+                st.rerun()
 
-        if btn_can:
-            for k in ["temp_lat", "temp_lon", "temp_basho"]: st.session_state.pop(k, None)
-            st.rerun()
+        with c2:
+            if st.button("中止", use_container_width=True):
+                for k in ["temp_lat", "temp_lon", "temp_basho"]: st.session_state.pop(k, None)
+                st.rerun()
 
-    map_simple_fragment()
+    map_restore_fragment()
     
 # ==========================================================================================
 # 30_1. 座標から地名を取得するサブルーチン (fetch_location_name)
