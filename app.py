@@ -751,7 +751,7 @@ def show_location_map_dialog():
     # --- 2. 表示整理 (① 2行目の重複を削除) ---
     st.markdown(f"📍 **{st.session_state.temp_basho}**")
     # 緯度経度はここ1箇所のみに集約
-    st.caption(f"({st.session_state.temp_lat:.4f}, {st.session_state.temp_lon:.4f})")
+    # st.caption(f"({st.session_state.temp_lat:.4f}, {st.session_state.temp_lon:.4f})")
 
     # --- 3. メインUI (Fragment構造) ---
     @st.fragment
