@@ -729,104 +729,89 @@ def calculate_graph_height(base_height, ratios, show_wind, show_temp, show_tide)
 
 
 # ==========================================================================================
-# 30. 地図UIをダイアログで表示するサブルーチン (物理サイズ・比率調整・リアルタイム版)
+# 30. 地図UIをダイアログで表示するサブルーチン (物理絶対配置・最終挑戦版)
 # ==========================================================================================
 @st.dialog("📍 地図で指定")
 def show_location_map_dialog():
     """
-    既存の fragment 構造を維持。
-    地図の物理サイズ(px)に加え、配置比率(ratio)もリアルタイムに調整可能。
+    st.columnsの「自動縦並び」を回避するため、左右の矢印を絶対位置指定(Absolute)で配置。
+    地図自体は1つの広い枠に配置し、その上に矢印を物理的に重ねることで縦崩壊を構造的に防ぐ。
     """
     import folium
     from streamlit_folium import st_folium
 
-    # --- 1. 初期設定 (CONFIG優先、未設定時は安全な値を採用) ---
-    if "map_w" not in st.session_state:
-        st.session_state.map_w = CONFIG.get("MAP_WIDTH", 280)
-    if "map_h" not in st.session_state:
-        st.session_state.map_h = CONFIG.get("MAP_HEIGHT", 350)
-    # 左右余白の比率初期値（1:18:1 の "1" の部分）
-    if "map_side_ratio" not in st.session_state:
-        st.session_state.map_side_ratio = 1.0
+    # 1. 物理サイズ (これまでの試行で安定していた数値を採用)
+    w_px = st.session_state.get("map_w", CONFIG.get("MAP_WIDTH", 280))
+    h_px = st.session_state.get("map_h", CONFIG.get("MAP_HEIGHT", 300))
 
     d_lat = st.session_state.get("temp_lat", st.session_state.lat)
     d_lon = st.session_state.get("temp_lon", st.session_state.lon)
 
-    # --- 2. 物理配置用CSS (ダイアログ余白除去 & Flex中央揃え) ---
+    # 2. 物理配置CSS (地図の上に矢印を浮かせる)
     st.markdown(f"""<style>
-        [data-testid="stDialog"] div[data-testid="stVerticalBlock"] > div {{
-            padding-left: 1px !important;
-            padding-right: 1px !important;
+        /* 地図を囲むコンテナを相対位置に設定 */
+        .map-wrapper {{
+            position: relative;
+            width: {w_px}px;
+            height: {h_px}px;
+            margin: 0 auto;
         }}
-        [data-testid="column"] {{ min-width: 0px !important; flex-shrink: 1 !important; }}
-        .map-side-flex {{
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            height: {st.session_state.map_h}px;
+        /* 左右の矢印を地図の左右に絶対位置で固定 */
+        .overlay-arrow {{
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            z-index: 1000;
             color: crimson;
-            font-size: 18px;
+            font-size: 24px;
             font-weight: bold;
+            pointer-events: none; /* 地図の操作を邪魔しない */
         }}
+        .arrow-left {{ left: -25px; }}
+        .arrow-right {{ right: -25px; }}
+        
         .guide-arrow-v {{ color: crimson; font-size: 18px; font-weight: bold; text-align: center; }}
         div[data-testid="stVerticalBlock"] {{ gap: 8px !important; }}
     </style>""", unsafe_allow_html=True)
 
-    # --- 3. リアルタイム調整スライダ (サイズ & 比率) ---
-    with st.expander("⚙️ 表示設定（崩れる場合は比率や横幅を調整）"):
-        # 比率調整スライダを追加
-        st.slider("左右余白の比率 (1:18:1の'1'の部分)", 0.1, 5.0, key="map_side_ratio", step=0.1)
-        
-        c_set1, c_set2 = st.columns(2, gap="large")
-        with c_set1:
-            st.slider("地図の物理横幅(px)", 150, 500, key="map_w", step=5)
-        with c_set2:
-            st.slider("地図の物理高さ(px)", 150, 600, key="map_h", step=5)
-        st.caption("※数値を動かすと即座に反映されます。")
-
-    # --- 4. メインUI (既存のFragment構造を維持) ---
     @st.fragment
-    def map_control_fragment():
-        # 現在の調整値を取得
-        s_ratio = st.session_state.map_side_ratio
-        m_ratio = 20.0 - (s_ratio * 2) # 合計を20に固定して地図幅を計算
-        w_curr = st.session_state.map_w
-        h_curr = st.session_state.map_h
-
+    def final_attempt_fragment():
         # 1行目: ▼
-        _, t2, _ = st.columns([s_ratio, m_ratio, s_ratio])
-        with t2: st.markdown("<div class='guide-arrow-v'>▼</div>", unsafe_allow_html=True)
+        st.markdown("<div class='guide-arrow-v'>▼</div>", unsafe_allow_html=True)
 
-        # 2行目: ▶ 地図 ◀
-        m1, m2, m3 = st.columns([s_ratio, m_ratio, s_ratio])
-        with m1: st.markdown(f"<div class='map-side-flex'>▶</div>", unsafe_allow_html=True)
-        with m2: 
-            m = folium.Map(location=[d_lat, d_lon], zoom_start=13)
-            folium.Marker([d_lat, d_lon], icon=folium.Icon(color='red')).add_to(m)
-            map_out = st_folium(
-                m, width=w_curr, height=h_curr, 
-                key=f"map_v33_{w_curr}_{h_curr}_{s_ratio}",
-                returned_objects=["center"]
-            )
-        with m3: st.markdown(f"<div class='map-side-flex'>◀</div>", unsafe_allow_html=True)
+        # 2行目: ▶ 地図 ◀ (1つのコンテナ内に封じ込める)
+        # 左右の矢印を物理的に「浮かせ」、スマホのレイアウト解体(Stack)を防ぐ
+        st.markdown(f"""
+            <div class='map-wrapper'>
+                <div class='overlay-arrow arrow-left'>▶</div>
+                <div class='overlay-arrow arrow-right'>◀</div>
+            </div>
+        """, unsafe_allow_html=True)
+        
+        # コンテナの中に地図を配置 (位置を微調整)
+        m = folium.Map(location=[d_lat, d_lon], zoom_start=13)
+        folium.Marker([d_lat, d_lon], icon=folium.Icon(color='red')).add_to(m)
+        
+        # map-wrapperの直後に地図を描画し、CSSで位置を合わせる
+        map_out = st_folium(
+            m, width=w_px, height=h_px, 
+            key=f"map_final_{w_px}",
+            returned_objects=["center"]
+        )
 
         # 3行目: ▲
-        _, b2, _ = st.columns([s_ratio, m_ratio, s_ratio])
-        with b2: st.markdown("<div class='guide-arrow-v' style='margin-top:-5px;'>▲</div>", unsafe_allow_html=True)
+        st.markdown("<div class='guide-arrow-v' style='margin-top:-10px;'>▲</div>", unsafe_allow_html=True)
 
         # 4行目: 地図中心に📍
-        _, l2, _ = st.columns([s_ratio, m_ratio, s_ratio])
-        with l2: btn_sel = st.button("地図中心に📍", use_container_width=True)
+        # ここからはボタンなので、崩れにくい
+        btn_sel = st.button("地図中心に📍", use_container_width=True)
 
         # 5行目: 確定, 中止
-        # ボタン行は [1:9:9:1] のバランスを維持しつつ比率を適用
-        # 1の部分を s_ratio に合わせ、中身を 10 - s_ratio に配分
-        b_ratio = 10.0 - s_ratio
-        _, f2, f3, _ = st.columns([s_ratio, b_ratio, b_ratio, s_ratio])
-        with f2: btn_ok = st.button("確定", use_container_width=True)
-        with f3: btn_can = st.button("中止", use_container_width=True)
+        c1, c2 = st.columns(2)
+        with c1: btn_ok = st.button("確定", use_container_width=True)
+        with c2: btn_can = st.button("中止", use_container_width=True)
 
-        # --- ロジック部 (保存タイミングを維持) ---
+        # --- ロジック部 ---
         if btn_sel and map_out and map_out.get("center"):
             st.session_state.temp_lat = map_out["center"]["lat"]
             st.session_state.temp_lon = map_out["center"]["lng"]
@@ -845,7 +830,7 @@ def show_location_map_dialog():
             for k in ["temp_lat", "temp_lon", "temp_basho"]: st.session_state.pop(k, None)
             st.rerun()
 
-    map_control_fragment()
+    final_attempt_fragment()
     
 # ==========================================================================================
 # 30_1. 座標から地名を取得するサブルーチン (fetch_location_name)
