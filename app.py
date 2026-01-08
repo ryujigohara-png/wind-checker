@@ -728,52 +728,41 @@ def calculate_graph_height(base_height, ratios, show_wind, show_temp, show_tide)
 
 
 # ==========================================================================================
-# 30. 地図UIをダイアログで表示するサブルーチン (独立3構成・余白可変・スマホ縦並び版)
+# 30. 地図UIをダイアログで表示するサブルーチン (重複キー回避・独立3構成版)
 # ==========================================================================================
 @st.dialog("📍 地図で指定")
 def show_location_map_dialog():
     """
-    地図(1:18:1)、地名(1)、ボタン(12:4:4 or 縦並び)を独立構成。
-    開発者メニューの hspace, label_pad を反映し、スマホでの右ズレを物理的に解消する。
+    地図(1:18:1)、地名(1)、ボタン(12:4:4/縦並び)を独立構成。
+    st_javascript の再描画による key 重複エラーを回避。
     """
     from streamlit_javascript import st_javascript
-    
-    # 画面幅の取得と判定
+    import time
+
+    # 1. ダイアログの最上部（Fragmentの外）で一度だけ幅を取得
+    # これにより Fragment 内部での意図しない再描画を抑制する
     page_width = st_javascript("window.innerWidth")
     is_mobile = page_width < 500 if page_width else False
 
     # 開発者設定（セッション状態）から取得。なければ CONFIG の初期値を使用。
-    h_gap = st.session_state.get("hspace", CONFIG["DIAL_H_GAP"])
-    v_gap = st.session_state.get("label_pad", CONFIG["DIAL_V_GAP"])
+    h_gap = st.session_state.get("dial_h_gap", CONFIG["DIAL_H_GAP"])
+    v_gap = st.session_state.get("dial_v_gap", CONFIG["DIAL_V_GAP"])
 
-    # デザインCSS：余白の動的反映
+    # CSS：余白の動的反映
     st.markdown(f"""<style>
-        /* 縦方向のセクション間余白を制御 */
         div[data-testid="stVerticalBlock"] {{ gap: {v_gap}px !important; }}
-        
-        /* 横方向のカラム間余白を制御 */
-        div[data-testid="stHorizontalBlock"] {{ 
-            flex-wrap: nowrap !important; 
-            gap: {h_gap}px !important; 
-        }}
-        
-        /* 地図行が潰れないための最小設定 */
+        div[data-testid="stHorizontalBlock"] {{ flex-wrap: nowrap !important; gap: {h_gap}px !important; }}
         [data-testid="column"] {{ min-width: 0px !important; }}
         .anchor-plus {{ color: #dddddd; font-size: 14px; text-align: center; font-weight: bold; }}
-        
-        /* 地名表示ボックス */
         .temp-info-box {{ 
             background-color: #f0f2f6; padding: 8px 10px; border-radius: 4px; 
-            border-left: 5px solid crimson; font-size: 13px; margin: 0;
-            width: 100%;
+            border-left: 5px solid crimson; font-size: 13px; margin: 0; width: 100%;
         }}
-        
-        /* ボタン文字がはみ出さないよう微調整 */
         div[data-testid="stColumn"] button p {{ font-size: 11px !important; white-space: nowrap !important; }}
         </style>""", unsafe_allow_html=True)
 
     @st.fragment
-    def map_and_select_section():
+    def map_and_select_section(is_mobile_flag):
         d_lat = st.session_state.get("temp_lat", st.session_state.lat)
         d_lon = st.session_state.get("temp_lon", st.session_state.lon)
         d_basho = st.session_state.get("temp_basho", st.session_state.last_basho)
@@ -787,9 +776,12 @@ def show_location_map_dialog():
         m = folium.Map(location=[d_lat, d_lon], zoom_start=13)
         folium.Marker([d_lat, d_lon], icon=folium.Icon(color='red')).add_to(m)
         
+        # 重複エラー回避のため、key に秒単位のタイムスタンプを付与（ダイアログ起動ごとに一意にする）
+        map_key = f"map_{int(time.time())}"
+        
         m1, m2, m3 = st.columns([1, 18, 1])
         with m1: st.markdown(f"<div style='line-height:{CONFIG['MAP_HEIGHT']}px; text-align:right; color:crimson; font-size:20px;'>▶</div>", unsafe_allow_html=True)
-        with m2: map_out = st_folium(m, width="100%", height=CONFIG["MAP_HEIGHT"], key="map_v18_final", returned_objects=["center"])
+        with m2: map_out = st_folium(m, width="100%", height=CONFIG["MAP_HEIGHT"], key=map_key, returned_objects=["center"])
         with m3: st.markdown(f"<div style='line-height:{CONFIG['MAP_HEIGHT']}px; text-align:left; color:crimson; font-size:20px;'>◀</div>", unsafe_allow_html=True)
         
         b1, b2, b3 = st.columns([1, 18, 1])
@@ -799,24 +791,22 @@ def show_location_map_dialog():
 
         st.divider()
 
-        # --- [B] 現在の選定セクション (比率1 / 1列) ---
+        # --- [B] 現在の選定セクション ---
         st.markdown(f"<div class='temp-info-box'>📍 {d_basho} ({d_lat:.4f}, {d_lon:.4f})</div>", unsafe_allow_html=True)
 
         st.divider()
 
-        # --- [C] ボタンセクション (12:4:4 or 縦並び) ---
-        if not is_mobile:
+        # --- [C] ボタンセクション ---
+        if not is_mobile_flag:
             c1, c2, c3 = st.columns([12, 4, 4])
             with c1: btn_sel = st.button("✅ グラフ描画地点選定", use_container_width=True)
             with c2: btn_ok = st.button("決定", use_container_width=True)
             with c3: btn_can = st.button("中止", use_container_width=True)
         else:
-            # スマホ時はカラムを使わず、縦に並べる（横への圧迫を排除）
             btn_sel = st.button("✅ グラフ描画地点選定", use_container_width=True)
             btn_ok = st.button("決定", use_container_width=True)
             btn_can = st.button("中止", use_container_width=True)
 
-        # ロジック処理
         if btn_sel and map_out and map_out.get("center"):
             t_lat, t_lon = map_out["center"]["lat"], map_out["center"]["lng"]
             with st.spinner("検索..."):
@@ -834,7 +824,8 @@ def show_location_map_dialog():
             for k in ["temp_lat", "temp_lon", "temp_basho"]: st.session_state.pop(k, None)
             st.rerun()
 
-    map_and_select_section()
+    # 判定結果を引数として渡す
+    map_and_select_section(is_mobile)
     
 # ==========================================================================================
 # 30_1. 座標から地名を取得するサブルーチン (fetch_location_name)
