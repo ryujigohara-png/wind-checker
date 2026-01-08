@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# ベータ版　更新 2026.1.8 2245 map改造中 4列column方式スマホではダメ
+# ベータ版　更新 2026.1.8 2245 map改造中 4列column方式比率スライドバーするも縦崩壊は治らない。
 import streamlit as st
 import requests
 import pandas as pd
