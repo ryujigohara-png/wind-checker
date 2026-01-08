@@ -5,3 +5,4 @@ matplotlib
 streamlit-folium
 folium
 streamlit-js-eval
+streamlit-javascript
