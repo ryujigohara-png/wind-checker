@@ -728,13 +728,13 @@ def calculate_graph_height(base_height, ratios, show_wind, show_temp, show_tide)
 
 
 # ==========================================================================================
-# 30. 地図UIをダイアログで表示するサブルーチン (5行カラム構造・指定文言厳守版)
+# 30. 地図UIをダイアログで表示するサブルーチン (4列構成：右側空白バッファ版)
 # ==========================================================================================
 @st.dialog("📍 地図で指定")
 def show_location_map_dialog():
     """
-    1:18:1 および 1:9:9:1 のカラム構造を使い、指定された文言で5行を構成。
-    物理的なはみ出しを防ぎ、正規版の安定性をダイアログ内で再現する。
+    1:18:1:21 の比率を用い、右側に巨大な空白カラムを配置。
+    スマホでの右側突き抜けを物理的に「空振り」させ、左側のUIを保護する。
     """
     import folium
     from streamlit_folium import st_folium
@@ -744,7 +744,7 @@ def show_location_map_dialog():
     d_lon = st.session_state.get("temp_lon", st.session_state.lon)
     d_basho = st.session_state.get("temp_basho", st.session_state.last_basho)
 
-    # 2. ヘッダー表示（地名・座標をダイアログ上部に逃がす）
+    # 2. ヘッダー表示（ダイアログ上部に固定）
     st.markdown(f"""
         <div style='margin-top:-20px; margin-bottom:10px; border-bottom:1px solid #eee;'>
             <div style='font-size:12px; font-weight:bold; color:#333;'>📍 {d_basho}</div>
@@ -753,8 +753,9 @@ def show_location_map_dialog():
     """, unsafe_allow_html=True)
 
     # 3. 物理制約CSS
+    # 縦余白はご指摘の通り「8」に設定
     h_gap = st.session_state.get("dial_h_gap", CONFIG["DIAL_H_GAP"])
-    v_gap = st.session_state.get("dial_v_gap", CONFIG["DIAL_V_GAP"])
+    v_gap = 8 
 
     st.markdown(f"""<style>
         /* レベル3(Column)のはみ出しを物理的にカット */
@@ -769,40 +770,52 @@ def show_location_map_dialog():
 
     @st.fragment
     def unified_map_fragment():
-        # --- 1行目: [1:18:1] ＋, ▼, ＋ ---
-        t1, t2, t3 = st.columns([1, 18, 1])
+        # --- 比率設定 ---
+        # 1〜4行目は合計41 (1:18:1:21)
+        # 5行目も合計41 (1:9:9:1:21)
+        ratio_main = [1, 18, 1, 21]
+        ratio_btns = [1, 9, 9, 1, 21]
+
+        # --- 1行目: ＋, ▼, ＋, (空白) ---
+        t1, t2, t3, t4 = st.columns(ratio_main)
         with t1: st.markdown("<div class='anchor-mark'>+</div>", unsafe_allow_html=True)
         with t2: st.markdown("<div class='guide-arrow'>▼</div>", unsafe_allow_html=True)
         with t3: st.markdown("<div class='anchor-mark'>+</div>", unsafe_allow_html=True)
+        # t4 は空白
 
-        # --- 2行目: [1:18:1] ▶, 地図, ◀ ---
+        # --- 2行目: ▶, 地図, ◀, (空白) ---
         m = folium.Map(location=[d_lat, d_lon], zoom_start=13)
         folium.Marker([d_lat, d_lon], icon=folium.Icon(color='red')).add_to(m)
         
-        m1, m2, m3 = st.columns([1, 18, 1])
+        m1, m2, m3, m4 = st.columns(ratio_main)
         with m1: st.markdown(f"<div style='line-height:{CONFIG['MAP_HEIGHT']}px; text-align:right;' class='guide-arrow'>▶</div>", unsafe_allow_html=True)
         with m2: 
-            map_out = st_folium(m, width=None, height=CONFIG["MAP_HEIGHT"], key=f"map_v22_{d_lat}_{d_lon}", returned_objects=["center"])
+            # width=None で親(比率18の枠)に追従
+            map_out = st_folium(m, width=None, height=CONFIG["MAP_HEIGHT"], key=f"map_v23_{d_lat}_{d_lon}", returned_objects=["center"])
         with m3: st.markdown(f"<div style='line-height:{CONFIG['MAP_HEIGHT']}px; text-align:left;' class='guide-arrow'>◀</div>", unsafe_allow_html=True)
+        # m4 は空白
 
-        # --- 3行目: [1:18:1] ＋, ▲, ＋ ---
-        b1, b2, b3 = st.columns([1, 18, 1])
+        # --- 3行目: ＋, ▲, ＋, (空白) ---
+        b1, b2, b3, b4 = st.columns(ratio_main)
         with b1: st.markdown("<div class='anchor-mark'>+</div>", unsafe_allow_html=True)
         with b2: st.markdown("<div class='guide-arrow' style='margin-top:-10px;'>▲</div>", unsafe_allow_html=True)
         with b3: st.markdown("<div class='anchor-mark'>+</div>", unsafe_allow_html=True)
+        # b4 は空白
 
-        # --- 4行目: [1:18:1] ＋, 地図中心に📍, ＋ ---
-        l1, l2, l3 = st.columns([1, 18, 1])
+        # --- 4行目: ＋, 地図中心に📍, ＋, (空白) ---
+        l1, l2, l3, l4 = st.columns(ratio_main)
         with l1: st.markdown("<div class='anchor-mark'>+</div>", unsafe_allow_html=True)
         with l2: btn_sel = st.button("地図中心に📍", use_container_width=True)
         with l3: st.markdown("<div class='anchor-mark'>+</div>", unsafe_allow_html=True)
+        # l4 は空白
 
-        # --- 5行目: [1:9:9:1] ＋, 確定, 中止, ＋ ---
-        f1, f2, f3, f4 = st.columns([1, 9, 9, 1])
+        # --- 5行目: ＋, 確定, 中止, ＋, (空白) ---
+        f1, f2, f3, f4, f5 = st.columns(ratio_btns)
         with f1: st.markdown("<div class='anchor-mark'>+</div>", unsafe_allow_html=True)
         with f2: btn_ok = st.button("確定", use_container_width=True)
         with f3: btn_can = st.button("中止", use_container_width=True)
         with f4: st.markdown("<div class='anchor-mark'>+</div>", unsafe_allow_html=True)
+        # f5 は空白
 
         # --- ロジック部 ---
         if btn_sel and map_out and map_out.get("center"):
@@ -814,9 +827,116 @@ def show_location_map_dialog():
         
         if btn_ok:
             if "temp_lat" in st.session_state:
-                st.session_state.lat = st.session_state.temp_lat
-                st.session_state.lon = st.session_state.temp_lon
-                st.session_state.last_basho = st.session_state.temp_basho
+                st.session_state.lat, st.session_state.lon, st.session_state.last_basho = st.session_state.temp_lat, st.session_state.temp_lon, st.session_state.temp_basho
+                st.session_state.needs_graph_update = True
+                for k in ["temp_lat", "temp_lon", "temp_basho"]: st.session_state.pop(k, None)
+            st.rerun()
+
+        if btn_can:
+            for k in ["temp_lat", "temp_lon", "temp_basho"]: st.session_state.pop(k, None)
+            st.rerun()
+
+    unified_map_fragment()# ==========================================================================================
+# 30. 地図UIをダイアログで表示するサブルーチン (4列構成：右側空白バッファ版)
+# ==========================================================================================
+@st.dialog("📍 地図で指定")
+def show_location_map_dialog():
+    """
+    1:18:1:21 の比率を用い、右側に巨大な空白カラムを配置。
+    スマホでの右側突き抜けを物理的に「空振り」させ、左側のUIを保護する。
+    """
+    import folium
+    from streamlit_folium import st_folium
+
+    # 1. データの準備
+    d_lat = st.session_state.get("temp_lat", st.session_state.lat)
+    d_lon = st.session_state.get("temp_lon", st.session_state.lon)
+    d_basho = st.session_state.get("temp_basho", st.session_state.last_basho)
+
+    # 2. ヘッダー表示（ダイアログ上部に固定）
+    st.markdown(f"""
+        <div style='margin-top:-20px; margin-bottom:10px; border-bottom:1px solid #eee;'>
+            <div style='font-size:12px; font-weight:bold; color:#333;'>📍 {d_basho}</div>
+            <div style='font-size:10px; color:#888;'>({d_lat:.4f}, {d_lon:.4f})</div>
+        </div>
+    """, unsafe_allow_html=True)
+
+    # 3. 物理制約CSS
+    # 縦余白はご指摘の通り「8」に設定
+    h_gap = st.session_state.get("dial_h_gap", CONFIG["DIAL_H_GAP"])
+    v_gap = 8 
+
+    st.markdown(f"""<style>
+        /* レベル3(Column)のはみ出しを物理的にカット */
+        [data-testid="column"] {{ min-width: 0px !important; overflow: hidden !important; }}
+        /* カラム間の隙間制御 */
+        div[data-testid="stHorizontalBlock"] {{ gap: {h_gap}px !important; flex-wrap: nowrap !important; }}
+        div[data-testid="stVerticalBlock"] {{ gap: {v_gap}px !important; }}
+        /* 装飾 */
+        .guide-arrow {{ color: crimson; font-size: 20px; font-weight: bold; text-align: center; }}
+        .anchor-mark {{ color: #eeeeee; font-size: 14px; text-align: center; }}
+        </style>""", unsafe_allow_html=True)
+
+    @st.fragment
+    def unified_map_fragment():
+        # --- 比率設定 ---
+        # 1〜4行目は合計41 (1:18:1:21)
+        # 5行目も合計41 (1:9:9:1:21)
+        ratio_main = [1, 18, 1, 21]
+        ratio_btns = [1, 9, 9, 1, 21]
+
+        # --- 1行目: ＋, ▼, ＋, (空白) ---
+        t1, t2, t3, t4 = st.columns(ratio_main)
+        with t1: st.markdown("<div class='anchor-mark'>+</div>", unsafe_allow_html=True)
+        with t2: st.markdown("<div class='guide-arrow'>▼</div>", unsafe_allow_html=True)
+        with t3: st.markdown("<div class='anchor-mark'>+</div>", unsafe_allow_html=True)
+        # t4 は空白
+
+        # --- 2行目: ▶, 地図, ◀, (空白) ---
+        m = folium.Map(location=[d_lat, d_lon], zoom_start=13)
+        folium.Marker([d_lat, d_lon], icon=folium.Icon(color='red')).add_to(m)
+        
+        m1, m2, m3, m4 = st.columns(ratio_main)
+        with m1: st.markdown(f"<div style='line-height:{CONFIG['MAP_HEIGHT']}px; text-align:right;' class='guide-arrow'>▶</div>", unsafe_allow_html=True)
+        with m2: 
+            # width=None で親(比率18の枠)に追従
+            map_out = st_folium(m, width=None, height=CONFIG["MAP_HEIGHT"], key=f"map_v23_{d_lat}_{d_lon}", returned_objects=["center"])
+        with m3: st.markdown(f"<div style='line-height:{CONFIG['MAP_HEIGHT']}px; text-align:left;' class='guide-arrow'>◀</div>", unsafe_allow_html=True)
+        # m4 は空白
+
+        # --- 3行目: ＋, ▲, ＋, (空白) ---
+        b1, b2, b3, b4 = st.columns(ratio_main)
+        with b1: st.markdown("<div class='anchor-mark'>+</div>", unsafe_allow_html=True)
+        with b2: st.markdown("<div class='guide-arrow' style='margin-top:-10px;'>▲</div>", unsafe_allow_html=True)
+        with b3: st.markdown("<div class='anchor-mark'>+</div>", unsafe_allow_html=True)
+        # b4 は空白
+
+        # --- 4行目: ＋, 地図中心に📍, ＋, (空白) ---
+        l1, l2, l3, l4 = st.columns(ratio_main)
+        with l1: st.markdown("<div class='anchor-mark'>+</div>", unsafe_allow_html=True)
+        with l2: btn_sel = st.button("地図中心に📍", use_container_width=True)
+        with l3: st.markdown("<div class='anchor-mark'>+</div>", unsafe_allow_html=True)
+        # l4 は空白
+
+        # --- 5行目: ＋, 確定, 中止, ＋, (空白) ---
+        f1, f2, f3, f4, f5 = st.columns(ratio_btns)
+        with f1: st.markdown("<div class='anchor-mark'>+</div>", unsafe_allow_html=True)
+        with f2: btn_ok = st.button("確定", use_container_width=True)
+        with f3: btn_can = st.button("中止", use_container_width=True)
+        with f4: st.markdown("<div class='anchor-mark'>+</div>", unsafe_allow_html=True)
+        # f5 は空白
+
+        # --- ロジック部 ---
+        if btn_sel and map_out and map_out.get("center"):
+            t_lat, t_lon = map_out["center"]["lat"], map_out["center"]["lng"]
+            with st.spinner("名称取得中..."):
+                p_name = fetch_location_name(t_lat, t_lon)
+            st.session_state.temp_lat, st.session_state.temp_lon, st.session_state.temp_basho = t_lat, t_lon, p_name
+            st.rerun(scope="fragment")
+        
+        if btn_ok:
+            if "temp_lat" in st.session_state:
+                st.session_state.lat, st.session_state.lon, st.session_state.last_basho = st.session_state.temp_lat, st.session_state.temp_lon, st.session_state.temp_basho
                 st.session_state.needs_graph_update = True
                 for k in ["temp_lat", "temp_lon", "temp_basho"]: st.session_state.pop(k, None)
             st.rerun()
