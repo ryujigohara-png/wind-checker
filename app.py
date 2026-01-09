@@ -746,20 +746,20 @@ def show_location_map_dialog():
     if "temp_lon" not in st.session_state:
         st.session_state.temp_lon = st.session_state.lon
     if "temp_basho" not in st.session_state:
+        # 初回表示時は現在の地名を表示
         st.session_state.temp_basho = st.session_state.last_basho
-
-    # --- 2. 表示整理 (① 2行目の重複を削除) ---
+    
+    # --- 2. 表示整理 ---
+    # １．の依頼：地名（緯度経度）をタイトル下の1行に表示
     st.markdown(f"📍 **{st.session_state.temp_basho}**")
-    # 緯度経度はここ1箇所のみに集約
-    # st.caption(f"({st.session_state.temp_lat:.4f}, {st.session_state.temp_lon:.4f})")
-
+    
     # --- 3. メインUI (Fragment構造) ---
     @st.fragment
     def map_final_fixed_fragment():
         h_px = st.session_state.get("map_h", 350)
-
+    
         # 地図オブジェクト作成
-        # ② locationをtemp_lat/lonに固定することで、再描画時に必ずここが中心になる
+        # locationをtemp_lat/lonに固定することで、再描画時に必ずここが中心になる
         m = folium.Map(
             location=[st.session_state.temp_lat, st.session_state.temp_lon], 
             zoom_start=13
@@ -777,41 +777,52 @@ def show_location_map_dialog():
             key=f"map_v36_final",
             returned_objects=["center"]
         )
-
+    
         st.write("") 
-
+    
         # 「地図中心に📍」ボタンのロジック
         if st.button("地図中心に📍", use_container_width=True):
             if map_out and map_out.get("center"):
                 # 地図の「現在の中心」を temp に保存
-                # これにより、rerun後の folium.Map(location=...) がここを指すようになる
                 st.session_state.temp_lat = map_out["center"]["lat"]
                 st.session_state.temp_lon = map_out["center"]["lng"]
                 
-                # 名称を更新
+                # 名称を更新（緯度経度を付与する形式に改修）
                 with st.spinner("地名取得中..."):
-                    st.session_state.temp_basho = fetch_location_name(
+                    raw_name = fetch_location_name(
                         st.session_state.temp_lat, st.session_state.temp_lon
                     )
-                # フラグメント内を再描画して、地図の中心と📍を同期
+                    # １．の依頼：地名（緯度経度）の形式に整形
+                    st.session_state.temp_basho = f"{raw_name} ({st.session_state.temp_lat:.4f}, {st.session_state.temp_lon:.4f})"
+                
+                # フラグメント内を再描画して、地図の中心と📍を同期。グラフ描画は行わない（scope="fragment"）
                 st.rerun(scope="fragment")
-
+    
         # 確定・中止ボタン
         c1, c2 = st.columns(2)
         with c1:
             if st.button("確定", use_container_width=True):
+                # ２．の依頼：メインの状態を更新
                 st.session_state.lat = st.session_state.temp_lat
                 st.session_state.lon = st.session_state.temp_lon
                 st.session_state.last_basho = st.session_state.temp_basho
+                
+                # コンボボックスの選択肢に表示させるため temp_label に格納
+                st.session_state.temp_label = st.session_state.temp_basho
+                
+                # グラフ描画を行うフラグを立てる
                 st.session_state.needs_graph_update = True
+                
+                # 一時変数をクリア
                 for k in ["temp_lat", "temp_lon", "temp_basho"]: st.session_state.pop(k, None)
                 st.rerun()
-
+    
         with c2:
             if st.button("中止", use_container_width=True):
+                # ３．の依頼：グラフ描画を行わずに閉じる
                 for k in ["temp_lat", "temp_lon", "temp_basho"]: st.session_state.pop(k, None)
                 st.rerun()
-
+    
     map_final_fixed_fragment()
     
 # ==========================================================================================
