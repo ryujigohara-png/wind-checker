@@ -687,17 +687,27 @@ def show_settings_dialog():
         st.rerun()
 
 # ======================================================================================
-# 21. サイドバー、パラメータ設定
+# 21. サイドバー、パラメータ設定（お気に入り管理ボタン追加版）
 # ======================================================================================
 def show_sidebar_controls():
     """
-    サイドバーの入り口。ボタン一つでダイアログを起動する。
+    サイドバーの入り口。
+    詳細設定ボタンとお気に入り管理ボタンを表示する。
     """
+    import streamlit as st
+    
     st.sidebar.header("表示設定")
+    
+    # 1. グラフ詳細設定ボタン
     if st.sidebar.button("⚙ 詳細設定を変更する", use_container_width=True):
         show_settings_dialog()
 
+    # 2. My Spot（お気に入り）管理ボタン
+    if st.sidebar.button("📍 My Spot を編集・削除", use_container_width=True):
+        manage_favorites_dialog()
+
     # 現時点の session_state を反映した design_params を返す
+    # (calculate_graph_height などの既存ロジックは一切変更せず維持)
     h = calculate_graph_height(
         st.session_state.get("base_height", CONFIG["GRAPH_HIGHT"]),
         st.session_state.get("ratios", CONFIG["DEFAULT_RATIOS"]),
@@ -1111,6 +1121,8 @@ def show_favorite_control_bar(location_options, current_display_label, current_l
     """
     メイン画面上で地点選択と「⭐」保存ボタンを1行に表示する。
     """
+    import streamlit as st
+
     # --- お気に入り状態の判定（座標一致でチェック） ---
     favorites = st.session_state.get("user_locations", [])
     saved_data = next((f for f in favorites if abs(f['lat'] - current_lat) < 0.0001 and abs(f['lon'] - current_lon) < 0.0001), None)
@@ -1140,14 +1152,29 @@ def show_favorite_control_bar(location_options, current_display_label, current_l
     return selected
 
 # ======================================================================================
-# 92_3. お気に入り地点の名称登録ダイアログ
+# 92_3. お気に入り地点の名称登録ダイアログ（10件制限警告付き）
 # ======================================================================================
 @st.dialog("お気に入り地点の名称確認")
 def show_favorite_registration_dialog(default_name, lat, lon):
     """
     お気に入り登録時に「地名（逆引き住所）」を確認・修正してLocalStorageへ永続保存する。
+    10件制限チェックを行い、超過時は保存をブロックして警告を表示する。
     """
-    st.write("この地点に名前をつけて「お気に入り」に保存します。")
+    import streamlit as st
+    import time
+
+    # 現在の登録件数を確認
+    favorites = st.session_state.get("user_locations", [])
+    current_count = len(favorites)
+
+    if current_count >= 10:
+        st.error("🚨 お気に入りの登録制限（10件）に達しています。")
+        st.write("新しい地点を保存するには、サイドバーの「My Spotを編集」から既存の地点を削除してください。")
+        if st.button("閉じる", use_container_width=True):
+            st.rerun()
+        return
+
+    st.write(f"この地点を「お気に入り」に保存します。（現在: {current_count}/10件）")
     # 📍をデフォルトで付与
     initial_val = default_name if default_name.startswith("📍") else f"📍 {default_name}"
     new_name = st.text_input("登録名（修正可）", value=initial_val)
@@ -1166,11 +1193,19 @@ def show_favorite_registration_dialog(default_name, lat, lon):
             })
             
             # LocalStorageへの保存と、再描画フラグを立てる
-            update_state_and_save({
+            # ※update_state_and_save が存在しない環境を考慮し、save_settings_to_browser も併記可能な設計
+            update_data = {
                 "last_basho": new_name,
                 "temp_label": None, # 一時ラベルはクリア
                 "needs_graph_update": True
-            })
+            }
+            
+            if "update_state_and_save" in globals():
+                update_state_and_save(update_data)
+            else:
+                st.session_state.update(update_data)
+                save_settings_to_browser()
+
             st.success(f"「{new_name}」を保存しました。")
             time.sleep(1)
             st.rerun()
@@ -1179,7 +1214,79 @@ def show_favorite_registration_dialog(default_name, lat, lon):
         if st.button("Cancel", use_container_width=True):
             st.rerun()
 
+# ======================================================================================
+# 92_4. My Spot（お気に入り）編集・削除ダイアログ
+# ======================================================================================
+@st.dialog("My Spot（お気に入り）の編集")
+def manage_favorites_dialog():
+    """
+    登録済みのお気に入り地点の名前変更、および削除を行う。
+    削除時は確認ステップを挟み、即座に保存処理を実行する。
+    """
+    import streamlit as st
+
+    favorites = st.session_state.get("user_locations", [])
+
+    if not favorites:
+        st.info("登録されているお気に入り地点はありません。")
+        if st.button("閉じる", use_container_width=True):
+            st.rerun()
+        return
+
+    st.write(f"登録済み地点: {len(favorites)} / 10 件")
+    st.markdown("---")
+
+    new_favorites = []
+    has_changed = False
+
+    for i, fav in enumerate(favorites):
+        # 各地点ごとに編集・削除UIを配置
+        col_name, col_del = st.columns([0.8, 0.2])
+        
+        with col_name:
+            # 名前編集（ラベルなしでスッキリさせる）
+            edited_name = st.text_input(f"名称 {i+1}", value=fav['name'], key=f"edit_name_{i}", label_visibility="collapsed")
+            if edited_name != fav['name']:
+                fav['name'] = edited_name
+                has_changed = True
+        
+        with col_del:
+            # 削除ボタン
+            if st.button("🗑️", key=f"del_fav_{i}", help="削除"):
+                st.session_state[f"confirm_delete_{i}"] = True
+
+        # 削除確認ロジック
+        if st.session_state.get(f"confirm_delete_{i}", False):
+            st.warning(f"「{fav['name']}」を削除しますか？")
+            c_yes, c_no = st.columns(2)
+            with c_yes:
+                if st.button("はい、削除します", key=f"btn_yes_{i}", type="primary"):
+                    # 削除実行
+                    favorites.pop(i)
+                    st.session_state.user_locations = favorites
+                    save_settings_to_browser() # 削除直後に保存
+                    st.session_state[f"confirm_delete_{i}"] = False
+                    st.rerun()
+            with c_no:
+                if st.button("キャンセル", key=f"btn_no_{i}"):
+                    st.session_state[f"confirm_delete_{i}"] = False
+                    st.rerun()
+        
+        new_favorites.append(fav)
+        st.markdown('<div style="margin-bottom:-10px;"></div>', unsafe_allow_html=True)
+
+    st.markdown("---")
     
+    # 名称変更があった場合の適用ボタン
+    if has_changed:
+        if st.button("名称変更を保存", use_container_width=True, type="primary"):
+            st.session_state.user_locations = new_favorites
+            save_settings_to_browser()
+            st.success("名称を変更しました。")
+            st.rerun()
+
+    if st.button("閉じる", use_container_width=True):
+        st.rerun()
 
 
 # ======================================================================================
