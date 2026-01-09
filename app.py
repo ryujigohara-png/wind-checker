@@ -1203,13 +1203,13 @@ def show_favorite_registration_dialog(default_name, lat, lon):
             st.rerun()
 
 # ======================================================================================
-# 92_4. My Spot（お気に入り）管理ダイアログ（座標表示・データ同期版）
+# 92_4. My Spot（お気に入り）管理ダイアログ（データ完全同期・安定版）
 # ======================================================================================
 @st.dialog("My Spot（お気に入り）の編集")
 def manage_favorites_dialog():
     """
-    Fragmentを利用し、名称・座標をセットで管理・表示する。
-    名前の右に座標確認枠を追加。並び替え・削除・編集を高速に実行。
+    Fragmentを利用し、名称・座標を確実にセットで管理。
+    インデックス操作の計算式を厳密化し、Streamlitの再描画バグを回避する。
     """
     import streamlit as st
 
@@ -1219,86 +1219,93 @@ def manage_favorites_dialog():
         if "user_locations" not in st.session_state:
             st.session_state.user_locations = []
         
-        # 直接参照
-        favs = st.session_state.user_locations
+        # 参照ではなく「コピー」を作成して操作することで、計算中の予期せぬ挙動を防ぐ
+        current_favs = list(st.session_state.user_locations)
         
-        if not favs:
+        if not current_favs:
             st.info("登録されているお気に入り地点はありません。")
             if st.button("閉じる", use_container_width=True):
                 st.rerun()
             return
 
-        st.write(f"登録済み地点: {len(favs)} / 10 件")
+        st.write(f"登録済み地点: {len(current_favs)} / 10 件")
         st.caption("名前修正はEnterで確定。▲▼で順序変更、🗑️で削除。")
         st.markdown("---")
 
-        needs_save = False
+        action_idx = None
+        direction = 0 # -1: up, 1: down, 99: delete
+        
+        # ヘッダー
+        h_col = st.columns([0.4, 0.3, 0.2, 0.1])
+        h_col[0].caption("地点名")
+        h_col[1].caption("座標 (緯度, 経度)")
 
-        # 見出し
-        h_name, h_pos, h_ord, h_del = st.columns([0.4, 0.3, 0.2, 0.1])
-        h_name.caption("地点名")
-        h_pos.caption("座標 (緯度, 経度)")
+        # --- リストの描画 ---
+        for i in range(len(current_favs)):
+            item = current_favs[i]
+            # 各行に一意なコンテナを作成し、表示崩れを防ぐ
+            with st.container():
+                c_name, c_pos, c_ord, c_del = st.columns([0.4, 0.3, 0.2, 0.1])
+                
+                with c_name:
+                    # keyに現在の座標と「現在の並び順」を含めることで、Streamlitの誤認を防ぐ
+                    unique_key = f"input_{item['lat']}_{item['lon']}_{i}"
+                    new_n = st.text_input("name", value=item['name'], key=unique_key, label_visibility="collapsed")
+                    if new_n != item['name']:
+                        current_favs[i]['name'] = new_n
+                        st.session_state.user_locations = current_favs # 即座に反映
+                        if "save_settings_to_browser" in globals():
+                            save_settings_to_browser()
 
-        for i in range(len(favs)):
-            item = favs[i]
-            # 4カラム構成に変更（名前、座標、並び替え、削除）
-            c_name, c_pos, c_ord, c_del = st.columns([0.4, 0.3, 0.2, 0.1])
-            
-            with c_name:
-                # 名前編集
-                new_n = st.text_input(
-                    f"ed_n_{i}", 
-                    value=item['name'], 
-                    key=f"input_name_{i}_{item['lat']}_{item['lon']}", # 座標をキーに含め、移動しても入力を追跡
-                    label_visibility="collapsed"
-                )
-                if new_n != item['name']:
-                    favs[i]['name'] = new_n
-                    needs_save = True
-            
-            with c_pos:
-                # 座標表示（確認用：編集不可のテキストとして表示）
-                pos_text = f"{item['lat']:.4f}, {item['lon']:.4f}"
-                st.code(pos_text, language=None)
-            
-            with c_ord:
-                u_col, d_col = st.columns(2)
-                # ▲ボタン：辞書全体をスワップ
-                if u_col.button("▲", key=f"btn_u_{i}", disabled=(i==0), use_container_width=True):
-                    favs[i], favs[i-1] = favs[i-1], favs[i]
-                    needs_save = True
-                # ▼ボタン：辞書全体をスワップ
-                if d_col.button("▼", key=f"btn_d_{i}", disabled=(i==len(favs)-1), use_container_width=True):
-                    favs[i], favs[i+1] = favs[i+1], favs[i]
-                    needs_save = True
-            
-            with c_del:
-                if st.button("🗑️", key=f"btn_x_{i}", use_container_width=True):
-                    st.session_state["del_target_idx"] = i
+                with c_pos:
+                    # 座標表示（正しく紐付いているか確認用）
+                    st.code(f"{item['lat']:.4f}, {item['lon']:.4f}", language=None)
+                
+                with c_ord:
+                    u_btn, d_btn = st.columns(2)
+                    # ▲ ボタンの計算: 自分が 0 でなければ、i と i-1 を入れ替える
+                    if u_btn.button("▲", key=f"up_{i}_{unique_key}", disabled=(i==0), use_container_width=True):
+                        action_idx, direction = i, -1
+                    # ▼ ボタンの計算: 自分が最後でなければ、i と i+1 を入れ替える
+                    if d_btn.button("▼", key=f"dw_{i}_{unique_key}", disabled=(i==len(current_favs)-1), use_container_width=True):
+                        action_idx, direction = i, 1
+                
+                with c_del:
+                    if st.button("🗑️", key=f"del_{i}_{unique_key}", use_container_width=True):
+                        action_idx, direction = i, 99
 
-        # --- 削除確認（Fragment内） ---
-        d_idx = st.session_state.get("del_target_idx")
-        if d_idx is not None and d_idx < len(favs):
-            st.warning(f"「{favs[d_idx]['name']}」を削除しますか？")
-            y_c, n_c = st.columns(2)
-            if y_c.button("はい、削除", key="del_yes", type="primary", use_container_width=True):
-                favs.pop(d_idx)
-                st.session_state["del_target_idx"] = None
-                needs_save = True
-            if n_c.button("キャンセル", key="del_no", use_container_width=True):
-                st.session_state["del_target_idx"] = None
-                # ボタン押下による自動再描画
+        # --- アクション実行ロジック (計算式の確実な適用) ---
+        if action_idx is not None:
+            if direction == 99: # 削除
+                st.session_state["pending_delete_idx"] = action_idx
+            else: # 並び替え
+                target_idx = action_idx + direction
+                # 辞書オブジェクトを丸ごと入れ替え（名前・緯度・経度すべてが移動する）
+                current_favs[action_idx], current_favs[target_idx] = current_favs[target_idx], current_favs[action_idx]
+                st.session_state.user_locations = current_favs
+                if "save_settings_to_browser" in globals():
+                    save_settings_to_browser()
+                # Fragment内を再描画してリスト表示を更新（霞なし）
+                st.rerun(scope="fragment")
 
-        # 変更があれば保存
-        if needs_save:
-            st.session_state.user_locations = favs
-            if "save_settings_to_browser" in globals():
-                save_settings_to_browser()
-            # 内部再計算を促すため、何もせずともFragmentが再走するが、
-            # UIを強制リフレッシュするために空文字等を書き込まない工夫。
+        # --- 削除確認UI ---
+        del_target = st.session_state.get("pending_delete_idx")
+        if del_target is not None and del_target < len(current_favs):
+            st.warning(f"「{current_favs[del_target]['name']}」を削除しますか？")
+            y_col, n_col = st.columns(2)
+            if y_col.button("はい、削除", key="real_del_y", type="primary", use_container_width=True):
+                current_favs.pop(del_target)
+                st.session_state.user_locations = current_favs
+                st.session_state["pending_delete_idx"] = None
+                if "save_settings_to_browser" in globals():
+                    save_settings_to_browser()
+                st.rerun(scope="fragment")
+            if n_col.button("キャンセル", key="real_del_n", use_container_width=True):
+                st.session_state["pending_delete_idx"] = None
+                st.rerun(scope="fragment")
 
         st.markdown("---")
-        # 終了ボタン：ここで初めてダイアログを閉じ、メイン画面を更新する
+        # 終了ボタン
         if st.button("編集を終了して閉じる", use_container_width=True):
             st.rerun()
 
