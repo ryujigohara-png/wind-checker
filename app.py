@@ -1203,96 +1203,102 @@ def show_favorite_registration_dialog(default_name, lat, lon):
             st.rerun()
 
 # ======================================================================================
-# 92_4. My Spot（お気に入り）管理ダイアログ（霞防止・編集・並び替え対応）
+# 92_4. My Spot（お気に入り）管理ダイアログ（Fragmentスコープ制御版）
 # ======================================================================================
 @st.dialog("My Spot（お気に入り）の編集")
 def manage_favorites_dialog():
     """
-    Fragmentを利用して、メイン画面の再描画を抑制しつつ、
-    名称編集・並び替え・削除を、ダイアログを閉じずに実行する。
+    Fragmentのスコープ限定 rerun を利用して、霞を発生させず、
+    ダイアログを維持したまま並び替え・編集・削除を確実に反映する。
     """
     import streamlit as st
 
-    # --- ダイアログ内部全体をひとつのFragmentとして定義 ---
+    # --- ダイアログ内部をFragmentとして定義 ---
     @st.fragment
     def internal_manager():
-        # Fragment内部で最新のsession_stateを取得
-        favorites = st.session_state.get("user_locations", [])
+        # session_stateから最新のリストを取得
+        if "user_locations" not in st.session_state:
+            st.session_state.user_locations = []
+        
+        favorites = st.session_state.user_locations
         
         if not favorites:
             st.info("登録されているお気に入り地点はありません。")
             if st.button("閉じる", use_container_width=True):
-                # ここはダイアログ自体を閉じる必要があるため rerun
-                st.rerun()
+                st.rerun() # 全体リフレッシュしてダイアログを閉じる
             return
 
         st.write(f"登録済み地点: {len(favorites)} / 10 件")
-        st.caption("名前の修正後はEnterで確定。▲▼で順序変更、🗑️で削除。")
+        st.caption("名前修正はEnterで確定。▲▼で順序変更、🗑️で削除。")
         st.markdown("---")
 
-        # 変更フラグの初期化
-        move_idx = None
-        direction = None
-        delete_idx = None
+        # 変更トリガー
+        needs_sync = False
+        
+        # リストのコピーを作成して操作（安全のため）
+        current_list = list(favorites)
 
-        for i in range(len(favorites)):
-            fav = favorites[i]
+        for i in range(len(current_list)):
+            fav = current_list[i]
+            # 1行のレイアウト
             c_name, c_order, c_del = st.columns([0.6, 0.25, 0.15])
             
             with c_name:
-                # 1. 名前の直接編集を可能に
-                new_name = st.text_input(f"edit_{i}", value=fav['name'], key=f"inp_fav_{i}", label_visibility="collapsed")
+                # 編集機能：keyをインデックスではなく固有IDに近づけるため工夫
+                new_name = st.text_input(
+                    f"edit_name_{i}", 
+                    value=fav['name'], 
+                    key=f"input_{fav['lat']}_{fav['lon']}_{i}", 
+                    label_visibility="collapsed"
+                )
                 if new_name != fav['name']:
-                    favorites[i]['name'] = new_name
-                    st.session_state.user_locations = favorites
-                    save_settings_to_browser()
-                    # 名前変更時は即時反映（rerunなしでFragmentが保持される）
+                    current_list[i]['name'] = new_name
+                    needs_sync = True
             
             with c_order:
                 up_col, down_col = st.columns(2)
-                # 2. ▲▼ボタン（st.rerunを排除し、Fragmentの自動更新に任せる）
-                if up_col.button("▲", key=f"up_{i}", disabled=(i==0), use_container_width=True):
-                    move_idx, direction = i, -1
-                if down_col.button("▼", key=f"down_{i}", disabled=(i==len(favorites)-1), use_container_width=True):
-                    move_idx, direction = i, 1
+                if up_col.button("▲", key=f"up_btn_{i}", disabled=(i==0), use_container_width=True):
+                    current_list[i], current_list[i-1] = current_list[i-1], current_list[i]
+                    needs_sync = True
+                if down_col.button("▼", key=f"down_btn_{i}", disabled=(i==len(current_list)-1), use_container_width=True):
+                    current_list[i], current_list[i+1] = current_list[i+1], current_list[i]
+                    needs_sync = True
             
             with c_del:
-                if st.button("🗑️", key=f"del_{i}", use_container_width=True):
-                    delete_idx = i
+                if st.button("🗑️", key=f"del_btn_{i}", use_container_width=True):
+                    st.session_state[f"confirm_delete_idx"] = i
 
-        # --- 並び替え実行ロジック ---
-        if move_idx is not None:
-            target = move_idx + direction
-            favorites[move_idx], favorites[target] = favorites[target], favorites[move_idx]
-            st.session_state.user_locations = favorites
-            save_settings_to_browser()
-            # ▲▼押下後、Fragmentが自動的に再描画されるため st.rerun() は不要
+        # 削除確認処理
+        delete_target = st.session_state.get("confirm_delete_idx", None)
+        if delete_target is not None and delete_target < len(current_list):
+            st.warning(f"「{current_list[delete_target]['name']}」を削除しますか？")
+            cy, cn = st.columns(2)
+            if cy.button("はい、削除", key="exec_del_btn", type="primary", use_container_width=True):
+                current_list.pop(delete_target)
+                st.session_state["confirm_delete_idx"] = None
+                needs_sync = True
+            if cn.button("キャンセル", key="cancel_del_btn", use_container_width=True):
+                st.session_state["confirm_delete_idx"] = None
+                st.rerun(scope="fragment")
 
-        # --- 削除確認UI ---
-        if delete_idx is not None:
-            st.session_state[f"confirm_del_{delete_idx}"] = True
-
-        for i in range(len(favorites)):
-            if st.session_state.get(f"confirm_del_{i}", False):
-                st.warning(f"「{favorites[i]['name']}」を削除しますか？")
-                cy, cn = st.columns(2)
-                if cy.button("はい、削除", key=f"btn_yes_{i}", type="primary"):
-                    favorites.pop(i)
-                    st.session_state.user_locations = favorites
-                    save_settings_to_browser()
-                    st.session_state[f"confirm_del_{i}"] = False
-                    # 削除時は表示を確実に更新するため、ここだけはリセットが必要だが、
-                    # 霞みを防ぐために st.rerun() ではなく Fragment内部再描画を誘発
-                if cn.button("キャンセル", key=f"btn_no_{i}"):
-                    st.session_state[f"confirm_del_{i}"] = False
+        # データの同期と永続化
+        if needs_sync:
+            st.session_state.user_locations = current_list
+            if "save_settings_to_browser" in globals():
+                save_settings_to_browser()
+            # Fragment内だけを再描画。霞がかからず、UIが最新のリスト順に更新される
+            st.rerun(scope="fragment")
 
         st.markdown("---")
         if st.button("編集を終了して閉じる", use_container_width=True):
-            # メイン画面のサイドバーリストを最新にするため、閉じる時のみ全体rerun
+            # メイン画面のコンボボックスに反映させるためアプリ全体を再実行
             st.rerun()
 
-    # Fragmentの実行
+    # Fragmentを実行
     internal_manager()
+
+# ※ show_favorite_registration_dialog および show_sidebar_controls は
+# 前回提示した内容から変更ありません。
 
 
 # ======================================================================================
