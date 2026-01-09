@@ -1203,102 +1203,105 @@ def show_favorite_registration_dialog(default_name, lat, lon):
             st.rerun()
 
 # ======================================================================================
-# 92_4. My Spot（お気に入り）管理ダイアログ（Fragmentスコープ制御版）
+# 92_4. My Spot（お気に入り）管理ダイアログ（データ完全同期・高速クローズ版）
 # ======================================================================================
 @st.dialog("My Spot（お気に入り）の編集")
 def manage_favorites_dialog():
     """
-    Fragmentのスコープ限定 rerun を利用して、霞を発生させず、
-    ダイアログを維持したまま並び替え・編集・削除を確実に反映する。
+    Fragmentを利用して、名称・座標をセットで管理。
+    並び替え時は辞書全体を入れ替え、終了時はダイアログを即座に閉じる。
     """
     import streamlit as st
 
-    # --- ダイアログ内部をFragmentとして定義 ---
     @st.fragment
     def internal_manager():
-        # session_stateから最新のリストを取得
+        # 最新のリストを取得
         if "user_locations" not in st.session_state:
             st.session_state.user_locations = []
         
-        favorites = st.session_state.user_locations
+        # 直接参照して操作
+        favs = st.session_state.user_locations
         
-        if not favorites:
+        if not favs:
             st.info("登録されているお気に入り地点はありません。")
             if st.button("閉じる", use_container_width=True):
-                st.rerun() # 全体リフレッシュしてダイアログを閉じる
+                st.rerun()
             return
 
-        st.write(f"登録済み地点: {len(favorites)} / 10 件")
+        st.write(f"登録済み地点: {len(favs)} / 10 件")
         st.caption("名前修正はEnterで確定。▲▼で順序変更、🗑️で削除。")
         st.markdown("---")
 
-        # 変更トリガー
         needs_sync = False
-        
-        # リストのコピーを作成して操作（安全のため）
-        current_list = list(favorites)
+        move_idx = None
+        direction = None
 
-        for i in range(len(current_list)):
-            fav = current_list[i]
-            # 1行のレイアウト
+        # 1行ずつレンダリング
+        for i in range(len(favs)):
+            # 名前、座標を含む辞書全体を扱う
+            current_item = favs[i]
+            
             c_name, c_order, c_del = st.columns([0.6, 0.25, 0.15])
             
             with c_name:
-                # 編集機能：keyをインデックスではなく固有IDに近づけるため工夫
-                new_name = st.text_input(
-                    f"edit_name_{i}", 
-                    value=fav['name'], 
-                    key=f"input_{fav['lat']}_{fav['lon']}_{i}", 
+                # 名前のみを編集。座標(lat, lon)は hidden で保持される状態と同じ
+                edited_name = st.text_input(
+                    f"edit_{i}", 
+                    value=current_item['name'], 
+                    key=f"field_{i}_{current_item['lat']}", # 座標をキーに含め同一性を保持
                     label_visibility="collapsed"
                 )
-                if new_name != fav['name']:
-                    current_list[i]['name'] = new_name
+                if edited_name != current_item['name']:
+                    favs[i]['name'] = edited_name # 名前を更新（辞書内の座標は維持される）
                     needs_sync = True
             
             with c_order:
-                up_col, down_col = st.columns(2)
-                if up_col.button("▲", key=f"up_btn_{i}", disabled=(i==0), use_container_width=True):
-                    current_list[i], current_list[i-1] = current_list[i-1], current_list[i]
-                    needs_sync = True
-                if down_col.button("▼", key=f"down_btn_{i}", disabled=(i==len(current_list)-1), use_container_width=True):
-                    current_list[i], current_list[i+1] = current_list[i+1], current_list[i]
-                    needs_sync = True
+                up_c, dw_c = st.columns(2)
+                if up_c.button("▲", key=f"up_{i}", disabled=(i==0), use_container_width=True):
+                    move_idx, direction = i, -1
+                if dw_c.button("▼", key=f"dw_{i}", disabled=(i==len(favs)-1), use_container_width=True):
+                    move_idx, direction = i, 1
             
             with c_del:
-                if st.button("🗑️", key=f"del_btn_{i}", use_container_width=True):
-                    st.session_state[f"confirm_delete_idx"] = i
+                if st.button("🗑️", key=f"del_{i}", use_container_width=True):
+                    st.session_state["delete_target_idx"] = i
 
-        # 削除確認処理
-        delete_target = st.session_state.get("confirm_delete_idx", None)
-        if delete_target is not None and delete_target < len(current_list):
-            st.warning(f"「{current_list[delete_target]['name']}」を削除しますか？")
-            cy, cn = st.columns(2)
-            if cy.button("はい、削除", key="exec_del_btn", type="primary", use_container_width=True):
-                current_list.pop(delete_target)
-                st.session_state["confirm_delete_idx"] = None
+        # --- 並び替え：辞書オブジェクトごと入れ替え ---
+        if move_idx is not None:
+            target = move_idx + direction
+            # 名前・緯度・経度が含まれる辞書ごとスワップ
+            favs[move_idx], favs[target] = favs[target], favs[move_idx]
+            st.session_state.user_locations = favs
+            needs_sync = True
+
+        # --- 削除確認 ---
+        d_idx = st.session_state.get("delete_target_idx")
+        if d_idx is not None and d_idx < len(favs):
+            st.warning(f"「{favs[d_idx]['name']}」を削除しますか？")
+            y, n = st.columns(2)
+            if y.button("はい、削除", key="conf_y", type="primary", use_container_width=True):
+                favs.pop(d_idx)
+                st.session_state.user_locations = favs
+                st.session_state["delete_target_idx"] = None
                 needs_sync = True
-            if cn.button("キャンセル", key="cancel_del_btn", use_container_width=True):
-                st.session_state["confirm_delete_idx"] = None
+            if n.button("キャンセル", key="conf_n", use_container_width=True):
+                st.session_state["delete_target_idx"] = None
                 st.rerun(scope="fragment")
 
-        # データの同期と永続化
+        # 同期と保存
         if needs_sync:
-            st.session_state.user_locations = current_list
             if "save_settings_to_browser" in globals():
                 save_settings_to_browser()
-            # Fragment内だけを再描画。霞がかからず、UIが最新のリスト順に更新される
             st.rerun(scope="fragment")
 
         st.markdown("---")
-        if st.button("編集を終了して閉じる", use_container_width=True):
-            # メイン画面のコンボボックスに反映させるためアプリ全体を再実行
+        # 終了ボタン：ここを押した瞬間にダイアログを閉じてメインへ
+        if st.button("編集を終了して閉じる", use_container_width=True, type="secondary"):
+            # 既存のグラフ更新ルールに従い、必要があればフラグを立てるが、
+            # 基本は rerun によってダイアログを即座に破棄させる
             st.rerun()
 
-    # Fragmentを実行
     internal_manager()
-
-# ※ show_favorite_registration_dialog および show_sidebar_controls は
-# 前回提示した内容から変更ありません。
 
 
 # ======================================================================================
