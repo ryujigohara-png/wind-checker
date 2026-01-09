@@ -687,26 +687,24 @@ def show_settings_dialog():
         st.rerun()
 
 # ======================================================================================
-# 21. サイドバー、パラメータ設定（管理ボタン追加）
+# 21. サイドバー、パラメータ設定（縦並び維持・管理ボタン追加）
 # ======================================================================================
 def show_sidebar_controls():
     """
-    サイドバーの入り口。
+    サイドバーの入り口。ボタンは縦に並べる（既存仕様維持）。
     """
     import streamlit as st
     
     st.sidebar.header("表示設定")
     
-    # 横並びに配置して省スペース化
-    c1, c2 = st.sidebar.columns(2)
-    with c1:
-        if st.button("⚙ 詳細設定", use_container_width=True):
-            show_settings_dialog()
-    with c2:
-        if st.button("📍 My Spot", use_container_width=True):
-            manage_favorites_dialog()
+    # ボタンは1つずつ配置（縦並び）
+    if st.sidebar.button("⚙ 詳細設定", use_container_width=True):
+        show_settings_dialog()
 
-    # 既存の計算・パラメータ取得ロジック（一切変更せず維持）
+    if st.sidebar.button("📍 My Spot 編集", use_container_width=True):
+        manage_favorites_dialog()
+
+    # 既存の計算ロジック（一切変更せず維持）
     h = calculate_graph_height(
         st.session_state.get("base_height", CONFIG["GRAPH_HIGHT"]),
         st.session_state.get("ratios", CONFIG["DEFAULT_RATIOS"]),
@@ -1192,13 +1190,12 @@ def show_favorite_registration_dialog(default_name, lat, lon):
             st.session_state["last_basho"] = new_name
             st.session_state["temp_label"] = None  # 一時ラベルをクリア
 
-            # 保存処理を実行（既存の保存関数を呼び出し）
+            # 保存処理を実行
             if "save_settings_to_browser" in globals():
                 save_settings_to_browser()
             elif "update_state_and_save" in globals():
                 update_state_and_save({})
 
-            # グラフ描画フラグはここでは立てず、既存の「10分ルール/場所変更ルール」に任せる
             st.rerun()
             
     with col2:
@@ -1216,93 +1213,76 @@ def manage_favorites_dialog():
     """
     import streamlit as st
 
-    # --- ダイアログ内部をFragment化して高速化 ---
+    # --- ダイアログ内部全体をひとつのFragmentとして定義 ---
     @st.fragment
     def internal_manager():
+        # Fragment内部で最新のsession_stateを取得
         favorites = st.session_state.get("user_locations", [])
+        
         if not favorites:
             st.info("登録されているお気に入り地点はありません。")
+            if st.button("閉じる", use_container_width=True):
+                st.rerun()
             return
 
         st.write(f"登録済み地点: {len(favorites)} / 10 件")
-        st.caption("▲▼で順序変更、🗑️で削除。一番上がリストの優先順位になります。")
+        st.caption("▲▼で順序変更、🗑️で削除。")
         st.markdown("---")
 
-        has_changed = False
-        to_delete = None
-        move_up = None
-        move_down = None
+        # ループ内での変更を追跡
+        move_idx = None
+        direction = None
+        delete_idx = None
 
         for i, fav in enumerate(favorites):
-            # 1行のレイアウト
             c_name, c_order, c_del = st.columns([0.65, 0.2, 0.15])
             
             with c_name:
-                # 名称編集
-                new_name = st.text_input(f"edit_{i}", value=fav['name'], key=f"f_name_{i}", label_visibility="collapsed")
-                if new_name != fav['name']:
-                    favorites[i]['name'] = new_name
-                    has_changed = True
+                # 名称表示（編集はせず表示と削除・移動に特化させて高速化）
+                st.text(fav['name'])
             
             with c_order:
-                # 並び替えボタン
-                up_btn, down_btn = st.columns(2)
-                with up_btn:
-                    if st.button("▲", key=f"up_{i}", disabled=(i==0)):
-                        move_up = i
-                with down_btn:
-                    if st.button("▼", key=f"down_{i}", disabled=(i==len(favorites)-1)):
-                        move_down = i
+                up_col, down_col = st.columns(2)
+                if up_col.button("▲", key=f"up_{i}", disabled=(i==0)):
+                    move_idx, direction = i, -1
+                if down_col.button("▼", key=f"down_{i}", disabled=(i==len(favorites)-1)):
+                    move_idx, direction = i, 1
             
             with c_del:
                 if st.button("🗑️", key=f"del_{i}"):
-                    to_delete = i
+                    delete_idx = i
 
-        # --- ロジック処理 ---
-        if to_delete is not None:
-            # 削除確認フラグ
-            st.session_state[f"confirm_del_ui_{to_delete}"] = True
+        # --- 並び替えロジック実行 ---
+        if move_idx is not None:
+            target = move_idx + direction
+            favorites[move_idx], favorites[target] = favorites[target], favorites[move_idx]
+            st.session_state.user_locations = favorites
+            save_settings_to_browser()
+            st.rerun() # Fragment内の再描画（霞は発生しない）
 
-        # 削除確認UI
+        # --- 削除確認UI ---
+        if delete_idx is not None:
+            st.session_state[f"confirm_del_{delete_idx}"] = True
+
         for i in range(len(favorites)):
-            if st.session_state.get(f"confirm_del_ui_{i}", False):
+            if st.session_state.get(f"confirm_del_{i}", False):
                 st.warning(f"「{favorites[i]['name']}」を削除しますか？")
                 cy, cn = st.columns(2)
-                if cy.button("はい、削除", key=f"yes_{i}", type="primary"):
+                if cy.button("はい、削除", key=f"btn_yes_{i}", type="primary"):
                     favorites.pop(i)
                     st.session_state.user_locations = favorites
                     save_settings_to_browser()
-                    st.session_state[f"confirm_del_ui_{i}"] = False
-                    st.rerun() # Fragment内の再描画
-                if cn.button("戻る", key=f"no_{i}"):
-                    st.session_state[f"confirm_del_ui_{i}"] = False
+                    st.session_state[f"confirm_del_{i}"] = False
                     st.rerun()
-
-        # 並び替え実行
-        if move_up is not None:
-            favorites[move_up], favorites[move_up-1] = favorites[move_up-1], favorites[move_up]
-            st.session_state.user_locations = favorites
-            save_settings_to_browser()
-            st.rerun()
-        if move_down is not None:
-            favorites[move_down], favorites[move_down+1] = favorites[move_down+1], favorites[move_down]
-            st.session_state.user_locations = favorites
-            save_settings_to_browser()
-            st.rerun()
-
-        if has_changed:
-            if st.button("名称変更を保存", use_container_width=True):
-                st.session_state.user_locations = favorites
-                save_settings_to_browser()
-                st.success("保存しました")
+                if cn.button("キャンセル", key=f"btn_no_{i}"):
+                    st.session_state[f"confirm_del_{i}"] = False
+                    st.rerun()
 
         st.markdown("---")
         if st.button("編集を終了して閉じる", use_container_width=True):
-            # 最後に1回だけ全体を再実行して、サイドバーのコンボボックスに反映させる
-            # ここでも needs_graph_update は操作しない（既存の自動判定に任せる）
             st.rerun()
 
-    # Fragmentを呼び出し
+    # Fragmentの実行
     internal_manager()
 
 
