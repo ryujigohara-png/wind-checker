@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# ベータ版　更新 2026.1.8 0650 map改造中 4列column方式取りやめ版
+# ベータ版　更新 2026.1.9 2015 コンプリート版
 import streamlit as st
 import requests
 import pandas as pd
@@ -1360,7 +1360,7 @@ def main():
     # サイドバーのコントロール（設定変更があれば内部で needs_graph_update = True になる）
     danger_v, sel_dirs, design_params = show_sidebar_controls()
     
-    st.title("Wind Checker v2")
+    st.title("Spot_Wind_Checker!")
     
     # 時間設定
     now_jst = datetime.now(timezone(timedelta(hours=9)))
