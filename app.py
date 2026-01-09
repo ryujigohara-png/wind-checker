@@ -749,13 +749,12 @@ def show_location_map_dialog():
         # 初回表示時は現在の地名を表示
         st.session_state.temp_basho = st.session_state.last_basho
     
-    # --- 2. 表示整理 ---
-    # １．の依頼：地名（緯度経度）をタイトル下の1行に表示
-    st.markdown(f"📍 **{st.session_state.temp_basho}**")
-    
-    # --- 3. メインUI (Fragment構造) ---
+    # --- 2. メインUI (Fragment構造) ---
     @st.fragment
     def map_final_fixed_fragment():
+        # 表示整理：フラグメント内に移動することで「地図中心に📍」押下時にここも書き換わる
+        st.markdown(f"📍 **{st.session_state.temp_basho}**")
+    
         h_px = st.session_state.get("map_h", 350)
     
         # 地図オブジェクト作成
@@ -792,17 +791,17 @@ def show_location_map_dialog():
                     raw_name = fetch_location_name(
                         st.session_state.temp_lat, st.session_state.temp_lon
                     )
-                    # １．の依頼：地名（緯度経度）の形式に整形
+                    # 地名（緯度経度）の形式に整形
                     st.session_state.temp_basho = f"{raw_name} ({st.session_state.temp_lat:.4f}, {st.session_state.temp_lon:.4f})"
                 
-                # フラグメント内を再描画して、地図の中心と📍を同期。グラフ描画は行わない（scope="fragment"）
+                # フラグメント内を再描画して、テキスト・地図中心・📍をすべて同期
                 st.rerun(scope="fragment")
     
         # 確定・中止ボタン
         c1, c2 = st.columns(2)
         with c1:
             if st.button("確定", use_container_width=True):
-                # ２．の依頼：メインの状態を更新
+                # メインの状態を更新
                 st.session_state.lat = st.session_state.temp_lat
                 st.session_state.lon = st.session_state.temp_lon
                 st.session_state.last_basho = st.session_state.temp_basho
@@ -819,10 +818,11 @@ def show_location_map_dialog():
     
         with c2:
             if st.button("中止", use_container_width=True):
-                # ３．の依頼：グラフ描画を行わずに閉じる
+                # グラフ描画を行わずに閉じる
                 for k in ["temp_lat", "temp_lon", "temp_basho"]: st.session_state.pop(k, None)
                 st.rerun()
     
+    # フラグメントの実行
     map_final_fixed_fragment()
     
 # ==========================================================================================
