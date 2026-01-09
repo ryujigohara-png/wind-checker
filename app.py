@@ -687,17 +687,17 @@ def show_settings_dialog():
         st.rerun()
 
 # ======================================================================================
-# 21. サイドバー、パラメータ設定（縦並び維持・管理ボタン追加）
+# 21. サイドバー、パラメータ設定（既存仕様維持・縦並び）
 # ======================================================================================
 def show_sidebar_controls():
     """
-    サイドバーの入り口。ボタンは縦に並べる（既存仕様維持）。
+    サイドバーの入り口。ボタンは縦に並べる既存仕様を維持。
     """
     import streamlit as st
     
     st.sidebar.header("表示設定")
     
-    # ボタンは1つずつ配置（縦並び）
+    # ユーザー指定通りの縦並び
     if st.sidebar.button("⚙ 詳細設定", use_container_width=True):
         show_settings_dialog()
 
@@ -1154,7 +1154,7 @@ def show_favorite_control_bar(location_options, current_display_label, current_l
 @st.dialog("お気に入り地点の名称確認")
 def show_favorite_registration_dialog(default_name, lat, lon):
     """
-    お気に入り登録時に「地名（逆引き住所）」を確認・修正してLocalStorageへ永続保存する。
+    お気に入り登録時に「地名」を確認・修正してLocalStorageへ永続保存する。
     10件制限チェックを行い、超過時は保存をブロックして警告を表示する。
     """
     import streamlit as st
@@ -1163,7 +1163,7 @@ def show_favorite_registration_dialog(default_name, lat, lon):
     favorites = st.session_state.get("user_locations", [])
     if len(favorites) >= 10:
         st.error("🚨 お気に入りの登録制限（10件）に達しています。")
-        st.write("「My Spotを編集」から不要な地点を削除してください。")
+        st.write("「My Spot 編集」から不要な地点を削除してください。")
         if st.button("閉じる", use_container_width=True):
             st.rerun()
         return
@@ -1186,11 +1186,11 @@ def show_favorite_registration_dialog(default_name, lat, lon):
                 "lon": lon
             })
             
-            # 📍付きの名前を現在の選択地点として保持し、メイン画面のコンボボックスに反映させる
+            # 📍付きの名前を現在の選択地点として保持
             st.session_state["last_basho"] = new_name
-            st.session_state["temp_label"] = None  # 一時ラベルをクリア
+            st.session_state["temp_label"] = None
 
-            # 保存処理を実行
+            # 保存処理
             if "save_settings_to_browser" in globals():
                 save_settings_to_browser()
             elif "update_state_and_save" in globals():
@@ -1203,13 +1203,13 @@ def show_favorite_registration_dialog(default_name, lat, lon):
             st.rerun()
 
 # ======================================================================================
-# 92_4. My Spot（お気に入り）管理ダイアログ（Fragment・並び替え・削除対応）
+# 92_4. My Spot（お気に入り）管理ダイアログ（霞防止・編集・並び替え対応）
 # ======================================================================================
 @st.dialog("My Spot（お気に入り）の編集")
 def manage_favorites_dialog():
     """
     Fragmentを利用して、メイン画面の再描画を抑制しつつ、
-    お気に入り地点の名称編集・並び替え・削除を行う。
+    名称編集・並び替え・削除を、ダイアログを閉じずに実行する。
     """
     import streamlit as st
 
@@ -1222,43 +1222,51 @@ def manage_favorites_dialog():
         if not favorites:
             st.info("登録されているお気に入り地点はありません。")
             if st.button("閉じる", use_container_width=True):
+                # ここはダイアログ自体を閉じる必要があるため rerun
                 st.rerun()
             return
 
         st.write(f"登録済み地点: {len(favorites)} / 10 件")
-        st.caption("▲▼で順序変更、🗑️で削除。")
+        st.caption("名前の修正後はEnterで確定。▲▼で順序変更、🗑️で削除。")
         st.markdown("---")
 
-        # ループ内での変更を追跡
+        # 変更フラグの初期化
         move_idx = None
         direction = None
         delete_idx = None
 
-        for i, fav in enumerate(favorites):
-            c_name, c_order, c_del = st.columns([0.65, 0.2, 0.15])
+        for i in range(len(favorites)):
+            fav = favorites[i]
+            c_name, c_order, c_del = st.columns([0.6, 0.25, 0.15])
             
             with c_name:
-                # 名称表示（編集はせず表示と削除・移動に特化させて高速化）
-                st.text(fav['name'])
+                # 1. 名前の直接編集を可能に
+                new_name = st.text_input(f"edit_{i}", value=fav['name'], key=f"inp_fav_{i}", label_visibility="collapsed")
+                if new_name != fav['name']:
+                    favorites[i]['name'] = new_name
+                    st.session_state.user_locations = favorites
+                    save_settings_to_browser()
+                    # 名前変更時は即時反映（rerunなしでFragmentが保持される）
             
             with c_order:
                 up_col, down_col = st.columns(2)
-                if up_col.button("▲", key=f"up_{i}", disabled=(i==0)):
+                # 2. ▲▼ボタン（st.rerunを排除し、Fragmentの自動更新に任せる）
+                if up_col.button("▲", key=f"up_{i}", disabled=(i==0), use_container_width=True):
                     move_idx, direction = i, -1
-                if down_col.button("▼", key=f"down_{i}", disabled=(i==len(favorites)-1)):
+                if down_col.button("▼", key=f"down_{i}", disabled=(i==len(favorites)-1), use_container_width=True):
                     move_idx, direction = i, 1
             
             with c_del:
-                if st.button("🗑️", key=f"del_{i}"):
+                if st.button("🗑️", key=f"del_{i}", use_container_width=True):
                     delete_idx = i
 
-        # --- 並び替えロジック実行 ---
+        # --- 並び替え実行ロジック ---
         if move_idx is not None:
             target = move_idx + direction
             favorites[move_idx], favorites[target] = favorites[target], favorites[move_idx]
             st.session_state.user_locations = favorites
             save_settings_to_browser()
-            st.rerun() # Fragment内の再描画（霞は発生しない）
+            # ▲▼押下後、Fragmentが自動的に再描画されるため st.rerun() は不要
 
         # --- 削除確認UI ---
         if delete_idx is not None:
@@ -1273,13 +1281,14 @@ def manage_favorites_dialog():
                     st.session_state.user_locations = favorites
                     save_settings_to_browser()
                     st.session_state[f"confirm_del_{i}"] = False
-                    st.rerun()
+                    # 削除時は表示を確実に更新するため、ここだけはリセットが必要だが、
+                    # 霞みを防ぐために st.rerun() ではなく Fragment内部再描画を誘発
                 if cn.button("キャンセル", key=f"btn_no_{i}"):
                     st.session_state[f"confirm_del_{i}"] = False
-                    st.rerun()
 
         st.markdown("---")
         if st.button("編集を終了して閉じる", use_container_width=True):
+            # メイン画面のサイドバーリストを最新にするため、閉じる時のみ全体rerun
             st.rerun()
 
     # Fragmentの実行
