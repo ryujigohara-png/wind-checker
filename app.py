@@ -1203,23 +1203,24 @@ def show_favorite_registration_dialog(default_name, lat, lon):
             st.rerun()
 
 # ======================================================================================
-# 92_4. My Spot（お気に入り）管理ダイアログ（データ完全同期・安定版）
+# 92_4. My Spot（お気に入り）管理ダイアログ（コンポーネント干渉防止版）
 # ======================================================================================
 @st.dialog("My Spot（お気に入り）の編集")
 def manage_favorites_dialog():
     """
-    Fragmentを利用し、名称・座標を確実にセットで管理。
-    インデックス操作の計算式を厳密化し、Streamlitの再描画バグを回避する。
+    Fragmentを利用し、外部コンポーネント（地図等）への干渉を最小限に抑えつつ、
+    名称・座標を確実にセットで管理・並び替えする。
     """
     import streamlit as st
 
+    # ダイアログが開いた瞬間に、外側の不安定なトリガーを一時的に抑制するための考慮
     @st.fragment
     def internal_manager():
-        # 最新のリストをsession_stateから取得
+        # session_stateからリストを取得
         if "user_locations" not in st.session_state:
             st.session_state.user_locations = []
         
-        # 参照ではなく「コピー」を作成して操作することで、計算中の予期せぬ挙動を防ぐ
+        # データのコピーを作成して操作
         current_favs = list(st.session_state.user_locations)
         
         if not current_favs:
@@ -1233,7 +1234,7 @@ def manage_favorites_dialog():
         st.markdown("---")
 
         action_idx = None
-        direction = 0 # -1: up, 1: down, 99: delete
+        direction = 0 # -1:up, 1:down, 99:delete
         
         # ヘッダー
         h_col = st.columns([0.4, 0.3, 0.2, 0.1])
@@ -1243,73 +1244,76 @@ def manage_favorites_dialog():
         # --- リストの描画 ---
         for i in range(len(current_favs)):
             item = current_favs[i]
-            # 各行に一意なコンテナを作成し、表示崩れを防ぐ
+            # 各行を独立したコンテナで保護
             with st.container():
                 c_name, c_pos, c_ord, c_del = st.columns([0.4, 0.3, 0.2, 0.1])
                 
+                # keyに座標を含めることで、並び替え時もStreamlitが要素を正しく追跡
+                row_id = f"{item['lat']}_{item['lon']}_{i}"
+
                 with c_name:
-                    # keyに現在の座標と「現在の並び順」を含めることで、Streamlitの誤認を防ぐ
-                    unique_key = f"input_{item['lat']}_{item['lon']}_{i}"
-                    new_n = st.text_input("name", value=item['name'], key=unique_key, label_visibility="collapsed")
+                    new_n = st.text_input(
+                        "name", 
+                        value=item['name'], 
+                        key=f"input_{row_id}", 
+                        label_visibility="collapsed"
+                    )
                     if new_n != item['name']:
                         current_favs[i]['name'] = new_n
-                        st.session_state.user_locations = current_favs # 即座に反映
+                        st.session_state.user_locations = current_favs
                         if "save_settings_to_browser" in globals():
                             save_settings_to_browser()
 
                 with c_pos:
-                    # 座標表示（正しく紐付いているか確認用）
+                    # 座標の確認表示
                     st.code(f"{item['lat']:.4f}, {item['lon']:.4f}", language=None)
                 
                 with c_ord:
                     u_btn, d_btn = st.columns(2)
-                    # ▲ ボタンの計算: 自分が 0 でなければ、i と i-1 を入れ替える
-                    if u_btn.button("▲", key=f"up_{i}_{unique_key}", disabled=(i==0), use_container_width=True):
+                    if u_btn.button("▲", key=f"up_{row_id}", disabled=(i==0), use_container_width=True):
                         action_idx, direction = i, -1
-                    # ▼ ボタンの計算: 自分が最後でなければ、i と i+1 を入れ替える
-                    if d_btn.button("▼", key=f"dw_{i}_{unique_key}", disabled=(i==len(current_favs)-1), use_container_width=True):
+                    if d_btn.button("▼", key=f"dw_{row_id}", disabled=(i==len(current_favs)-1), use_container_width=True):
                         action_idx, direction = i, 1
                 
                 with c_del:
-                    if st.button("🗑️", key=f"del_{i}_{unique_key}", use_container_width=True):
+                    if st.button("🗑️", key=f"del_{row_id}", use_container_width=True):
                         action_idx, direction = i, 99
 
-        # --- アクション実行ロジック (計算式の確実な適用) ---
+        # --- ロジック実行 ---
         if action_idx is not None:
             if direction == 99: # 削除
-                st.session_state["pending_delete_idx"] = action_idx
-            else: # 並び替え
+                st.session_state["pending_del_idx"] = action_idx
+            else: # 並び替え（辞書を丸ごと入れ替え）
                 target_idx = action_idx + direction
-                # 辞書オブジェクトを丸ごと入れ替え（名前・緯度・経度すべてが移動する）
                 current_favs[action_idx], current_favs[target_idx] = current_favs[target_idx], current_favs[action_idx]
                 st.session_state.user_locations = current_favs
                 if "save_settings_to_browser" in globals():
                     save_settings_to_browser()
-                # Fragment内を再描画してリスト表示を更新（霞なし）
+                # Fragment内のみを再描画。これにより外側の地図コンポーネントへの再送を抑止
                 st.rerun(scope="fragment")
 
         # --- 削除確認UI ---
-        del_target = st.session_state.get("pending_delete_idx")
+        del_target = st.session_state.get("pending_del_idx")
         if del_target is not None and del_target < len(current_favs):
             st.warning(f"「{current_favs[del_target]['name']}」を削除しますか？")
             y_col, n_col = st.columns(2)
-            if y_col.button("はい、削除", key="real_del_y", type="primary", use_container_width=True):
+            if y_col.button("はい、削除", key="real_del_y_btn", type="primary", use_container_width=True):
                 current_favs.pop(del_target)
                 st.session_state.user_locations = current_favs
-                st.session_state["pending_delete_idx"] = None
+                st.session_state["pending_del_idx"] = None
                 if "save_settings_to_browser" in globals():
                     save_settings_to_browser()
                 st.rerun(scope="fragment")
-            if n_col.button("キャンセル", key="real_del_n", use_container_width=True):
-                st.session_state["pending_delete_idx"] = None
+            if n_col.button("キャンセル", key="real_del_n_btn", use_container_width=True):
+                st.session_state["pending_del_idx"] = None
                 st.rerun(scope="fragment")
 
         st.markdown("---")
-        # 終了ボタン
         if st.button("編集を終了して閉じる", use_container_width=True):
+            # 終了時のみ全体をリフレッシュし、コンボボックスを更新
             st.rerun()
 
-    # Fragmentの実行
+    # Fragmentを起動
     internal_manager()
 
 # ======================================================================================
