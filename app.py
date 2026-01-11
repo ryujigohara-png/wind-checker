@@ -369,7 +369,7 @@ def render_wind_bar_chart(ax, df, danger_v, wind_step, design_params=None):
     # --- ①「降水量mm」の見出し位置修正 ---
     # グラフの左端（パディング直後の時刻）を取得
     graph_left_time = df['time'].iloc[0] 
-    ax.text(graph_left_time, precip_y, "降水量mm", 
+    ax.text(graph_left_time, precip_y, "降水量mm　", 
             ha='right', va='bottom', fontsize=l_fs, color="blue", 
             transform=ax.get_xaxis_transform(), clip_on=False)
     
