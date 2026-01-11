@@ -1616,6 +1616,13 @@ def render_compact_control_panel(basho_name):
 # ======================================================================================
 def main():
     # --- 1. 状態の初期化 ---
+    # 1. URLパラメータから開発者モードの状態を判定（SessionState内のみで保持）
+    if "mode" in st.query_params and st.query_params["mode"] == "dev":
+        st.session_state.is_dev_mode = True
+    else:
+        # パラメータがない場合は、LocalStorageの状態に関わらずFalseにする（永続化しない場合）
+        st.session_state.is_dev_mode = False
+    
     if 'lat' not in st.session_state: st.session_state.lat = CONFIG["DEFAULT_LAT"]
     if 'lon' not in st.session_state: st.session_state.lon = CONFIG["DEFAULT_LON"]
     if 'last_basho' not in st.session_state: st.session_state.last_basho = CONFIG["DEFAULT_BASHO"]
