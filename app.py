@@ -64,7 +64,7 @@ CONFIG = {
     "LABEL_SIZE": 7,                    # 軸ラベル文字サイズ
     "DEFAULT_DANGER_V": 10.0,           # 危険風速
     #開発者詳細設定
-    "CONTENA_MIN_W": 2500               # コンテナ最小幅(px)
+    "CONTENA_MIN_W": 2500,              # コンテナ最小幅(px)
     "DPI": 200,                         # 解像度 (DPI)
     "HSPACE": 0.75,                     # グラフ間余白
     "LABEL_PAD": 0,                     # ラベル距離
