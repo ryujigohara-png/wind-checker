@@ -1215,24 +1215,34 @@ def show_favorite_registration_dialog(default_name, lat, lon):
             st.rerun()
 
 # ======================================================================================
-# 92_4. My Spot（お気に入り）管理ダイアログ（コンポーネント干渉防止版）
+# 92_4. My Spot（お気に入り）管理ダイアログ（凝縮レイアウト版）
 # ======================================================================================
 @st.dialog("My Spot（お気に入り）の編集")
 def manage_favorites_dialog():
     """
-    Fragmentを利用し、外部コンポーネント（地図等）への干渉を最小限に抑えつつ、
-    名称・座標を確実にセットで管理・並び替えする。
+    1地点を「情報ボタン」と「操作ボタン行」の2段に凝縮。
+    名称編集はボタン押下による専用ダイアログへ分離し、リストの視認性を最大化。
     """
     import streamlit as st
 
-    # ダイアログが開いた瞬間に、外側の不安定なトリガーを一時的に抑制するための考慮
+    # --- 内部サブルーチン：名称編集用ダイアログ ---
+    @st.dialog("地点名の編集")
+    def edit_spot_name_dialog(index, current_name):
+        new_name = st.text_input("新しい地点名を入力してください", value=current_name)
+        c1, c2 = st.columns(2)
+        if c1.button("保存", use_container_width=True, type="primary"):
+            st.session_state.user_locations[index]['name'] = new_name
+            if "save_settings_to_browser" in globals():
+                save_settings_to_browser()
+            st.rerun()
+        if c2.button("キャンセル", use_container_width=True):
+            st.rerun()
+
     @st.fragment
     def internal_manager():
-        # session_stateからリストを取得
         if "user_locations" not in st.session_state:
             st.session_state.user_locations = []
         
-        # データのコピーを作成して操作
         current_favs = list(st.session_state.user_locations)
         
         if not current_favs:
@@ -1241,70 +1251,51 @@ def manage_favorites_dialog():
                 st.rerun()
             return
 
-        st.write(f"登録済み地点: {len(current_favs)} / 10 件")
-        st.caption("名前修正はEnterで確定。▲▼で順序変更、🗑️で削除。")
+        st.write(f"登録済み: {len(current_favs)} / 10 件")
+        st.caption("📍ボタンで名称変更、下段ボタンで順序変更・削除。")
         st.markdown("---")
 
         action_idx = None
         direction = 0 # -1:up, 1:down, 99:delete
         
-        # ヘッダー
-        h_col = st.columns([0.4, 0.3, 0.2, 0.1])
-        h_col[0].caption("地点名")
-        h_col[1].caption("座標 (緯度, 経度)")
-
         # --- リストの描画 ---
         for i in range(len(current_favs)):
             item = current_favs[i]
-            # 各行を独立したコンテナで保護
+            row_id = f"{item['lat']}_{item['lon']}_{i}"
+
             with st.container():
-                c_name, c_pos, c_ord, c_del = st.columns([0.4, 0.3, 0.2, 0.1])
-                
-                # keyに座標を含めることで、並び替え時もStreamlitが要素を正しく追跡
-                row_id = f"{item['lat']}_{item['lon']}_{i}"
+                # 1段目：統合情報ボタン
+                label = f"📍 {item['name']} ({item['lat']:.3f}, {item['lon']:.3f})"
+                if st.button(label, key=f"edit_{row_id}", use_container_width=True):
+                    edit_spot_name_dialog(i, item['name'])
 
-                with c_name:
-                    new_n = st.text_input(
-                        "name", 
-                        value=item['name'], 
-                        key=f"input_{row_id}", 
-                        label_visibility="collapsed"
-                    )
-                    if new_n != item['name']:
-                        current_favs[i]['name'] = new_n
-                        st.session_state.user_locations = current_favs
-                        if "save_settings_to_browser" in globals():
-                            save_settings_to_browser()
-
-                with c_pos:
-                    # 座標の確認表示
-                    st.code(f"{item['lat']:.4f}, {item['lon']:.4f}", language=None)
-                
-                with c_ord:
-                    u_btn, d_btn = st.columns(2)
-                    if u_btn.button("▲", key=f"up_{row_id}", disabled=(i==0), use_container_width=True):
+                # 2段目：操作ボタン行 (3分割)
+                c_up, c_dw, c_del = st.columns(3)
+                with c_up:
+                    if st.button("▲ 移動", key=f"up_{row_id}", disabled=(i==0), use_container_width=True):
                         action_idx, direction = i, -1
-                    if d_btn.button("▼", key=f"dw_{row_id}", disabled=(i==len(current_favs)-1), use_container_width=True):
+                with c_dw:
+                    if st.button("▼ 移動", key=f"dw_{row_id}", disabled=(i==len(current_favs)-1), use_container_width=True):
                         action_idx, direction = i, 1
-                
                 with c_del:
-                    if st.button("🗑️", key=f"del_{row_id}", use_container_width=True):
+                    if st.button("🗑️ 削除", key=f"del_{row_id}", use_container_width=True):
                         action_idx, direction = i, 99
+                
+                st.write("") # 地点間のわずかな区切り
 
-        # --- ロジック実行 ---
+        # --- ロジック実行 (既存の並び替えロジックを完全維持) ---
         if action_idx is not None:
-            if direction == 99: # 削除
+            if direction == 99:
                 st.session_state["pending_del_idx"] = action_idx
-            else: # 並び替え（辞書を丸ごと入れ替え）
+            else:
                 target_idx = action_idx + direction
                 current_favs[action_idx], current_favs[target_idx] = current_favs[target_idx], current_favs[action_idx]
                 st.session_state.user_locations = current_favs
                 if "save_settings_to_browser" in globals():
                     save_settings_to_browser()
-                # Fragment内のみを再描画。これにより外側の地図コンポーネントへの再送を抑止
                 st.rerun(scope="fragment")
 
-        # --- 削除確認UI ---
+        # --- 削除確認UI (既存ロジック維持) ---
         del_target = st.session_state.get("pending_del_idx")
         if del_target is not None and del_target < len(current_favs):
             st.warning(f"「{current_favs[del_target]['name']}」を削除しますか？")
@@ -1321,11 +1312,9 @@ def manage_favorites_dialog():
                 st.rerun(scope="fragment")
 
         st.markdown("---")
-        if st.button("編集を終了して閉じる", use_container_width=True):
-            # 終了時のみ全体をリフレッシュし、コンボボックスを更新
+        if st.button("編集を終了して閉じる", key="close_dialog_btn", use_container_width=True):
             st.rerun()
 
-    # Fragmentを起動
     internal_manager()
 
 # ======================================================================================
