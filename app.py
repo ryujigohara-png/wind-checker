@@ -562,7 +562,7 @@ def generate_weather_icons_html(df, ratio_info, display_width, start_idx, icon_m
     l_size_pt = st.session_state.get("label_font_size", CONFIG.get("LABEL_SIZE", 7))
     # グラフ内のフォントサイズ(pt)をpx相当に変換
     # header_fs_px = l_size_pt * 1.33
-    header_fs_px = l_size_pt * 2
+    header_fs_px = l_size_pt * 2.5
   
     # 「天気」見出しの配置：start_x（グラフ枠の左端）を基準にする
     # 12番の ax.text(graph_left_time, ..., ha='right') と揃えるため translateX(-100%) を使用
@@ -572,7 +572,7 @@ def generate_weather_icons_html(df, ratio_info, display_width, start_idx, icon_m
                     transform: translateX(-105%); font-size: {header_fs_px}px; 
                     font-family: 'Noto Sans JP', sans-serif; color: #333; z-index: 5;
                     white-space: nowrap;">
-            天気
+          天気
         </div>'''
 
     # 指定された開始位置から3時間おきにアイコンを配置
