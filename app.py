@@ -655,7 +655,7 @@ def show_settings_dialog():
 
         st.subheader("降水量・アイコン位置調整")
         d_precip_y = st.slider("降水量ラベル高さ", 0.0, 2.0, float(st.session_state.get("precip_y", CONFIG["DEFAULT_PRECIP_Y"])), 0.05)
-        d_icon_margin = st.slider("天気アイコン下余白", 0, 100, int(st.session_state.get("icon_margin", 10)), 5)
+        d_icon_margin = st.slider("天気アイコン下余白", 0, 100, int(st.session_state.get("icon_margin", CONFIG["DEFAULT_ICON_MARGIN"])), 5)
 
         st.subheader("グラフ縦比率設定")
         r = st.session_state.get("ratios", CONFIG["DEFAULT_RATIOS"])
@@ -673,7 +673,7 @@ def show_settings_dialog():
         d_fav_w = st.session_state.get("fav_btn_width", CONFIG.get("FAV_BTN_WIDTH", 30))
         d_fav_len = st.session_state.get("fav_name_len", CONFIG.get("FAV_NAME_LEN", 12))
         d_precip_y = st.session_state.get("precip_y", CONFIG["DEFAULT_PRECIP_Y"])
-        d_icon_margin = st.session_state.get("icon_margin", 10)
+        d_icon_margin = st.session_state.get("icon_margin", CONFIG["DEFAULT_ICON_MARGIN"])
         d_ratios = st.session_state.get("ratios", CONFIG["DEFAULT_RATIOS"])
 
     st.markdown("---")
@@ -736,7 +736,7 @@ def show_sidebar_controls():
         "show_dir_name": st.session_state.get("show_dir_name", CONFIG["SHOW_DIR_NAME"]),
         "ratios": st.session_state.get("ratios", CONFIG["DEFAULT_RATIOS"]),
         "precip_y": st.session_state.get("precip_y", CONFIG["DEFAULT_PRECIP_Y"]),
-        "icon_margin": st.session_state.get("icon_margin", 10),
+        "icon_margin": st.session_state.get("icon_margin", CONFIG["DEFAULT_ICON_MARGIN"]),
         "min_container_width": st.session_state.get("min_container_width", 2500),
         "graph_dpi": st.session_state.get("graph_dpi", 200)
     }
