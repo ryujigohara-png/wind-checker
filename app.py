@@ -566,9 +566,9 @@ def generate_weather_icons_html(df, ratio_info, display_width, start_idx, icon_m
   
     # 「天気」見出しの配置：start_x（グラフ枠の左端）を基準にする
     # 12番の ax.text(graph_left_time, ..., ha='right') と揃えるため translateX(-100%) を使用
-    label_pos_x = (start_x * display_width) - 12
+    label_pos_x = (start_x * display_width) - 16
     icon_html += f'''
-        <div style="position: absolute; left: {label_pos_x}px; top: 18px; 
+        <div style="position: absolute; left: {label_pos_x}px; top: 15px; 
                     transform: translateX(-105%); font-size: {header_fs_px}px; 
                     font-family: 'Noto Sans JP', sans-serif; color: #333; z-index: 5;
                     white-space: nowrap;">
