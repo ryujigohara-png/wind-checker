@@ -1223,51 +1223,32 @@ def show_favorite_registration_dialog(default_name, lat, lon):
             st.rerun()
 
 # ======================================================================================
-# 92_4. My Spot（お気に入り）管理ダイアログ（横並び強制・完全版）
+# 92_4. My Spot（お気に入り）管理ダイアログ（2段構成・堅牢版）
 # ======================================================================================
 @st.dialog("My Spot（お気に入り）の編集")
 def manage_favorites_dialog():
     """
-    スマホ画面でも強制的に横並びを維持するCSSセレクタを強化した完全版。
-    開発者設定ダイアログでの調整値(%)に基づき、物理的な幅を制限する。
+    スマホの標準挙動（縦並び）に準拠した設計。
+    1段目に地名、2段目に操作ボタンを配置することで、横幅不足による崩れを根本的に回避する。
     """
     import streamlit as st
 
-    # --- 1. 調整変数の取得 ---
-    btn_w = st.session_state.get("fav_btn_width", CONFIG.get("FAV_BTN_WIDTH", 30))
-    name_limit = st.session_state.get("fav_name_len", CONFIG.get("FAV_NAME_LEN", 12))
-
-    # --- 2. 物理的な「横並び」を強制するCSS (セレクタを強化) ---
-    st.markdown(f"""
+    # CSSは最小限。ボタンの押しやすさと視認性のみを調整
+    st.markdown("""
         <style>
-            /* 親コンテナの横並びを最優先で強制 */
-            div[data-testid="stHorizontalBlock"] {{
-                display: flex !important;
-                flex-direction: row !important;
-                flex-wrap: nowrap !important;
-                align-items: center !important;
-                justify-content: space-between !important;
-                width: 100% !important;
-            }}
-            /* Streamlitがスマホ時に適用する width:100% を完全に上書き */
-            div[data-testid="stHorizontalBlock"] > div[data-testid="column"] {{
-                flex: 0 0 {btn_w}% !important;
-                max-width: {btn_w}% !important; /* これが重要：100%になるのを防ぐ */
-                min-width: 0px !important;
-                padding: 0px !important;
-            }}
-            /* ボタンの外観調整 */
-            .stButton > button {{
-                width: 100% !important;
-                height: 38px !important;
-                padding: 0px !important;
-                margin: 0px !important;
-                font-size: 16px !important;
-            }}
-            /* 地点ごとの間隔調整 */
-            div[data-testid="stVerticalBlock"] > div {{
-                margin-top: -8px !important;
-            }}
+            /* ボタンの高さを指で押しやすいサイズに固定 */
+            .stButton > button {
+                height: 42px !important;
+                margin-bottom: 4px !important;
+            }
+            /* 1地点ごとの区切りを明確にする */
+            .spot-container {
+                border: 1px solid rgba(151,166,195,0.2);
+                border-radius: 8px;
+                padding: 10px;
+                margin-bottom: 12px;
+                background-color: rgba(151,166,195,0.05);
+            }
         </style>
     """, unsafe_allow_html=True)
 
@@ -1277,67 +1258,59 @@ def manage_favorites_dialog():
             st.session_state.user_locations = []
         
         current_favs = list(st.session_state.user_locations)
-        
         if not current_favs:
             st.info("登録されている地点はありません。")
-            if st.button("閉じる", key="empty_close", use_container_width=True):
-                st.rerun()
             return
 
-        st.caption(f"登録: {len(current_favs)} / 10 件 | 名称ボタンで編集")
+        st.caption(f"登録: {len(current_favs)} / 10 件")
 
         action_idx = None
         direction = 0 
         
         for i in range(len(current_favs)):
             item = current_favs[i]
-            row_id = f"fav_row_{i}_{item['lat']}_{item['lon']}"
-            
+            row_id = f"v_row_{i}_{item['lat']}_{item['lon']}"
             edit_key = f"is_editing_{row_id}"
+            
             if edit_key not in st.session_state:
                 st.session_state[edit_key] = False
 
-            with st.container():
+            # 地点ごとに枠で囲む（案2：2段構成）
+            with st.container(border=True):
                 if st.session_state[edit_key]:
-                    # --- 名称編集モード ---
+                    # 名称編集モード
                     new_name = st.text_input("名前を変更", value=item['name'], key=f"in_{row_id}")
-                    c_save, c_cncl = st.columns(2)
-                    with c_save:
-                        if st.button("保存", key=f"sv_{row_id}", type="primary", use_container_width=True):
-                            st.session_state.user_locations[i]['name'] = new_name
-                            st.session_state[edit_key] = False
-                            if "save_settings_to_browser" in globals():
-                                save_settings_to_browser()
-                            st.rerun(scope="fragment")
-                    with c_cncl:
-                        if st.button("×", key=f"cc_{row_id}", use_container_width=True):
-                            st.session_state[edit_key] = False
-                            st.rerun(scope="fragment")
+                    c_s, c_c = st.columns(2)
+                    if c_s.button("保存", key=f"s_{row_id}", type="primary", use_container_width=True):
+                        st.session_state.user_locations[i]['name'] = new_name
+                        st.session_state[edit_key] = False
+                        if "save_settings_to_browser" in globals(): save_settings_to_browser()
+                        st.rerun(scope="fragment")
+                    if c_c.button("戻る", key=f"c_{row_id}", use_container_width=True):
+                        st.session_state[edit_key] = False
+                        st.rerun(scope="fragment")
                 else:
-                    # --- 通常表示モード ---
-                    base_name = item['name'][:name_limit]
-                    suffix = "..." if len(item['name']) > name_limit else ""
-                    display_label = f"{base_name}{suffix} ({item['lat']:.3f}, {item['lon']:.3f})"
-                    
-                    if st.button(display_label, key=f"btn_{row_id}", use_container_width=True):
+                    # --- 1段目：地名（幅一杯に使用） ---
+                    # 1段を丸ごと使うため、長めの地名でも崩れにくい
+                    display_label = f"📍 {item['name']} ({item['lat']:.3f}, {item['lon']:.3f})"
+                    if st.button(display_label, key=f"b_{row_id}", use_container_width=True):
                         st.session_state[edit_key] = True
                         st.rerun(scope="fragment")
 
-                    # アイコン行：CSSの max-width 指定により、スマホでも横に並ぶ
-                    c_up, c_dw, c_del = st.columns(3)
-                    with c_up:
-                        if st.button("▲", key=f"up_{row_id}", disabled=(i==0), use_container_width=True):
+                    # --- 2段目：操作ボタン（3分割） ---
+                    # ここは st.columns(3) を使うが、中身がアイコンのみなので 360px でも十分に収まる
+                    c1, c2, c3 = st.columns(3)
+                    with c1:
+                        if st.button("▲ 移動", key=f"u_{row_id}", disabled=(i==0), use_container_width=True):
                             action_idx, direction = i, -1
-                    with c_dw:
-                        if st.button("▼", key=f"dw_{row_id}", disabled=(i==len(current_favs)-1), use_container_width=True):
+                    with c2:
+                        if st.button("▼ 移動", key=f"d_{row_id}", disabled=(i==len(current_favs)-1), use_container_width=True):
                             action_idx, direction = i, 1
-                    with c_del:
-                        if st.button("🗑️", key=f"del_{row_id}", use_container_width=True):
+                    with c3:
+                        if st.button("🗑️ 削除", key=f"x_{row_id}", use_container_width=True):
                             action_idx, direction = i, 99
-                
-                st.markdown('<div style="margin-bottom: 15px; border-bottom: 1px solid rgba(151,166,195,0.1);"></div>', unsafe_allow_html=True)
 
-        # --- ロジック実行 ---
+        # --- ロジック実行 (変更なし) ---
         if action_idx is not None:
             if direction == 99:
                 st.session_state["pending_del_idx"] = action_idx
@@ -1345,28 +1318,26 @@ def manage_favorites_dialog():
                 target_idx = action_idx + direction
                 current_favs[action_idx], current_favs[target_idx] = current_favs[target_idx], current_favs[action_idx]
                 st.session_state.user_locations = current_favs
-                if "save_settings_to_browser" in globals():
-                    save_settings_to_browser()
+                if "save_settings_to_browser" in globals(): save_settings_to_browser()
                 st.rerun(scope="fragment")
 
-        # --- 削除確認UI ---
+        # 削除確認
         del_target = st.session_state.get("pending_del_idx")
-        if del_target is not None and del_target < len(current_favs):
-            st.error(f"「{current_favs[del_target]['name'][:10]}...」を削除？")
-            col_y, col_n = st.columns(2)
-            if col_y.button("はい、削除", key="real_del_confirm", type="primary", use_container_width=True):
+        if del_target is not None:
+            st.warning(f"「{current_favs[del_target]['name']}」を削除しますか？")
+            y, n = st.columns(2)
+            if y.button("削除する", key="del_y", type="primary", use_container_width=True):
                 current_favs.pop(del_target)
                 st.session_state.user_locations = current_favs
                 st.session_state["pending_del_idx"] = None
-                if "save_settings_to_browser" in globals():
-                    save_settings_to_browser()
+                if "save_settings_to_browser" in globals(): save_settings_to_browser()
                 st.rerun(scope="fragment")
-            if col_n.button("戻る", key="real_del_cancel", use_container_width=True):
+            if n.button("やめる", key="del_n", use_container_width=True):
                 st.session_state["pending_del_idx"] = None
                 st.rerun(scope="fragment")
 
         st.markdown("---")
-        if st.button("編集を終了して閉じる", key="close_manage_dialog", use_container_width=True):
+        if st.button("編集を終了して閉じる", key="close_fav", use_container_width=True):
             st.rerun()
 
     internal_manager()
