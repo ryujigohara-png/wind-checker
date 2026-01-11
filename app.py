@@ -49,50 +49,50 @@ from streamlit_js_eval import streamlit_js_eval, get_geolocation
 # 1. 定数・基本設定 (CONFIG)
 # ======================================================================================
 CONFIG = {
-    "TITLE_SIZE": 24,
-    "SUBTITLE_SIZE": 18,
-    "GRAPH_FONT_SIZE": 11,
-    "GRAPH_WIDTH": 15,
-    "GRAPH_HIGHT": 2.0,
-    "LABEL_SIZE": 7,
-    "LABEL_PAD": 0,
-    "ANNOT_SIZE": 10,
-    "DPI": 200,
-    "DIAL_H_GAP": 0,      # ダイアログ内カラムの水平余白（初期値）
-    "DIAL_V_GAP": 0,      # ダイアログ内セクションの垂直余白（初期値）
-    "MAP_WIDTH": 400,     # 地図の幅
-    "MAP_HEIGHT": 350,    # 地図の高さ
-    "DEFAULT_RATIOS": [4.4, 1.2, 0.8],
-    "SHOW_WIND": True,
-    "SHOW_TEMP": True,
-    "SHOW_TIDE": False,          # デフォルトOFF
-    "SHOW_W_TEXT": False,        # デフォルトOFF
-    "SHOW_DIR_NAME": False,      # デフォルトOFF
-    "HSPACE": 1.0,
-    "DEFAULT_LAT": 31.337,
-    "DEFAULT_LON": 130.795,
-    "DEFAULT_BASHO": "高須沖(鹿児島県)",
-    "DEFAULT_DANGER_V": 10.0,
-    "DEFAULT_DIRS": ["南","南南西","南西","西南西","西","西北西","北西","北北西"],
-    "ANNOT_Y_STEP": 1.5,
-    "ANNOT_BASE_Y": 0.5,
-    "SHOW_DEV_MODE": False,  # ← これを追記 [1]
-    "STORAGE_KEY": "wind_checker_settings_v2", # バージョン管理用にキー変更
-    "TEMP_COLOR": "darkorange",
-    "ARROW_COLOR": "blue",
-    "VLINE_WIDTH": 1.25,
-    "HLINE_WIDTH": 1.0,
-    "PX_PER_INCH": 200,
-    "FAV_BTN_WIDTH": 30,    # 操作ボタン1つあたりの幅(%)
-    "FAV_NAME_LEN": 12,     # 地名の表示文字数制限
-    "DEFAULT_PRECIP_Y": 1.00,      # 降水量の表示高さ（グラフ枠を1.0とした相対値）
-    "DEFAULT_ICON_MARGIN": 0,     # アイコンHTMLの下マージン(px)
-    "SLIDER_PRECIP_Y": {"min": 0.95, "max": 1.30, "step": 0.01},
-    "SLIDER_ICON_MARGIN": {"min": -20, "max": 50, "step": 5},
+    "TITLE_SIZE": 20,
+    "SUBTITLE_SIZE": 16,
+    # 表示設定（ユーザー設定）              
+    "MAP_HEIGHT": 350,                  # 地図の高さ
+    "SHOW_WIND": True,                  # 風向・風速グラフ表示
+    "SHOW_TEMP": True,                  # 気温グラフ表示
+    "SHOW_TIDE": False,                 # 潮位グラフ表示
+    "SHOW_W_TEXT": False,               # 天気文字表示
+    "SHOW_DIR_NAME": False,             # 風向名表示
+    "GRAPH_WIDTH": 15,                  # グラフ横幅(inch)
+    "GRAPH_HIGHT": 2.5,                 # グラフ縦幅(inch)
+    "GRAPH_FONT_SIZE": 11,              # グラフ内文字サイズ
+    "LABEL_SIZE": 7,                    # 軸ラベル文字サイズ
+    "DEFAULT_DANGER_V": 10.0,           # 危険風速
+    #開発者詳細設定
+    "CONTENA_MIN_W": 2500               # コンテナ最小幅(px)
+    "DPI": 200,                         # 解像度 (DPI)
+    "HSPACE": 0.75,                     # グラフ間余白
+    "LABEL_PAD": 0,                     # ラベル距離
+    "DIAL_H_GAP": 0,                    # 地図ダイアログ横余白 (H-Gap)
+    "DIAL_V_GAP": 0,                    # 地図ダイアログ縦余白（V-Gap）
+    "FAV_BTN_WIDTH": 30,                # MySpot編集ダイアログ ボタン幅(%)
+    "FAV_NAME_LEN": 12,                 # MySpot編集ダイアログ 地名表示制限（文字）
+    "DEFAULT_PRECIP_Y": 1.00,           # 降水量ラベル高さ（グラフ枠を1.0とした相対値）
+    "DEFAULT_ICON_MARGIN": 0,           # 天気アイコン下余白(px)
+    "DEFAULT_RATIOS": [4.0, 1.2, 0.8],  # グラフ比率設定
+    # その他既定値
+    "SHOW_DEV_MODE": False,                    # 開発者モード初期値
+    "STORAGE_KEY": "wind_checker_settings_v2", # ローカルストレージキー
+    "ANNOT_Y_STEP": 1.5,                       # 風向グラフ内文字間隔（文字高さに対する倍率）
+    "ANNOT_BASE_Y": 0.5,                       # 風向グラフ内文字間隔1文字目まで（文字高さに対する倍率）
+    "TEMP_COLOR": "darkorange",                # 危険風速色
+    "ARROW_COLOR": "blue",                     # 弱風職
+    "VLINE_WIDTH": 1.0,                        # 現在時刻ライン太さ
+    "HLINE_WIDTH": 1.0,                        # 危険風速ライン太さ
     # スライダーの範囲設定
     "SLIDER_WIDTH": {"min": 13.0, "max": 30.0, "step": 1.0},
     "SLIDER_HEIGHT": {"min": 1.5, "max": 5.0, "step": 0.5},
     "SLIDER_FONT": {"min": 6, "max": 14, "step": 1},
+    #ロケーション情報
+    "DEFAULT_LAT": 31.337,                     # "高須沖(鹿児島県)"緯度
+    "DEFAULT_LON": 130.795,                    # "高須沖(鹿児島県)"経度
+    "DEFAULT_BASHO": "高須沖(鹿児島県)",        # 場所選定コンボボックスの選択値
+    "DEFAULT_DIRS": ["南","南南西","南西","西南西","西","西北西","北西","北北西"],
 "LOCATION_MASTER": {
         "高須沖(鹿児島県)": (31.337, 130.795), 
         "柏原沖(鹿児島県)": (31.380, 131.020), 
@@ -353,7 +353,7 @@ def render_wind_bar_chart(ax, df, danger_v, wind_step, design_params=None):
     # 基本サイズ設定
     fs = design_params.get("base_font_size", CONFIG["GRAPH_FONT_SIZE"]) if design_params else CONFIG["GRAPH_FONT_SIZE"]
     l_fs = design_params.get("label_font_size", CONFIG["LABEL_SIZE"]) if design_params else CONFIG["LABEL_SIZE"]
-    precip_y = design_params.get("precip_y", 1.0) if design_params else 1.0
+    precip_y = design_params.get("precip_y", CONFIG["DEFAULT_PRECIP_Y"]) if design_params else 1.0
     
     # レイアウト計算
     step = fs * 0.144 
@@ -609,18 +609,18 @@ def show_settings_dialog():
 
     # --- 1. 表示設定（トグル） ---
     st.subheader("表示設定")
-    d_show_wind = st.toggle("風向・風速", value=st.session_state.get("show_wind", CONFIG["SHOW_WIND"]))
-    d_show_temp = st.toggle("気温", value=st.session_state.get("show_temp", CONFIG["SHOW_TEMP"]))
-    d_show_tide = st.toggle("潮位", value=st.session_state.get("show_tide", CONFIG["SHOW_TIDE"]))
-    d_show_w_text = st.toggle("天気詳細文字を表示", value=st.session_state.get("show_w_text", CONFIG["SHOW_W_TEXT"]))
-    d_show_dir_name = st.toggle("風向名を表示", value=st.session_state.get("show_dir_name", CONFIG["SHOW_DIR_NAME"]))
+    d_show_wind = st.toggle("風向・風速グラフ表示", value=st.session_state.get("show_wind", CONFIG["SHOW_WIND"]))
+    d_show_temp = st.toggle("気温グラフ表示", value=st.session_state.get("show_temp", CONFIG["SHOW_TEMP"]))
+    d_show_tide = st.toggle("潮位グラフ表示", value=st.session_state.get("show_tide", CONFIG["SHOW_TIDE"]))
+    d_show_w_text = st.toggle("天気文字表示", value=st.session_state.get("show_w_text", CONFIG["SHOW_W_TEXT"]))
+    d_show_dir_name = st.toggle("風向名表示", value=st.session_state.get("show_dir_name", CONFIG["SHOW_DIR_NAME"]))
 
     # --- 2. サイズ・文字（スライダー） ---
     w_cfg, h_cfg, f_cfg = CONFIG["SLIDER_WIDTH"], CONFIG["SLIDER_HEIGHT"], CONFIG["SLIDER_FONT"]
-    d_width = st.slider("横幅 (inch)", w_cfg["min"], w_cfg["max"], float(st.session_state.get("width", CONFIG["GRAPH_WIDTH"])), step=w_cfg["step"])
-    d_base_h = st.slider("基準縦幅 (inch)", h_cfg["min"], h_cfg["max"], float(st.session_state.get("base_height", CONFIG["GRAPH_HIGHT"])), step=h_cfg["step"])
-    d_base_f = st.slider("グラフ内文字", f_cfg["min"], f_cfg["max"], int(st.session_state.get("base_font_size", CONFIG["GRAPH_FONT_SIZE"])))
-    d_label_f = st.slider("軸ラベル文字", f_cfg["min"], f_cfg["max"], int(st.session_state.get("label_font_size", CONFIG["LABEL_SIZE"])))
+    d_width = st.slider("グラフ枠横幅 (inch)", w_cfg["min"], w_cfg["max"], float(st.session_state.get("width", CONFIG["GRAPH_WIDTH"])), step=w_cfg["step"])
+    d_base_h = st.slider("グラフ枠縦幅 (inch)", h_cfg["min"], h_cfg["max"], float(st.session_state.get("base_height", CONFIG["GRAPH_HIGHT"])), step=h_cfg["step"])
+    d_base_f = st.slider("グラフ内文字サイズ", f_cfg["min"], f_cfg["max"], int(st.session_state.get("base_font_size", CONFIG["GRAPH_FONT_SIZE"])))
+    d_label_f = st.slider("軸ラベル文字サイズ", f_cfg["min"], f_cfg["max"], int(st.session_state.get("label_font_size", CONFIG["LABEL_SIZE"])))
     
     st.markdown("---")
     d_danger_v = st.number_input("危険風速ライン(m/s)", value=float(st.session_state.get("danger_v", CONFIG["DEFAULT_DANGER_V"])), step=1.0)
@@ -640,40 +640,39 @@ def show_settings_dialog():
     if is_dev_url:
         st.markdown("---")
         st.subheader("開発用詳細設定")
-        d_min_w = st.slider("コンテナ最小幅 (px)", 500, 5000, int(st.session_state.get("min_container_width", 2500)), 100)
+        d_min_w = st.slider("コンテナ最小幅 (px)", 500, 5000, int(st.session_state.get("min_container_width", CONFIG["CONTENA_MIN_W"])), 100)
         d_dpi = st.radio("解像度 (DPI)", [200, 300], index=0 if st.session_state.get("graph_dpi", 200) == 200 else 1, horizontal=True)
         d_hspace = st.slider("グラフ間余白", -0.2, 1.5, float(st.session_state.get("hspace", CONFIG["HSPACE"])), 0.05)
         d_label_pad = st.slider("ラベル距離", -5, 10, int(st.session_state.get("label_pad", CONFIG["LABEL_PAD"])))
 
-        st.subheader("地図ダイアログ物理調整")
-        d_dial_h = st.slider("地図横余白 (H-Gap)", 0, 20, int(st.session_state.get("dial_h_gap", CONFIG["DIAL_H_GAP"])))
-        d_dial_v = st.slider("地図縦余白 (V-Gap)", 0, 20, int(st.session_state.get("dial_v_gap", CONFIG["DIAL_V_GAP"])))
+        st.subheader("地図ダイアログ調整")
+        d_dial_h = st.slider("地図ダイアログ横余白 (H-Gap)", 0, 20, int(st.session_state.get("dial_h_gap", CONFIG["DIAL_H_GAP"])))
+        d_dial_v = st.slider("地図ダイアログ縦余白 (V-Gap)", 0, 20, int(st.session_state.get("dial_v_gap", CONFIG["DIAL_V_GAP"])))
 
-        # --- お気に入り管理画面調整用 (追加分) ---
-        st.subheader("お気に入り管理画面の物理調整")
+        st.subheader("MySpot編集ダイアログ調整")
         d_fav_w = st.slider("ボタン幅 (%)", 10, 45, int(st.session_state.get("fav_btn_width", CONFIG.get("FAV_BTN_WIDTH", 30))), 1)
         d_fav_len = st.slider("地名表示制限 (文字)", 5, 25, int(st.session_state.get("fav_name_len", CONFIG.get("FAV_NAME_LEN", 12))), 1)
 
         st.subheader("降水量・アイコン位置調整")
-        d_precip_y = st.slider("降水量ラベル高さ", 0.0, 2.0, float(st.session_state.get("precip_y", 1.0)), 0.05)
+        d_precip_y = st.slider("降水量ラベル高さ", 0.0, 2.0, float(st.session_state.get("precip_y", CONFIG["DEFAULT_PRECIP_Y"])), 0.05)
         d_icon_margin = st.slider("天気アイコン下余白", 0, 100, int(st.session_state.get("icon_margin", 10)), 5)
 
-        st.subheader("比率設定")
+        st.subheader("グラフ縦比率設定")
         r = st.session_state.get("ratios", CONFIG["DEFAULT_RATIOS"])
         r0 = st.number_input("比率:風向", 0.5, 10.0, float(r[0]), 0.1)
         r1 = st.number_input("比率:気温", 0.5, 5.0, float(r[1]), 0.1)
         r2 = st.number_input("比率:潮位", 0.5, 5.0, float(r[2]), 0.1)
         d_ratios = [r0, r1, r2]
     else:
-        d_min_w = st.session_state.get("min_container_width", 2500)
-        d_dpi = st.session_state.get("graph_dpi", 200)
+        d_min_w = st.session_state.get("min_container_width", CONFIG["CONTENA_MIN_W"])
+        d_dpi = st.session_state.get("graph_dpi", CONFIG["DPI"])
         d_hspace = st.session_state.get("hspace", CONFIG["HSPACE"])
         d_label_pad = st.session_state.get("label_pad", CONFIG["LABEL_PAD"])
         d_dial_h = st.session_state.get("dial_h_gap", CONFIG["DIAL_H_GAP"])
         d_dial_v = st.session_state.get("dial_v_gap", CONFIG["DIAL_V_GAP"])
         d_fav_w = st.session_state.get("fav_btn_width", CONFIG.get("FAV_BTN_WIDTH", 30))
         d_fav_len = st.session_state.get("fav_name_len", CONFIG.get("FAV_NAME_LEN", 12))
-        d_precip_y = st.session_state.get("precip_y", 1.0)
+        d_precip_y = st.session_state.get("precip_y", CONFIG["DEFAULT_PRECIP_Y"])
         d_icon_margin = st.session_state.get("icon_margin", 10)
         d_ratios = st.session_state.get("ratios", CONFIG["DEFAULT_RATIOS"])
 
@@ -736,7 +735,7 @@ def show_sidebar_controls():
         "show_w_text": st.session_state.get("show_w_text", CONFIG["SHOW_W_TEXT"]),
         "show_dir_name": st.session_state.get("show_dir_name", CONFIG["SHOW_DIR_NAME"]),
         "ratios": st.session_state.get("ratios", CONFIG["DEFAULT_RATIOS"]),
-        "precip_y": st.session_state.get("precip_y", 1.0),
+        "precip_y": st.session_state.get("precip_y", CONFIG["DEFAULT_PRECIP_Y"]),
         "icon_margin": st.session_state.get("icon_margin", 10),
         "min_container_width": st.session_state.get("min_container_width", 2500),
         "graph_dpi": st.session_state.get("graph_dpi", 200)
@@ -803,7 +802,7 @@ def show_location_map_dialog():
         # 表示整理
         st.markdown(f"📍 **{st.session_state.temp_basho}**")
     
-        h_px = st.session_state.get("map_h", 350)
+        h_px = st.session_state.get("map_h", CONFIG["MAP_HEIGHT"])
     
         # 地図オブジェクト作成
         # [修正] zoom_startを固定せず、保持している倍率を適用する
