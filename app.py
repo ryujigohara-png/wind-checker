@@ -1499,6 +1499,91 @@ def render_graph_area_module(danger_v, sel_dirs, design_params, now_jst):
         )
 
 # ======================================================================================
+# 92. 【統合版】操作コントロールパネル（案B：高密度・安定版）
+# ======================================================================================
+def render_compact_control_panel(basho_name):
+    """
+    場所選択、お気に入り、地図、現在地、更新ボタンを最小限の余白で配置する統合モジュール。
+    スマホでの「間延び」を防ぐため、カラム構成を整理し、一箇所のサブルーチンで管理する。
+    """
+    import streamlit as st
+    from datetime import datetime, timedelta
+
+    # --- 1. 場所選択 ＋ お気に入り (1行目) ---
+    display_list, total_data = get_combined_location_list(
+        CONFIG["LOCATION_MASTER"], 
+        st.session_state.lat, 
+        st.session_state.lon
+    )
+
+    # お気に入り状態の判定
+    favorites = st.session_state.get("user_locations", [])
+    is_saved = any(abs(f['lat'] - st.session_state.lat) < 0.0001 and 
+                   abs(f['lon'] - st.session_state.lon) < 0.0001 for f in favorites)
+
+    # 1行目のレイアウト
+    c1, c2 = st.columns([0.85, 0.15])
+    with c1:
+        selected_label = st.selectbox(
+            "地点を選択", 
+            options=display_list, 
+            index=display_list.index(st.session_state.last_basho) if st.session_state.last_basho in display_list else 0,
+            label_visibility="collapsed"
+        )
+    with c2:
+        if is_saved:
+            st.button("✅", key="fav_saved_icon", disabled=True, use_container_width=True)
+        else:
+            if st.button("⭐", key="fav_save_action", help="お気に入りに登録", use_container_width=True):
+                pure_name = st.session_state.last_basho.split(" (")[0]
+                show_favorite_registration_dialog(pure_name, st.session_state.lat, st.session_state.lon)
+
+    # 地点変更検知
+    if selected_label == "地図で指定":
+        show_location_map_dialog()
+    elif selected_label != st.session_state.last_basho:
+        new_lat, new_lon, new_name = total_data[selected_label]
+        update_state_and_save({
+            "lat": new_lat, 
+            "lon": new_lon, 
+            "last_basho": selected_label,
+            "needs_graph_update": True
+        })
+
+    # --- 2. 地図表示 ＋ 現在地取得 (2行目) ---
+    c3, c4 = st.columns([1, 1])
+    with c3:
+        if st.button("🗺️ 地図表示", key="btn_map_open", use_container_width=True):
+            show_location_map_dialog()
+    with c4:
+        # 現在地取得ボタン（既存の handle_current_location_update_integrated の中身をインライン展開し余白を制御）
+        if st.button("🔄 現在地を取得", key="btn_get_gps", use_container_width=True):
+            st.session_state.waiting_loc = True
+            st.session_state.geo_key = f"geo_{datetime.now().timestamp()}"
+            st.rerun()
+
+    # --- 3. グラフ更新（3行目） ---
+    # 現地時刻の計算ロジック（既存の render_header_info を継承）
+    now_jst = st.session_state.get('now_jst', datetime.now())
+    try:
+        df_tmp = fetch_weather_data(st.session_state.lat, st.session_state.lon, 1)
+        browser_offset_s = now_jst.utcoffset().total_seconds() if now_jst.utcoffset() else 0
+        local_offset_s = df_tmp.attrs.get('local_offset_seconds', 0)
+        now_local = now_jst.replace(tzinfo=None) - timedelta(seconds=browser_offset_s) + timedelta(seconds=local_offset_s)
+    except:
+        now_local = now_jst.replace(tzinfo=None)
+
+    update_label = f"🔄 グラフ更新 ({now_local.strftime('%Y/%m/%d %H:%M:%S')})"
+    if st.button(update_label, key="btn_graph_refresh", use_container_width=True, type="secondary"):
+        st.cache_data.clear()
+        st.session_state.needs_graph_update = True
+        st.rerun()
+
+    # GPS取得中の待機処理（共通化のためここに配置）
+    if st.session_state.get("waiting_loc"):
+        handle_current_location_update_logic() # ロジックのみのサブルーチンを呼び出し
+        
+# ======================================================================================
 # 100. メイン処理 (再構築版・スクロール対応)
 # ======================================================================================
 def main():
@@ -1527,13 +1612,17 @@ def main():
 
     # --- 2. 各モジュールの描画 ---
     # 場所選択モジュール（返り値 basho は表示用の文字列）
-    basho = render_location_selector_module()
+    # basho = render_location_selector_module()
     
     # 地図表示モジュール
-    render_map_module()
+    # render_map_module()
     
     # 更新・情報表示モジュール（ここに basho を渡す）
-    render_update_control_module(basho)
+    # render_update_control_module(basho)
+
+    # 以前の 92, 93, 94 をすべて1つに集約
+    render_compact_control_panel(st.session_state.last_basho)
+
     
     # グラフエリア（ここでフラグを見て描画を行う）
     render_graph_area_module(danger_v, sel_dirs, design_params, now_jst)
