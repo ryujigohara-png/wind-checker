@@ -791,6 +791,8 @@ def show_location_map_dialog():
         st.session_state.temp_lon = st.session_state.lon
     if "temp_basho" not in st.session_state:
         # 初回表示時は現在の地名を表示
+        st.session_state.temp_lat = st.session_state.lat
+        st.session_state.temp_lon = st.session_state.lon
         st.session_state.temp_basho = st.session_state.last_basho
     
     # [追加] 現在の倍率を管理する変数（初期値は13）
@@ -1076,7 +1078,7 @@ def render_location_selector_module():
         st.session_state.last_basho
     )
 
-    # 選択が変更された場合の処理
+    # 選択が変更された場合の処理　地図Uと合わせる必要あり
     if selected_label == "地図で指定":
         show_location_map_dialog()
     elif selected_label != st.session_state.last_basho:
