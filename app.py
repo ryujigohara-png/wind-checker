@@ -558,10 +558,12 @@ def generate_weather_icons_html(df, ratio_info, display_width, start_idx, icon_m
     start_x, hour_w = ratio_info
     icon_html = ""
     
-    l_size_pt = CONFIG.get("LABEL_SIZE", 7)
+    # l_size_pt = CONFIG.get("LABEL_SIZE", 7)
+    l_size_pt = st.session_state.get("label_font_size", CONFIG.get("LABEL_SIZE", 7))
     # グラフ内のフォントサイズ(pt)をpx相当に変換
-    header_fs_px = l_size_pt * 1.33
-    
+    # header_fs_px = l_size_pt * 1.33
+    header_fs_px = l_size_pt * 2
+  
     # 「天気」見出しの配置：start_x（グラフ枠の左端）を基準にする
     # 12番の ax.text(graph_left_time, ..., ha='right') と揃えるため translateX(-100%) を使用
     label_pos_x = (start_x * display_width)
