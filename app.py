@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# ベータ版　更新 2026.1.11 1545 レイアウト変更コンプリート版
+# ベータ版　更新 2026.1.11 1800 レイアウト変更コンプリート版
 """
 1. データ統合・取得仕様
 　• 気象データソース: Open-Meteo APIを使用し、全世界の気象データを取得します。
@@ -1292,7 +1292,7 @@ def manage_favorites_dialog():
                 else:
                     # --- 1段目：地名（幅一杯に使用） ---
                     # 1段を丸ごと使うため、長めの地名でも崩れにくい
-                    display_label = f"📍 {item['name']} ({item['lat']:.3f}, {item['lon']:.3f})"
+                    display_label = f" {item['name']} ({item['lat']:.3f}, {item['lon']:.3f})"
                     if st.button(display_label, key=f"b_{row_id}", use_container_width=True):
                         st.session_state[edit_key] = True
                         st.rerun(scope="fragment")
@@ -1301,13 +1301,13 @@ def manage_favorites_dialog():
                     # ここは st.columns(3) を使うが、中身がアイコンのみなので 360px でも十分に収まる
                     c1, c2, c3 = st.columns(3)
                     with c1:
-                        if st.button("▲ 移動", key=f"u_{row_id}", disabled=(i==0), use_container_width=True):
+                        if st.button("▲", key=f"u_{row_id}", disabled=(i==0), use_container_width=True):
                             action_idx, direction = i, -1
                     with c2:
-                        if st.button("▼ 移動", key=f"d_{row_id}", disabled=(i==len(current_favs)-1), use_container_width=True):
+                        if st.button("▼", key=f"d_{row_id}", disabled=(i==len(current_favs)-1), use_container_width=True):
                             action_idx, direction = i, 1
                     with c3:
-                        if st.button("🗑️ 削除", key=f"x_{row_id}", use_container_width=True):
+                        if st.button("🗑️", key=f"x_{row_id}", use_container_width=True):
                             action_idx, direction = i, 99
 
         # --- ロジック実行 (変更なし) ---
@@ -1326,13 +1326,13 @@ def manage_favorites_dialog():
         if del_target is not None:
             st.warning(f"「{current_favs[del_target]['name']}」を削除しますか？")
             y, n = st.columns(2)
-            if y.button("削除する", key="del_y", type="primary", use_container_width=True):
+            if y.button("削除", key="del_y", type="primary", use_container_width=True):
                 current_favs.pop(del_target)
                 st.session_state.user_locations = current_favs
                 st.session_state["pending_del_idx"] = None
                 if "save_settings_to_browser" in globals(): save_settings_to_browser()
                 st.rerun(scope="fragment")
-            if n.button("やめる", key="del_n", use_container_width=True):
+            if n.button("中止", key="del_n", use_container_width=True):
                 st.session_state["pending_del_idx"] = None
                 st.rerun(scope="fragment")
 
@@ -1346,7 +1346,7 @@ def manage_favorites_dialog():
 # 93. 【main機能分離】②地図表示モジュール
 # ======================================================================================
 def render_map_module():
-    if st.button("🗺️ 地図表示", use_container_width=True):
+    if st.button("🗺️地図", use_container_width=True):
         show_location_map_dialog()
         
 # ======================================================================================
@@ -1354,7 +1354,7 @@ def render_map_module():
 # ======================================================================================
 def render_update_control_module(basho):
     """
-    現在地取得ボタンと、グラフ更新・時刻情報表示ボタンを1行に並べて表示する。
+    現在地ボタンと、グラフ更新・時刻情報表示ボタンを1行に並べて表示する。
     """
     col1, col2 = st.columns([1, 1])
     with col1:
@@ -1369,7 +1369,7 @@ def handle_current_location_update_integrated():
     """
     「現在地を取得」ボタンを処理し、取得成功時に座標と地名を更新・保存する。
     """
-    if st.button("🔄 📍現在地を取得　　　　　　　　　　", use_container_width=True):
+    if st.button("🔄📍現在地　　　　　　　　　　", use_container_width=True):
         st.session_state.waiting_loc = True
         st.session_state.geo_key = f"geo_{datetime.now().timestamp()}"
         st.rerun()
@@ -1469,7 +1469,7 @@ def render_header_info(current_basho_name):
 
     date_time_str = now_local.strftime('%Y/%m/%d %H:%M:%S')
     # ボタンのラベルに現地時刻を反映
-    update_label = f"🔄 グラフ更新 ({date_time_str})"
+    update_label = f"🔄📊更新 ({date_time_str})"
     
     if st.button(update_label, use_container_width=True):
         st.cache_data.clear()
@@ -1589,11 +1589,11 @@ def render_compact_control_panel(basho_name):
         # --- 2. 地図 ＋ 現在地 (元の93と94_1のロジックを統合) ---
         c3, c4 = st.columns([0.5, 0.5])
         with c3:
-            if st.button("🗺️ 地図表示", key="btn_map_open", use_container_width=True):
+            if st.button("🗺️地図", key="btn_map_open", use_container_width=True):
                 show_location_map_dialog()
         with c4:
-            # 🔄 📍現在地を取得 ボタン (元の94_1のボタン名称とロジックを維持)
-            if st.button("🔄 📍現在地を取得", key="btn_get_gps", use_container_width=True):
+            # 🔄📍現在地 ボタン (元の94_1のボタン名称とロジックを維持)
+            if st.button("🔄📍現在地", key="btn_get_gps", use_container_width=True):
                 st.session_state.waiting_loc = True
                 st.session_state.geo_key = f"geo_{datetime.now().timestamp()}"
                 st.rerun()
@@ -1614,7 +1614,7 @@ def render_compact_control_panel(basho_name):
             now_local = now_jst.replace(tzinfo=None)
 
         date_time_str = now_local.strftime('%Y/%m/%d %H:%M:%S')
-        update_label = f"🔄 グラフ更新 ({date_time_str})"
+        update_label = f"🔄📊更新 ({date_time_str})"
         
         if st.button(update_label, key="btn_graph_refresh", use_container_width=True):
             st.cache_data.clear()
