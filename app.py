@@ -791,8 +791,6 @@ def show_location_map_dialog():
         st.session_state.temp_lon = st.session_state.lon
     if "temp_basho" not in st.session_state:
         # 初回表示時は現在の地名を表示
-        st.session_state.temp_lat = st.session_state.lat
-        st.session_state.temp_lon = st.session_state.lon
         st.session_state.temp_basho = st.session_state.last_basho
     
     # [追加] 現在の倍率を管理する変数（初期値は13）
@@ -1084,6 +1082,8 @@ def render_location_selector_module():
     elif selected_label != st.session_state.last_basho:
         # 新しい地点の座標と名前を取得
         new_lat, new_lon, new_name = total_data[selected_label]
+        st.session_state.temp_lat, st.session_state.temp_lon, st.session_state.temp_basho = total_data[selected_label]
+        
         # 状態更新・保存・描画フラグON
         update_state_and_save({
             "lat": new_lat, 
@@ -1630,6 +1630,7 @@ def render_compact_control_panel(basho_name):
         show_location_map_dialog()
     elif selected_label != st.session_state.last_basho:
         new_lat, new_lon, new_name = total_data[selected_label]
+        st.session_state.temp_lat, st.session_state.temp_lon, st.session_state.temp_basho = total_data[selected_label]
         update_state_and_save({
             "lat": new_lat, 
             "lon": new_lon, 
