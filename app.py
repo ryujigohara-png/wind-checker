@@ -1668,7 +1668,7 @@ def main():
     # サイドバーのコントロール（設定変更があれば内部で needs_graph_update = True になる）
     danger_v, sel_dirs, design_params = show_sidebar_controls()
     
-    st.title("Spot_Wind_Checker!")
+    st.title("⛵Pin_Weather!")
     
     # 時間設定
     now_jst = datetime.now(timezone(timedelta(hours=9)))
