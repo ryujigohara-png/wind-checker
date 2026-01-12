@@ -517,39 +517,62 @@ def render_temp_line_chart(ax, df):
 #==========================================================================================
 def render_tide_curve_chart(ax, df, tide_data):
     """
-    潮位データを曲線グラフとして描画します。
-    データが取得できていない（陸地など）場合は、メッセージを表示します。
+    潮位データを曲線グラフとして描画し、各時刻（0時と3の倍数）の数値を枠外上部に表示します。
+    気温グラフ（render_temp_line_chart）と同じ仕様で数値をプロットし、データの有無を可視化します。
     """
     import numpy as np
+    import pandas as pd
 
-    # 潮位データの判定
+    # 1. 潮位データの有効性判定
     if tide_data == "NOT_SEA":
-        # データがない場合、メッセージを左寄せ（ha='left'）で表示
         ax.text(0.02, 0.5, "Not in sea area. No tide data.", 
                 transform=ax.transAxes, color="gray", fontsize=12,
                 ha='left', va='center', fontweight='bold')
-        # 枠線だけ残して軸の目盛りなどは非表示に近い状態にする（共通設定に準拠しつつ）
         ax.set_yticks([])
         return
 
-    # tide_data が正常なリストの場合、df に追加して描画
+    # 2. データのマッピング
+    # tide_dataは数値リストであることを前提に、dfの長さに合わせて代入
     df['tide_level'] = tide_data
     
-    # 潮位曲線の描画
-    ax.plot(df.index, df['tide_level'], color="#1f77b4", linewidth=2, label="Tide Level")
+    # フォントサイズは共通設定から取得
+    label_fs = CONFIG.get("LABEL_SIZE", 10)
     
-    # 塗りつぶし（海面をイメージ）
-    ax.fill_between(df.index, df['tide_level'], min(df['tide_level']) - 10, 
+    # 3. 潮位曲線の描画（x軸は他のグラフと合わせるため df['time'] を使用）
+    ax.plot(df['time'], df['tide_level'], color="#1f77b4", linewidth=2, label="Tide Level")
+    
+    # 塗りつぶし（海面イメージ）
+    y_min_data = df['tide_level'].min()
+    ax.fill_between(df['time'], df['tide_level'], y_min_data - 10, 
                     color="#1f77b4", alpha=0.1)
 
-    # グラフの高さ（y軸）をデータに合わせて動的に設定
-    y_min = df['tide_level'].min()
-    y_max = df['tide_level'].max()
-    padding = (y_max - y_min) * 0.2 if y_max != y_min else 10
-    ax.set_ylim(y_min - padding, y_max + padding)
+    # 4. y軸の範囲設定（数値表示用に上部に余白を持たせる）
+    y_max_data = df['tide_level'].max()
+    y_range = y_max_data - y_min_data if y_max_data != y_min_data else 100
+    ax.set_ylim(y_min_data - (y_range * 0.1), y_max_data + (y_range * 0.3))
     
-    ax.set_ylabel("Tide (cm)", fontsize=10)
+    ax.set_ylabel("Tide (cm)", fontsize=label_fs)
     ax.grid(True, axis='y', linestyle='--', alpha=0.5)
+
+    # 5. 各時刻の潮位数値を描画（気温グラフと同一ロジック）
+    for i in range(len(df)):
+        dt = df['time'].iloc[i]
+        tide = df['tide_level'].iloc[i]
+        
+        # 0時、または3の倍数の時刻のみ数値を表示
+        if not pd.isna(tide) and (dt.hour % 3 == 0):
+            # Xは時刻、Yは枠のすぐ上(1.02)に固定
+            ax.text(
+                dt, 
+                1.02, 
+                f"{tide:.0f}", 
+                ha='center', 
+                va='bottom', 
+                fontsize=label_fs,
+                color="#1f77b4",
+                transform=ax.get_xaxis_transform(), # Y軸を0〜1の相対位置にする
+                clip_on=False                       # 枠外への描画を許可
+            )
 
 # ======================================================================================
 # 12. 高解像度グラフ画像を生成するサブルーチン
