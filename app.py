@@ -522,33 +522,36 @@ def render_temp_line_chart(ax, df):
             )
 
 # ======================================================================================
-# 11. 潮位曲線グラフを描画するサブルーチン（Open-Meteo完結・独立版）
+# 11. 潮位曲線グラフを描画するサブルーチン（全世界対応・距離算出版）
 # ======================================================================================
 def render_tide_curve_chart(ax, df):
     """
     Open-Meteo Marine APIから潮位を取得し、グラフを描画します。
-    親側の構造(12番)を一切汚さず、この関数内で完結させることでエラーを根絶します。
+    全世界の海岸線に対応するため、8方向スキャンを行い、ヒット地点までの距離を明示します。
     """
     import requests
     import pandas as pd
     import numpy as np
     import time
 
-    # dfの属性から緯度経度を取得
     lat = df.attrs.get('lat', 35.0)
     lon = df.attrs.get('lon', 135.0)
     
-    # あなたの df['time'] を基準に期間を設定
     start_str = df['time'].iloc[0].strftime('%Y-%m-%d')
     end_str = df['time'].iloc[-1].strftime('%Y-%m-%d')
 
     tide_levels = None
-    is_nearby = False
+    info_text = ""
     
-    # 地点スキャン：自地点から近傍へ段階的に探索
-    search_offsets = [(0,0), (0.05,0), (-0.05,0), (0,0.05), (0,-0.05), (0.1,0), (-0.1,0)]
-    
-    for i, (d_lat, d_lon) in enumerate(search_offsets):
+    # 全方位スキャン設定（全世界対応）
+    # 0.05度刻みで最大0.25度（約25km）まで同心円状に探索
+    steps = [0.05, 0.1, 0.15, 0.2, 0.25]
+    offsets = [(0, 0)] # まず自地点
+    for s in steps:
+        # 8方向（東西南北 + 斜め4方向）
+        offsets.extend([(s, 0), (-s, 0), (0, s), (0, -s), (s, s), (s, -s), (-s, s), (-s, -s)])
+
+    for i, (d_lat, d_lon) in enumerate(offsets):
         url = "https://marine-api.open-meteo.com/v1/marine"
         params = {
             "latitude": lat + d_lat, "longitude": lon + d_lon,
@@ -562,23 +565,24 @@ def render_tide_curve_chart(ax, df):
                 api_h = data.get("hourly", {}).get("sea_level_height_msl", [])
                 
                 if api_h and any(v is not None for v in api_h):
-                    # APIデータをDF化
+                    # 物理距離の算出（km）
+                    dist_km = round(np.sqrt((d_lat * 111)**2 + (d_lon * 111 * np.cos(np.radians(lat)))**2), 1)
+                    if i > 0:
+                        # 全世界対応：特定の方角ではなく、指定地点からの直線距離で表示
+                        info_text = f"※指定地点から約{dist_km}km離れた海域の潮位データを表示しています。"
+                    
+                    # 照合処理（t_naiveロジック）
                     df_api = pd.DataFrame({
-                        "api_t": pd.to_datetime(data["hourly"]["time"]),
-                        "h": api_h
+                        "api_t": pd.to_datetime(data["hourly"]["time"]), "h": api_h
                     })
                     df_api["api_t"] = df_api["api_t"].dt.tz_localize(None)
                     
-                    # 照合ロジック：あなたの t_naive 方式を完全再現
                     matched = []
                     for t in df['time']:
                         t_naive = t.replace(tzinfo=None) if hasattr(t, 'tzinfo') and t.tzinfo is not None else t
                         row = df_api[df_api["api_t"] == t_naive]
-                        val = row.iloc[0]["h"] if not row.empty else np.nan
-                        matched.append(val)
-                    
+                        matched.append(row.iloc[0]["h"] if not row.empty else np.nan)
                     tide_levels = matched
-                    is_nearby = (i > 0)
                     break
         except:
             continue
@@ -587,40 +591,34 @@ def render_tide_curve_chart(ax, df):
     label_fs = CONFIG.get("LABEL_SIZE", 10)
     tide_color = "#1f77b4"
 
-    # 海域外の処理：グラフを消してメッセージのみ
+    # データがない場合（内陸深部など）
     if tide_levels is None:
         ax.set_axis_off()
-        ax.text(0.5, 0.5, "※海域外のため潮位データはありません", 
-                transform=ax.transAxes, color="gray", fontsize=label_fs,
-                ha='center', va='center')
+        ax.text(0.5, 0.5, "※近傍に海域がないため潮位データはありません", 
+                transform=ax.transAxes, color="gray", fontsize=label_fs, ha='center', va='center')
         return
 
-    # データがある場合の描画
+    # 描画処理
     df['tide_cm'] = [v * 100 if v is not None else np.nan for v in tide_levels]
-
-    # 曲線とマーカー（3時間毎）
-    ax.plot(df['time'], df['tide_cm'], color=tide_color, linewidth=2, 
-            marker='o', markersize=3, markevery=3)
+    ax.plot(df['time'], df['tide_cm'], color=tide_color, linewidth=2, marker='o', markersize=3, markevery=3)
     
     y_min, y_max = df['tide_cm'].min(), df['tide_cm'].max()
     ax.fill_between(df['time'], df['tide_cm'], y_min - 50, color=tide_color, alpha=0.1)
-
     ax.set_ylim(y_min - 20, y_max + 40)
     ax.set_ylabel("潮位 (cm)", fontsize=label_fs)
     ax.grid(True, axis='y', linestyle='--', alpha=0.5)
 
-    # 数値ラベル（3時間毎、整数）
+    # 数値ラベル
     for i in range(0, len(df), 3):
         dt, val = df['time'].iloc[i], df['tide_cm'].iloc[i]
         if not pd.isna(val):
-            ax.text(dt, 1.05, f"{val:.0f}", ha='center', va='bottom', 
-                    color=tide_color, fontsize=label_fs, transform=ax.get_xaxis_transform())
+            ax.text(dt, 1.05, f"{val:.0f}", ha='center', va='bottom', color=tide_color, 
+                    fontsize=label_fs, transform=ax.get_xaxis_transform())
 
-    # 注意書き（グラフの真下）
-    if is_nearby:
-        ax.text(0.0, -0.18, "※指定地点が陸地のため、近傍海域の潮位データを表示しています。", 
-                transform=ax.transAxes, color="#d62728", fontsize=label_fs - 1,
-                ha='left', va='top')
+    # メッセージ表示位置（x軸ラベルの2行分下：y=-0.32付近）
+    if info_text:
+        ax.text(0.0, -0.32, info_text, transform=ax.transAxes, color="#d62728", 
+                fontsize=label_fs - 1, ha='left', va='top')
 
 # ======================================================================================
 # 12. 高解像度グラフ画像を生成するサブルーチン（完全復旧版）
@@ -1817,7 +1815,7 @@ def render_footer_info(danger_v):
             <span style="color: #d62728;">■</span> 10m/s以上 (赤) &nbsp;&nbsp; 
             <span style="color: #d62728; font-weight: bold;">---</span> <span style="font-size: 0.9em;">[赤点線: 危険風速ライン {danger_v}m/s]</span><br>
             <div style="margin-top: 4px; border-top: 1px solid #ddd; padding-top: 4px;">
-                <small style="color: #666;">※青・橙は、詳細設定で選択した風向のみ色分け表示されます。</small>
+                <small style="color: #666;">※青・橙は、詳細設定で選択した色付風向のみ表示</small>
             </div>
         </div>
 
