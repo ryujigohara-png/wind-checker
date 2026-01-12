@@ -522,89 +522,81 @@ def render_temp_line_chart(ax, df):
             )
 
 # ======================================================================================
-# 11. 潮位曲線グラフを描画するサブルーチン（全世界対応・距離算出版）
+# 11. 潮位曲線グラフを描画するサブルーチン（文言修正・実座標距離検閲版）
 # ======================================================================================
 def render_tide_curve_chart(ax, df):
     """
-    Open-Meteo Marine APIから潮位を取得し、グラフを描画します。
-    全世界の海岸線に対応するため、8方向スキャンを行い、ヒット地点までの距離を明示します。
+    Open-Meteo Marine APIから潮位を取得。
+    APIが返した実座標と指定地点の距離を算出し、30km以上の場合は表示を遮断します。
     """
     import requests
     import pandas as pd
     import numpy as np
-    import time
 
     lat = df.attrs.get('lat', 35.0)
     lon = df.attrs.get('lon', 135.0)
-    
     start_str = df['time'].iloc[0].strftime('%Y-%m-%d')
     end_str = df['time'].iloc[-1].strftime('%Y-%m-%d')
 
     tide_levels = None
     info_text = ""
     
-    # 全方位スキャン設定（全世界対応）
-    # 0.05度刻みで最大0.25度（約25km）まで同心円状に探索
-    steps = [0.05, 0.1, 0.15, 0.2, 0.25]
-    offsets = [(0, 0)] # まず自地点
-    for s in steps:
-        # 8方向（東西南北 + 斜め4方向）
-        offsets.extend([(s, 0), (-s, 0), (0, s), (0, -s), (s, s), (s, -s), (-s, s), (-s, -s)])
+    url = "https://marine-api.open-meteo.com/v1/marine"
+    params = {
+        "latitude": lat, "longitude": lon,
+        "hourly": "sea_level_height_msl", "start_date": start_str, "end_date": end_str, "timezone": "auto"
+    }
 
-    for i, (d_lat, d_lon) in enumerate(offsets):
-        url = "https://marine-api.open-meteo.com/v1/marine"
-        params = {
-            "latitude": lat + d_lat, "longitude": lon + d_lon,
-            "hourly": "sea_level_height_msl",
-            "start_date": start_str, "end_date": end_str, "timezone": "auto"
-        }
-        try:
-            response = requests.get(url, params=params, timeout=5)
-            if response.status_code == 200:
-                data = response.json()
-                api_h = data.get("hourly", {}).get("sea_level_height_msl", [])
+    try:
+        response = requests.get(url, params=params, timeout=5)
+        if response.status_code == 200:
+            data = response.json()
+            # APIが実際に採用した地点の座標（実座標）
+            res_lat = data.get("latitude", lat)
+            res_lon = data.get("longitude", lon)
+            api_h = data.get("hourly", {}).get("sea_level_height_msl", [])
+            
+            if api_h and any(v is not None for v in api_h):
+                # 指定地点とAPI実座標の直線距離を算出（km）
+                d_lat = res_lat - lat
+                d_lon = res_lon - lon
+                dist_km = np.sqrt((d_lat*111.3)**2 + (d_lon*111.3*np.cos(np.radians(lat)))**2)
                 
-                if api_h and any(v is not None for v in api_h):
-                    # 物理距離の算出（km）
-                    dist_km = round(np.sqrt((d_lat * 111)**2 + (d_lon * 111 * np.cos(np.radians(lat)))**2), 1)
-                    if i > 0:
-                        # 全世界対応：特定の方角ではなく、指定地点からの直線距離で表示
-                        info_text = f"※指定地点から約{dist_km}km離れた海域の潮位データを表示しています。"
+                # 30km以上離れている場合は、遠方のデータの無理な紐付けと判断し遮断
+                if dist_km > 30.0:
+                    tide_levels = None
+                else:
+                    # 30km以内なら方位と距離を算出
+                    angle = np.rad2deg(np.arctan2(d_lon * np.cos(np.radians(lat)), d_lat))
+                    directions = ["北", "北東", "東", "南東", "南", "南西", "西", "北西", "北"]
+                    dir_idx = int((angle + 22.5) % 360 // 45)
+                    res_dir = directions[dir_idx]
+
+                    if dist_km > 0.1:
+                        info_text = f"※指定地点の{res_dir}約{dist_km:.1f}kmにある地点の潮汐データを表示しています。"
                     
-                    # 照合処理（t_naiveロジック）
-                    df_api = pd.DataFrame({
-                        "api_t": pd.to_datetime(data["hourly"]["time"]), "h": api_h
-                    })
+                    df_api = pd.DataFrame({"api_t": pd.to_datetime(data["hourly"]["time"]), "h": api_h})
                     df_api["api_t"] = df_api["api_t"].dt.tz_localize(None)
-                    
                     matched = []
                     for t in df['time']:
                         t_naive = t.replace(tzinfo=None) if hasattr(t, 'tzinfo') and t.tzinfo is not None else t
                         row = df_api[df_api["api_t"] == t_naive]
                         matched.append(row.iloc[0]["h"] if not row.empty else np.nan)
                     tide_levels = matched
-                    break
-        except:
-            continue
-        time.sleep(0.01)
+    except:
+        pass
 
     label_fs = CONFIG.get("LABEL_SIZE", 10)
-    tide_color = "#1f77b4"
-
-    # データがない場合（内陸深部など）
+    # ご指定通りの文言に修正
     if tide_levels is None:
         ax.set_axis_off()
-        ax.text(0.5, 0.5, "※近傍に海域がないため潮位データはありません", 
+        ax.text(0.5, 0.5, "※指定地点の近傍(30km圏内)に有効な海域データがないため\n表示されません", 
                 transform=ax.transAxes, color="gray", fontsize=label_fs, ha='center', va='center')
         return
 
     # 描画処理
     df['tide_cm'] = [v * 100 if v is not None else np.nan for v in tide_levels]
-    ax.plot(df['time'], df['tide_cm'], color=tide_color, linewidth=2, marker='o', markersize=3, markevery=3)
-    
-    y_min, y_max = df['tide_cm'].min(), df['tide_cm'].max()
-    ax.fill_between(df['time'], df['tide_cm'], y_min - 50, color=tide_color, alpha=0.1)
-    ax.set_ylim(y_min - 20, y_max + 40)
+    ax.plot(df['time'], df['tide_cm'], color="#1f77b4", linewidth=2, marker='o', markersize=3, markevery=3)
     ax.set_ylabel("潮位 (cm)", fontsize=label_fs)
     ax.grid(True, axis='y', linestyle='--', alpha=0.5)
 
@@ -612,12 +604,12 @@ def render_tide_curve_chart(ax, df):
     for i in range(0, len(df), 3):
         dt, val = df['time'].iloc[i], df['tide_cm'].iloc[i]
         if not pd.isna(val):
-            ax.text(dt, 1.05, f"{val:.0f}", ha='center', va='bottom', color=tide_color, 
+            ax.text(dt, 1.05, f"{val:.0f}", ha='center', va='bottom', color="#1f77b4", 
                     fontsize=label_fs, transform=ax.get_xaxis_transform())
 
-    # メッセージ表示位置（x軸ラベルの2行分下：y=-0.32付近）
+    # 注意書き表示位置（y=-0.85：日付ラベルの完全に下に配置）
     if info_text:
-        ax.text(0.0, -0.32, info_text, transform=ax.transAxes, color="#d62728", 
+        ax.text(0.0, -0.85, info_text, transform=ax.transAxes, color="#d62728", 
                 fontsize=label_fs - 1, ha='left', va='top')
 
 # ======================================================================================
