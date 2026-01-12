@@ -169,34 +169,46 @@ def fetch_weather_data(lat, lon, days):
         return None
 
 # ======================================================================================
-# 4. 潮位レベルを計算（Open-Meteo API連携・広域スキップ探索版）
+# 4. 潮位レベルを計算（Open-Meteo API連携・型エラー/広域探索 対策版）
 # ======================================================================================
 def get_tide_level(times, lat, lon):
     """
     Open-Meteo Marine APIを使用して潮位データを取得します。
-    螺旋スキャンのステップ幅を「倍々」で広げることで、
-    入り組んだ湾内からでも数回のリクエストで「外海」のデータを確実に特定します。
+    引数lat/lonがLocalStorage由来の文字列であっても確実に数値計算できるよう修正。
+    これにより、太平洋でも湾内でも不当な NOT_SEA 判定を回避します。
     """
     import requests
     import pandas as pd
     import numpy as np
     import time
 
+    # サブルーチン概要：
+    # 1. 入力値の型を数値に強制変換
+    # 2. 螺旋探索（0kmから約22kmまで）を行い、最初に「海」のデータが返った地点を採用
+    # 3. 取得した潮位データを指定された時間軸(times)に正確にマッピング
+
     if not times or len(times) == 0:
         return []
+
+    # --- 【重要】型エラー対策：lat, lon を確実に数値(float)に変換 ---
+    try:
+        f_lat = float(lat)
+        f_lon = float(lon)
+    except (ValueError, TypeError):
+        # 万が一数値に変換できない場合は、ここで終了
+        return "NOT_SEA"
 
     start_date = times[0].strftime('%Y-%m-%d')
     end_date = times[-1].strftime('%Y-%m-%d')
 
-    # 探索のステップ幅を指数関数的に広げる（効率化と汎用性の両立）
-    # 0km -> 約2.2km -> 約5.5km -> 約11km -> 約22km
+    # 探索のステップ幅（APIの仕様に合わせた効率的な間隔）
     steps = [0.0, 0.02, 0.05, 0.1, 0.2]
     search_offsets = []
     for s in steps:
         if s == 0.0:
             search_offsets.append((0.0, 0.0))
         else:
-            # 八方位を探索
+            # 八方位（東西南北＋斜め）を効率よくスキャン
             search_offsets.extend([
                 (s, 0), (-s, 0), (0, s), (0, -s),
                 (s, s), (s, -s), (-s, s), (-s, -s)
@@ -205,9 +217,11 @@ def get_tide_level(times, lat, lon):
     res_json = None
     success = False
 
+    # 探索ループ
     for d_lat, d_lon in search_offsets:
-        target_lat = lat + d_lat
-        target_lon = lon + d_lon
+        # 数値(f_lat)同士で計算するため、TypeErrorは発生しません
+        target_lat = f_lat + d_lat
+        target_lon = f_lon + d_lon
         
         url = "https://marine-api.open-meteo.com/v1/marine"
         params = {
@@ -221,23 +235,28 @@ def get_tide_level(times, lat, lon):
 
         try:
             response = requests.get(url, params=params, timeout=3)
-            data = response.json()
-            
-            # データの有効性チェック（数値が1つでもあれば採用）
-            if "hourly" in data and isinstance(data["hourly"].get("tide_height"), list):
-                t_list = data["hourly"]["tide_height"]
-                if len(t_list) > 0 and any(v is not None for v in t_list[:24]):
-                    res_json = data
-                    success = True
-                    break
+            if response.status_code == 200:
+                data = response.json()
+                # データの有効性チェック（数値が1つでもあれば「海」と判定）
+                if "hourly" in data and isinstance(data["hourly"].get("tide_height"), list):
+                    t_list = data["hourly"]["tide_height"]
+                    if len(t_list) > 0 and any(v is not None for v in t_list[:24]):
+                        res_json = data
+                        success = True
+                        break # 海が見つかったので探索終了
         except Exception:
+            # ネットワークエラー等は無視して次の地点を試行
             continue
+        
+        # API負荷軽減のための微小待機
         time.sleep(0.01)
 
-    if not success:
+    # 全方位の探索（最大約22km圏内）で見つからなかった場合のみ NOT_SEA
+    if not success or res_json is None:
         return "NOT_SEA"
 
     try:
+        # APIレスポンスを既存の時間軸にマッピング
         df_api = pd.DataFrame({
             "time": pd.to_datetime(res_json["hourly"]["time"]),
             "tide_height": res_json["hourly"]["tide_height"]
@@ -254,6 +273,7 @@ def get_tide_level(times, lat, lon):
                 val = match_row.iloc[0]["tide_height"]
                 levels.append(val if val is not None else np.nan)
         return levels
+
     except Exception:
         return "NOT_SEA"
 
