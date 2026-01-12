@@ -169,13 +169,14 @@ def fetch_weather_data(lat, lon, days):
         return None
 
 # ======================================================================================
-# 4. 潮位レベルを計算（Open-Meteo Marine API 正式パラメータ版）
+# 4. 潮位レベルを計算（近傍判定フラグ対応・完全版）
 # ======================================================================================
 def get_tide_level(times, lat, lon):
     """
     Open-Meteo Marine APIを使用して潮位データを取得します。
-    API仕様に基づき、パラメータ名を sea_level_height_msl に修正。
-    NaNや型エラーを排除し、400 Bad Request を完全に防止します。
+    戻り値: (tide_data, is_nearby)
+    - tide_data: 潮位リスト または "NOT_SEA"
+    - is_nearby: 自地点(0,0)以外で取得した場合は True
     """
     import requests
     import pandas as pd
@@ -183,22 +184,22 @@ def get_tide_level(times, lat, lon):
     import time
 
     if not times or len(times) == 0:
-        return []
+        return [], False
 
-    # 1. 型変換と NaN チェック（400エラー防止）
+    # 1. 型変換と NaN チェック
     try:
         f_lat = float(lat)
         f_lon = float(lon)
         if np.isnan(f_lat) or np.isnan(f_lon):
-            return "NOT_SEA"
+            return "NOT_SEA", False
     except:
-        return "NOT_SEA"
+        return "NOT_SEA", False
 
     start_date = times[0].strftime('%Y-%m-%d')
     end_date = times[-1].strftime('%Y-%m-%d')
 
-    # 2. 探索ステップ（広域スキャン）
-    # 自地点から約22km圏内まで探します
+    # 2. 探索ステップの設定
+    # 最初の (0.0, 0.0) が「自地点」です
     steps = [0.0, 0.05, 0.1, 0.2]
     search_offsets = []
     for s in steps:
@@ -208,10 +209,10 @@ def get_tide_level(times, lat, lon):
             search_offsets.extend([(s, 0), (-s, 0), (0, s), (0, -s)])
 
     res_json = None
-    success = False
+    is_nearby = False
 
     # 3. APIリクエスト実行
-    for d_lat, d_lon in search_offsets:
+    for i, (d_lat, d_lon) in enumerate(search_offsets):
         target_lat = round(f_lat + d_lat, 4)
         target_lon = round(f_lon + d_lon, 4)
         
@@ -219,7 +220,7 @@ def get_tide_level(times, lat, lon):
         params = {
             "latitude": target_lat,
             "longitude": target_lon,
-            "hourly": "sea_level_height_msl",  # ← ここを正式名称に修正
+            "hourly": "sea_level_height_msl",
             "start_date": start_date,
             "end_date": end_date,
             "timezone": "auto"
@@ -229,24 +230,24 @@ def get_tide_level(times, lat, lon):
             response = requests.get(url, params=params, timeout=5)
             if response.status_code == 200:
                 data = response.json()
-                # 修正したパラメータ名でデータを抽出
                 t_list = data.get("hourly", {}).get("sea_level_height_msl", [])
                 if t_list and any(v is not None for v in t_list[:24]):
                     res_json = data
-                    success = True
+                    # インデックス i > 0 であれば「近傍」と判定
+                    is_nearby = (i > 0)
                     break
         except:
             continue
         time.sleep(0.02)
 
-    if not success or res_json is None:
-        return "NOT_SEA"
+    if not res_json:
+        return "NOT_SEA", False
 
     # 4. データマッピング
     try:
         df_api = pd.DataFrame({
             "time": pd.to_datetime(res_json["hourly"]["time"]),
-            "tide_height": res_json["hourly"]["sea_level_height_msl"] # 内部名は tide_height として扱う
+            "tide_height": res_json["hourly"]["sea_level_height_msl"]
         })
         df_api["time"] = df_api["time"].dt.tz_localize(None)
 
@@ -259,9 +260,10 @@ def get_tide_level(times, lat, lon):
                 levels.append(val if val is not None else np.nan)
             else:
                 levels.append(np.nan)
-        return levels
+        
+        return levels, is_nearby
     except:
-        return "NOT_SEA"
+        return "NOT_SEA", False
 
 #==========================================================================================
 # 5. 天気コードからテキストと色を取得するサブルーチン
@@ -512,73 +514,74 @@ def render_temp_line_chart(ax, df):
                 transform=ax.get_xaxis_transform(), # Y軸の値を0(下端)〜1(上端)の相対位置にする
                 clip_on=False                       # 枠外への描画を許可
             )
+
 #==========================================================================================
-# 11. 潮位曲線グラフを描画するサブルーチン（cm整数換算・マーカー・目盛り対応版）
+# 11. 潮位曲線グラフを描画するサブルーチン（3ステート・完全日本語化版）
 #==========================================================================================
-def render_tide_curve_chart(ax, df, tide_data):
+def render_tide_curve_chart(ax, df, tide_data, is_nearby=False):
     """
     潮位データを曲線グラフとして描画します。
-    1. 単位をmからcmに換算（100倍）し、整数で表示。
-    2. 気温グラフと統一し、折れ線に●マーカー（3時間毎）を付与。
-    3. Y軸に目盛り数字を表示し、統一感のあるグラフにします。
+    1. 【データなし】: グラフを描画せず、日本語で警告を表示。
+    2. 【自地点データ】: 通常のグラフ描画。
+    3. 【近傍データ】: グラフ描画＋枠外下部に注意書きを表示。
     """
     import numpy as np
     import pandas as pd
 
-    # 1. 潮位データの有効性判定
+    # --- 状態③：データが取れなかった場合 (NOT_SEA) ---
     if tide_data == "NOT_SEA":
-        ax.text(0.02, 0.5, "Not in sea area. No tide data.", 
-                transform=ax.transAxes, color="gray", fontsize=12,
-                ha='left', va='center', fontweight='bold')
+        # グラフを描かず、中央にメッセージを表示
+        ax.text(0.5, 0.5, "海域外のため、潮位データが取得できません。", 
+                transform=ax.transAxes, color="gray", fontsize=11,
+                ha='center', va='center', fontweight='bold')
+        # 軸と枠を整理（目盛りを消す）
         ax.set_yticks([])
+        ax.set_xticks([])
+        for spine in ax.spines.values():
+            spine.set_visible(False)
         return
 
-    # 2. 単位換算（m -> cm）
-    # APIのm単位を100倍してcmに変換
+    # --- 状態①・②共通：データのマッピングと換算 ---
     tide_cm = [v * 100 if v is not None else np.nan for v in tide_data]
     df['tide_level'] = tide_cm
     
     label_fs = CONFIG.get("LABEL_SIZE", 10)
-    tide_color = "#1f77b4" # 潮位用の青色
+    tide_color = "#1f77b4"
     
-    # 3. 潮位曲線の描画（気温グラフと統一：●マーカー、3時間毎）
+    # 潮位曲線の描画（●マーカー、3時間毎）
     ax.plot(df['time'], df['tide_level'], color=tide_color, linewidth=2, 
-            marker='o', markersize=3, markevery=3, label="Tide Level")
+            marker='o', markersize=3, markevery=3)
     
     # 塗りつぶし（海面イメージ）
     y_min_data = df['tide_level'].min()
     ax.fill_between(df['time'], df['tide_level'], y_min_data - 50, 
                     color=tide_color, alpha=0.1)
 
-    # 4. y軸の設定
+    # y軸の設定
     y_max_data = df['tide_level'].max()
     y_range = y_max_data - y_min_data if y_max_data != y_min_data else 100
-    # 上部に数値表示用の余白(30%)、下部に10%の余白を確保
     ax.set_ylim(y_min_data - (y_range * 0.1), y_max_data + (y_range * 0.3))
     
-    ax.set_ylabel("Tide (cm)", fontsize=label_fs)
-    ax.tick_params(axis='y', labelsize=label_fs) # Y軸の目盛り数字を表示
+    ax.set_ylabel("潮位 (cm)", fontsize=label_fs)
+    ax.tick_params(axis='y', labelsize=label_fs)
     ax.grid(True, axis='y', linestyle='--', alpha=0.5)
 
-    # 5. 各時刻の潮位数値（cm整数）を枠外上部に描画
+    # 各時刻の潮位数値（cm整数）を枠外上部に描画
     for i in range(len(df)):
         dt = df['time'].iloc[i]
         tide = df['tide_level'].iloc[i]
-        
-        # 0時、または3の倍数の時刻のみ表示
         if not pd.isna(tide) and (dt.hour % 3 == 0):
-            # 100倍した値を整数（.0f）で表示
-            ax.text(
-                dt, 
-                1.02, 
-                f"{tide:.0f}", 
-                ha='center', 
-                va='bottom', 
-                fontsize=label_fs,
-                color=tide_color,
-                transform=ax.get_xaxis_transform(),
-                clip_on=False
-            )
+            ax.text(dt, 1.02, f"{tide:.0f}", 
+                    ha='center', va='bottom', fontsize=label_fs,
+                    color=tide_color, transform=ax.get_xaxis_transform(),
+                    clip_on=False)
+
+    # --- 状態②：近くのポイントでデータが取れた場合の注意書き ---
+    if is_nearby:
+        # グラフ枠の下部（左寄せ）に表示。transform=ax.transAxes で位置固定
+        ax.text(0.0, -0.15, "※指定地点が陸地のため、近傍海域の潮位データを表示しています。", 
+                transform=ax.transAxes, color="#d62728", fontsize=label_fs - 1,
+                ha='left', va='top', fontweight='normal')
 
 # ======================================================================================
 # 12. 高解像度グラフ画像を生成するサブルーチン
@@ -626,7 +629,7 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
     tide_data = None
     if design_params.get("show_tide", True):
         # APIから潮位を取得（時刻リストと緯度経度を渡す）
-        tide_data = get_tide_level(df['time'].tolist(), lat, lon)
+        tide_data, is_nearby = get_tide_level(df['time'], lat, lon)
         active_plots.append("tide")
     
     if not active_plots: return None, (0, 0), start_idx, df
@@ -653,7 +656,7 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
         idx += 1
     if "tide" in active_plots:
         # 潮位グラフの描画（tide_dataの結果によって表示を分岐）
-        render_tide_curve_chart(axes[idx], df, tide_data)
+        render_tide_curve_chart(ax, df, tide_data, is_nearby=is_nearby)
         idx += 1
 
     for ax in axes:
@@ -1779,13 +1782,17 @@ def render_footer_info(danger_v):
     # 以前のコードの意匠を継承し、ユーザーが設定した危険風速(danger_v)を動的に表示します
     st.markdown(
         f"""
-        <div style="padding: 10px; border-radius: 5px; background-color: #f0f2f6; margin-bottom: 10px;">
+        <div style="padding: 10px; border-radius: 5px; background-color: #f0f2f6; margin-bottom: 10px; line-height: 1.6;">
             <span style="font-weight: bold;">📊 凡例:</span><br>
             <span style="color: #1f77b4;">■</span> 3-5m/s (青) &nbsp;&nbsp; 
             <span style="color: #ff7f0e;">■</span> 5-10m/s (橙) &nbsp;&nbsp; 
             <span style="color: #d62728;">■</span> 10m/s以上 (赤) &nbsp;&nbsp; 
-            --- [点線: 危険風速ライン {danger_v}m/s]
+            <span style="color: #d62728; font-weight: bold;">---</span> <span style="font-size: 0.9em;">[赤点線: 危険風速ライン {danger_v}m/s]</span><br>
+            <div style="margin-top: 4px; border-top: 1px solid #ddd; padding-top: 4px;">
+                <small style="color: #666;">※青・橙は、詳細設定で選択した風向のみ色分け表示されます。</small>
+            </div>
         </div>
+
         """,
         unsafe_allow_html=True
     )
