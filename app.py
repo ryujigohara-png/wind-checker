@@ -169,12 +169,13 @@ def fetch_weather_data(lat, lon, days):
         return None
 
 # ======================================================================================
-# 4. 潮位レベルを計算（Open-Meteo API連携・螺旋スキャン版）
+# 4. 潮位レベルを計算（Open-Meteo API連携・効率的汎用スキャン版）
 # ======================================================================================
 def get_tide_level(times, lat, lon):
     """
     Open-Meteo Marine APIを使用して潮位データを取得します。
-    指定地点が陸地判定（null）の場合、周囲を螺旋状にスキャンして最も近い海洋ポイントを探します。
+    リクエスト回数を抑えつつ、日本全国の複雑な海岸線でも「最も近い海」を
+    段階的な螺旋探索（0km -> 3.3km -> 7.7km -> 16.5km）で特定します。
     """
     import requests
     import pandas as pd
@@ -184,28 +185,28 @@ def get_tide_level(times, lat, lon):
     if not times or len(times) == 0:
         return []
 
-    # 取得範囲の決定
+    # 1. 取得範囲の決定
     start_date = times[0].strftime('%Y-%m-%d')
     end_date = times[-1].strftime('%Y-%m-%d')
 
-    # 螺旋状の探索オフセットを生成（0.01度 = 約1.1km）
-    # (d_lat, d_lon) のリストを作成
-    search_offsets = [(0.0, 0.0)]  # まずは指定地点
-    
-    # 探索の深さ（step 1は周囲8方向、step 2はその外側...）
-    for step in range(1, 6):  # 最大5段階（約5km強）まで探索
-        d = step * 0.015
-        # 各ステップでの探索地点を追加（東西南北 + 斜め）
-        offsets = [
-            (d, 0), (-d, 0), (0, d), (0, -d),  # 東西南北
-            (d, d), (d, -d), (-d, d), (-d, -d) # 斜め
-        ]
-        search_offsets.extend(offsets)
+    # 2. 効率的な探索パターンの定義 (緯度・経度のオフセット)
+    # ステップ幅を広げることで、少ない回数で広範囲をカバーします
+    steps = [0.0, 0.03, 0.07, 0.15]
+    search_offsets = []
+    for s in steps:
+        if s == 0.0:
+            search_offsets.append((0.0, 0.0))
+        else:
+            # 四方（西・東・南・北）と斜め4方向を順次追加
+            search_offsets.extend([
+                (0, -s), (0, s), (-s, 0), (s, 0),
+                (-s, -s), (-s, s), (s, -s), (s, s)
+            ])
 
     res_json = None
     success = False
 
-    # 順番にAPIリクエストを試行
+    # 3. 探索リクエストの実行
     for d_lat, d_lon in search_offsets:
         target_lat = lat + d_lat
         target_lon = lon + d_lon
@@ -221,46 +222,46 @@ def get_tide_level(times, lat, lon):
         }
 
         try:
-            # 短いインターバルでリクエスト（API負荷に配慮）
+            # タイムアウトを短めに設定し、全体の処理速度を維持
             response = requests.get(url, params=params, timeout=3)
             data = response.json()
             
-            # データが存在し、かつ最初の要素が有効（nullでない）か厳密にチェック
-            if "hourly" in data and data["hourly"].get("tide_height") is not None:
-                tide_list = data["hourly"]["tide_height"]
-                if len(tide_list) > 0 and tide_list[0] is not None:
+            # リストの最初の12時間分に有効な数値（None以外）が含まれているか厳格にチェック
+            if "hourly" in data and isinstance(data["hourly"].get("tide_height"), list):
+                t_list = data["hourly"]["tide_height"]
+                if len(t_list) > 0 and any(v is not None for v in t_list[:12]):
                     res_json = data
                     success = True
-                    break # 有効な地点が見つかれば即座に終了
+                    break # 海が見つかれば即座にループを抜ける
         except Exception:
             continue
         
-        # 連続リクエストによるブロック回避のため極短時間待機
-        time.sleep(0.05)
+        # 連続リクエストによる負荷制限を回避
+        time.sleep(0.01)
 
+    # 全方位探索しても見つからない場合
     if not success or res_json is None:
         return "NOT_SEA"
 
+    # 4. 取得したデータを既存の時間軸(times)に正確にマッピング
     try:
-        # APIからのレスポンスをDataFrame化
         df_api = pd.DataFrame({
             "time": pd.to_datetime(res_json["hourly"]["time"]),
             "tide_height": res_json["hourly"]["tide_height"]
         })
-
-        # 現地時間の数字をそのままNaiveで保持
+        # 既存の fetch_weather_data の仕様に合わせ、タイムゾーン情報を持たないNaive形式へ
         df_api["time"] = df_api["time"].dt.tz_localize(None)
 
-        # 引数 times の各時刻にマッピング
         levels = []
         for t in times:
             if pd.isna(t):
                 levels.append(np.nan)
                 continue
             
+            # 比較用に引数 t を Naive形式へ統一
             t_naive = t.replace(tzinfo=None) if hasattr(t, 'tzinfo') and t.tzinfo is not None else t
-            match_row = df_api[df_api["time"] == t_naive]
             
+            match_row = df_api[df_api["time"] == t_naive]
             if match_row.empty:
                 levels.append(np.nan)
                 continue
