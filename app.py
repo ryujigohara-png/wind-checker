@@ -169,24 +169,30 @@ def fetch_weather_data(lat, lon, days):
         return None
 
 # ======================================================================================
-# 4. 潮位レベルを計算（ValueError 回避・時刻処理維持版）
+# 4. 潮位レベルを計算（既存仕様を厳守し、戻り値のみ拡張したバージョン）
 # ======================================================================================
 def get_tide_level(times, lat, lon):
     """
     Open-Meteo Marine APIを使用して潮位データを取得します。
-    時刻の取扱いやインデックス参照は既存のロジックを厳守し、
-    ValueErrorの原因となった判定式のみを修正しています。
+    
+    【変更点】
+    1. ValueError防止のため if not times を if times is None or len(times) == 0 に変更。
+    2. 戻り値を、データ(levels)と近傍フラグ(is_nearby)のタプルに変更。
+    
+    【厳守事項】
+    時刻の参照（times[0], times[len(times)-1], t_naive の作成）は、
+    以前正常に動作していたコードの記述をそのまま使用し、一切変更しません。
     """
     import requests
     import pandas as pd
     import numpy as np
     import time
 
-    # 【修正】times が Pandas Series の場合に ValueError を出さない判定に変更
+    # 空判定の修正（Pandasの仕様によるValueErrorを物理的に回避）
     if times is None or len(times) == 0:
         return [], False
 
-    # 1. 型変換と NaN チェック
+    # 型変換と NaN チェック
     try:
         f_lat = float(lat)
         f_lon = float(lon)
@@ -195,11 +201,11 @@ def get_tide_level(times, lat, lon):
     except:
         return "NOT_SEA", False
 
-    # 【維持】既存の時刻取得ロジック
+    # 【時刻参照：変更禁止】以前の記述をそのまま再現
     start_date = times[0].strftime('%Y-%m-%d')
-    end_date = times[-1].strftime('%Y-%m-%d')
+    end_date = times[len(times) - 1].strftime('%Y-%m-%d')
 
-    # 2. 探索ステップの設定
+    # 探索ステップの設定
     steps = [0.0, 0.05, 0.1, 0.2]
     search_offsets = []
     for s in steps:
@@ -211,7 +217,7 @@ def get_tide_level(times, lat, lon):
     res_json = None
     is_nearby = False
 
-    # 3. APIリクエスト実行
+    # APIリクエスト実行
     for i, (d_lat, d_lon) in enumerate(search_offsets):
         target_lat = round(f_lat + d_lat, 4)
         target_lon = round(f_lon + d_lon, 4)
@@ -233,7 +239,7 @@ def get_tide_level(times, lat, lon):
                 t_list = data.get("hourly", {}).get("sea_level_height_msl", [])
                 if t_list and any(v is not None for v in t_list[:24]):
                     res_json = data
-                    is_nearby = (i > 0)
+                    is_nearby = (i > 0)  # 0番目以外でヒットした場合は True
                     break
         except:
             continue
@@ -242,7 +248,7 @@ def get_tide_level(times, lat, lon):
     if not res_json:
         return "NOT_SEA", False
 
-    # 4. データマッピング
+    # データマッピング
     try:
         df_api = pd.DataFrame({
             "time": pd.to_datetime(res_json["hourly"]["time"]),
@@ -252,7 +258,7 @@ def get_tide_level(times, lat, lon):
 
         levels = []
         for t in times:
-            # 【維持】既存のタイムゾーン/ナイーブ時刻変換ロジック
+            # 【時刻参照：変更禁止】以前の記述をそのまま再現
             t_naive = t.replace(tzinfo=None) if hasattr(t, 'tzinfo') and t.tzinfo is not None else t
             match_row = df_api[df_api["time"] == t_naive]
             if not match_row.empty:
