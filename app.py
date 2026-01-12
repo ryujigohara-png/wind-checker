@@ -521,83 +521,112 @@ def render_temp_line_chart(ax, df):
                 clip_on=False                       # 枠外への描画を許可
             )
 
-#==========================================================================================
-# 11. 潮位曲線グラフを描画するサブルーチン（3ステート・完全日本語化版）
-#==========================================================================================
-def render_tide_curve_chart(ax, df, tide_data, is_nearby=False):
+# ======================================================================================
+# 11. 潮位曲線グラフを描画するサブルーチン（Open-Meteo完結・独立版）
+# ======================================================================================
+def render_tide_curve_chart(ax, df):
     """
-    潮位データを曲線グラフとして描画します。
-    1. 【データなし】: グラフを描画せず、日本語で警告を表示。
-    2. 【自地点データ】: 通常のグラフ描画。
-    3. 【近傍データ】: グラフ描画＋枠外下部に注意書きを表示。
+    Open-Meteo Marine APIから潮位を取得し、グラフを描画します。
+    親側の構造(12番)を一切汚さず、この関数内で完結させることでエラーを根絶します。
     """
-    import numpy as np
+    import requests
     import pandas as pd
+    import numpy as np
+    import time
 
-    # --- 状態③：データが取れなかった場合 (NOT_SEA) ---
-    if tide_data == "NOT_SEA":
-        # グラフを描かず、中央にメッセージを表示
-        ax.text(0.5, 0.5, "海域外のため、潮位データが取得できません。", 
-                transform=ax.transAxes, color="gray", fontsize=11,
-                ha='center', va='center', fontweight='bold')
-        # 軸と枠を整理（目盛りを消す）
-        ax.set_yticks([])
-        ax.set_xticks([])
-        for spine in ax.spines.values():
-            spine.set_visible(False)
-        return
-
-    # --- 状態①・②共通：データのマッピングと換算 ---
-    tide_cm = [v * 100 if v is not None else np.nan for v in tide_data]
-    df['tide_level'] = tide_cm
+    # dfの属性から緯度経度を取得
+    lat = df.attrs.get('lat', 35.0)
+    lon = df.attrs.get('lon', 135.0)
     
+    # あなたの df['time'] を基準に期間を設定
+    start_str = df['time'].iloc[0].strftime('%Y-%m-%d')
+    end_str = df['time'].iloc[-1].strftime('%Y-%m-%d')
+
+    tide_levels = None
+    is_nearby = False
+    
+    # 地点スキャン：自地点から近傍へ段階的に探索
+    search_offsets = [(0,0), (0.05,0), (-0.05,0), (0,0.05), (0,-0.05), (0.1,0), (-0.1,0)]
+    
+    for i, (d_lat, d_lon) in enumerate(search_offsets):
+        url = "https://marine-api.open-meteo.com/v1/marine"
+        params = {
+            "latitude": lat + d_lat, "longitude": lon + d_lon,
+            "hourly": "sea_level_height_msl",
+            "start_date": start_str, "end_date": end_str, "timezone": "auto"
+        }
+        try:
+            response = requests.get(url, params=params, timeout=5)
+            if response.status_code == 200:
+                data = response.json()
+                api_h = data.get("hourly", {}).get("sea_level_height_msl", [])
+                
+                if api_h and any(v is not None for v in api_h):
+                    # APIデータをDF化
+                    df_api = pd.DataFrame({
+                        "api_t": pd.to_datetime(data["hourly"]["time"]),
+                        "h": api_h
+                    })
+                    df_api["api_t"] = df_api["api_t"].dt.tz_localize(None)
+                    
+                    # 照合ロジック：あなたの t_naive 方式を完全再現
+                    matched = []
+                    for t in df['time']:
+                        t_naive = t.replace(tzinfo=None) if hasattr(t, 'tzinfo') and t.tzinfo is not None else t
+                        row = df_api[df_api["api_t"] == t_naive]
+                        val = row.iloc[0]["h"] if not row.empty else np.nan
+                        matched.append(val)
+                    
+                    tide_levels = matched
+                    is_nearby = (i > 0)
+                    break
+        except:
+            continue
+        time.sleep(0.01)
+
     label_fs = CONFIG.get("LABEL_SIZE", 10)
     tide_color = "#1f77b4"
-    
-    # 潮位曲線の描画（●マーカー、3時間毎）
-    ax.plot(df['time'], df['tide_level'], color=tide_color, linewidth=2, 
+
+    # 海域外の処理：グラフを消してメッセージのみ
+    if tide_levels is None:
+        ax.set_axis_off()
+        ax.text(0.5, 0.5, "※海域外のため潮位データはありません", 
+                transform=ax.transAxes, color="gray", fontsize=label_fs,
+                ha='center', va='center')
+        return
+
+    # データがある場合の描画
+    df['tide_cm'] = [v * 100 if v is not None else np.nan for v in tide_levels]
+
+    # 曲線とマーカー（3時間毎）
+    ax.plot(df['time'], df['tide_cm'], color=tide_color, linewidth=2, 
             marker='o', markersize=3, markevery=3)
     
-    # 塗りつぶし（海面イメージ）
-    y_min_data = df['tide_level'].min()
-    ax.fill_between(df['time'], df['tide_level'], y_min_data - 50, 
-                    color=tide_color, alpha=0.1)
+    y_min, y_max = df['tide_cm'].min(), df['tide_cm'].max()
+    ax.fill_between(df['time'], df['tide_cm'], y_min - 50, color=tide_color, alpha=0.1)
 
-    # y軸の設定
-    y_max_data = df['tide_level'].max()
-    y_range = y_max_data - y_min_data if y_max_data != y_min_data else 100
-    ax.set_ylim(y_min_data - (y_range * 0.1), y_max_data + (y_range * 0.3))
-    
+    ax.set_ylim(y_min - 20, y_max + 40)
     ax.set_ylabel("潮位 (cm)", fontsize=label_fs)
-    ax.tick_params(axis='y', labelsize=label_fs)
     ax.grid(True, axis='y', linestyle='--', alpha=0.5)
 
-    # 各時刻の潮位数値（cm整数）を枠外上部に描画
-    for i in range(len(df)):
-        dt = df['time'].iloc[i]
-        tide = df['tide_level'].iloc[i]
-        if not pd.isna(tide) and (dt.hour % 3 == 0):
-            ax.text(dt, 1.02, f"{tide:.0f}", 
-                    ha='center', va='bottom', fontsize=label_fs,
-                    color=tide_color, transform=ax.get_xaxis_transform(),
-                    clip_on=False)
+    # 数値ラベル（3時間毎、整数）
+    for i in range(0, len(df), 3):
+        dt, val = df['time'].iloc[i], df['tide_cm'].iloc[i]
+        if not pd.isna(val):
+            ax.text(dt, 1.05, f"{val:.0f}", ha='center', va='bottom', 
+                    color=tide_color, fontsize=label_fs, transform=ax.get_xaxis_transform())
 
-    # --- 状態②：近くのポイントでデータが取れた場合の注意書き ---
+    # 注意書き（グラフの真下）
     if is_nearby:
-        # グラフ枠の下部（左寄せ）に表示。transform=ax.transAxes で位置固定
-        ax.text(0.0, -0.15, "※指定地点が陸地のため、近傍海域の潮位データを表示しています。", 
+        ax.text(0.0, -0.18, "※指定地点が陸地のため、近傍海域の潮位データを表示しています。", 
                 transform=ax.transAxes, color="#d62728", fontsize=label_fs - 1,
-                ha='left', va='top', fontweight='normal')
+                ha='left', va='top')
 
 # ======================================================================================
-# 12. 高解像度グラフ画像を生成するサブルーチン
+# 12. 高解像度グラフ画像を生成するサブルーチン（完全復旧版）
 # ======================================================================================
 @st.cache_data(show_spinner="グラフを生成中...", ttl=600)
 def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_params, now_jst):
-    """
-    指定されたパラメータに基づき、高解像度の気象グラフ画像を生成してBase64形式で返す。
-    ブラウザの時差と現地の時差の差分を用いて、表示範囲を現地時間基準で切り出す。
-    """
     import pandas as pd
     import io
     import base64
@@ -613,10 +642,9 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
     browser_offset_s = browser_offset.total_seconds() if browser_offset else 0
     local_offset_s = df_raw.attrs.get('local_offset_seconds', 0)
     
-    # 現地の現在時刻（数字のみ）を算出
     now_local = now_jst.replace(tzinfo=None) - timedelta(seconds=browser_offset_s) + timedelta(seconds=local_offset_s)
     
-    # 3. 描画開始（グラフ左端）の設定
+    # 3. 描画開始の設定
     display_start_time = now_local.replace(hour=(now_local.hour // 3) * 3, minute=0, second=0, microsecond=0)
     padding_start_time = display_start_time - timedelta(hours=3)
     
@@ -630,13 +658,7 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
     active_plots = []
     if design_params.get("show_wind", True): active_plots.append("wind")
     if design_params.get("show_temp", True): active_plots.append("temp")
-    
-    # 潮位データの取得と判定
-    tide_data = None
-    if design_params.get("show_tide", True):
-        # APIから潮位を取得（時刻リストと緯度経度を渡す）
-        tide_data, is_nearby = get_tide_level(df['time'], lat, lon)
-        active_plots.append("tide")
+    if design_params.get("show_tide", True): active_plots.append("tide")
     
     if not active_plots: return None, (0, 0), start_idx, df
     
@@ -661,8 +683,8 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
         render_temp_line_chart(axes[idx], df)
         idx += 1
     if "tide" in active_plots:
-        # 潮位グラフの描画（tide_dataの結果によって表示を分岐）
-        render_tide_curve_chart(ax, df, tide_data, is_nearby=is_nearby)
+        # 【修正の核心】戻り値を受け取らず、(ax, df) のみで呼び出す元の形に戻します
+        render_tide_curve_chart(axes[idx], df)
         idx += 1
 
     for ax in axes:
