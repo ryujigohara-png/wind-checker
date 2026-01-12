@@ -317,7 +317,7 @@ def process_wind_data(df, target_dirs):
         return "#D3D3D3"
     
     df['color'] = df.apply(judge, axis=1)
-    df['tide_level'] = get_tide_level(df['time'])
+    #潮位なぜか入っていた  df['tide_level'] = get_tide_level(df['time'])
     return df
 
 #==========================================================================================
