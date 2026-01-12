@@ -169,13 +169,13 @@ def fetch_weather_data(lat, lon, days):
         return None
 
 # ======================================================================================
-# 4. 潮位レベルを計算（Open-Meteo API連携・効率的汎用スキャン版）
+# 4. 潮位レベルを計算（Open-Meteo API連携・広域スキップ探索版）
 # ======================================================================================
 def get_tide_level(times, lat, lon):
     """
     Open-Meteo Marine APIを使用して潮位データを取得します。
-    リクエスト回数を抑えつつ、日本全国の複雑な海岸線でも「最も近い海」を
-    段階的な螺旋探索（0km -> 3.3km -> 7.7km -> 16.5km）で特定します。
+    螺旋スキャンのステップ幅を「倍々」で広げることで、
+    入り組んだ湾内からでも数回のリクエストで「外海」のデータを確実に特定します。
     """
     import requests
     import pandas as pd
@@ -185,28 +185,26 @@ def get_tide_level(times, lat, lon):
     if not times or len(times) == 0:
         return []
 
-    # 1. 取得範囲の決定
     start_date = times[0].strftime('%Y-%m-%d')
     end_date = times[-1].strftime('%Y-%m-%d')
 
-    # 2. 効率的な探索パターンの定義 (緯度・経度のオフセット)
-    # ステップ幅を広げることで、少ない回数で広範囲をカバーします
-    steps = [0.0, 0.03, 0.07, 0.15]
+    # 探索のステップ幅を指数関数的に広げる（効率化と汎用性の両立）
+    # 0km -> 約2.2km -> 約5.5km -> 約11km -> 約22km
+    steps = [0.0, 0.02, 0.05, 0.1, 0.2]
     search_offsets = []
     for s in steps:
         if s == 0.0:
             search_offsets.append((0.0, 0.0))
         else:
-            # 四方（西・東・南・北）と斜め4方向を順次追加
+            # 八方位を探索
             search_offsets.extend([
-                (0, -s), (0, s), (-s, 0), (s, 0),
-                (-s, -s), (-s, s), (s, -s), (s, s)
+                (s, 0), (-s, 0), (0, s), (0, -s),
+                (s, s), (s, -s), (-s, s), (-s, -s)
             ])
 
     res_json = None
     success = False
 
-    # 3. 探索リクエストの実行
     for d_lat, d_lon in search_offsets:
         target_lat = lat + d_lat
         target_lon = lon + d_lon
@@ -222,55 +220,40 @@ def get_tide_level(times, lat, lon):
         }
 
         try:
-            # タイムアウトを短めに設定し、全体の処理速度を維持
             response = requests.get(url, params=params, timeout=3)
             data = response.json()
             
-            # リストの最初の12時間分に有効な数値（None以外）が含まれているか厳格にチェック
+            # データの有効性チェック（数値が1つでもあれば採用）
             if "hourly" in data and isinstance(data["hourly"].get("tide_height"), list):
                 t_list = data["hourly"]["tide_height"]
-                if len(t_list) > 0 and any(v is not None for v in t_list[:12]):
+                if len(t_list) > 0 and any(v is not None for v in t_list[:24]):
                     res_json = data
                     success = True
-                    break # 海が見つかれば即座にループを抜ける
+                    break
         except Exception:
             continue
-        
-        # 連続リクエストによる負荷制限を回避
         time.sleep(0.01)
 
-    # 全方位探索しても見つからない場合
-    if not success or res_json is None:
+    if not success:
         return "NOT_SEA"
 
-    # 4. 取得したデータを既存の時間軸(times)に正確にマッピング
     try:
         df_api = pd.DataFrame({
             "time": pd.to_datetime(res_json["hourly"]["time"]),
             "tide_height": res_json["hourly"]["tide_height"]
         })
-        # 既存の fetch_weather_data の仕様に合わせ、タイムゾーン情報を持たないNaive形式へ
         df_api["time"] = df_api["time"].dt.tz_localize(None)
 
         levels = []
         for t in times:
-            if pd.isna(t):
-                levels.append(np.nan)
-                continue
-            
-            # 比較用に引数 t を Naive形式へ統一
             t_naive = t.replace(tzinfo=None) if hasattr(t, 'tzinfo') and t.tzinfo is not None else t
-            
             match_row = df_api[df_api["time"] == t_naive]
             if match_row.empty:
                 levels.append(np.nan)
-                continue
-                
-            val = match_row.iloc[0]["tide_height"]
-            levels.append(val if val is not None else np.nan)
-
+            else:
+                val = match_row.iloc[0]["tide_height"]
+                levels.append(val if val is not None else np.nan)
         return levels
-
     except Exception:
         return "NOT_SEA"
 
