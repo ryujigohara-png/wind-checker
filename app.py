@@ -522,17 +522,18 @@ def render_temp_line_chart(ax, df):
             )
 
 # ======================================================================================
-# 11. 潮位曲線グラフを描画するサブルーチン（指定座標準拠・方位距離確定版）
+# 11. 潮位曲線グラフを描画するサブルーチン（ランダムスキャン・海洋データ版）
 # ======================================================================================
 def render_tide_curve_chart(ax, df):
     """
     Open-Meteo Marine APIから潮位を取得。
-    自地点から東スタートの時計回り螺旋状にスキャンし、ヒットした指定座標の距離を表示します。
+    探索の開始方向をランダムに決定し、30km圏内で最初に見つかった「海洋データ」を採用します。
     """
     import requests
     import pandas as pd
     import numpy as np
     import time
+    import random
     from matplotlib.transforms import ScaledTranslation
 
     lat = df.attrs.get('lat', 35.0)
@@ -544,17 +545,29 @@ def render_tide_curve_chart(ax, df):
     tide_levels = None
     info_text = ""
     
-    # --- 探索リストの作成（東スタート・時計回り） ---
+    # --- 探索座標リストの作成（ランダム開始・時計回り） ---
     steps = [0.0, 0.05, 0.1, 0.15, 0.2, 0.25]
     search_points = []
+
     for s in steps:
         if s == 0:
             search_points.append((0, 0))
         else:
-            # 時計回り：東(0,s) -> 南東(-s,s) -> 南(-s,0) -> 南西(-s,-s) -> 西(0,-s) -> 北西(s,-s) -> 北(s,0) -> 北東(s,s)
-            search_points.extend([
-                (0, s), (-s, s), (-s, 0), (-s, -s), (0, -s), (s, -s), (s, 0), (s, s)
-            ])
+            # 8方向の定義
+            ring = [
+                (0, s),   # 東
+                (-s, s),  # 南東
+                (-s, 0),  # 南
+                (-s, -s), # 南西
+                (0, -s),  # 西
+                (s, -s),  # 北西
+                (s, 0),   # 北
+                (s, s)    # 北東
+            ]
+            # 各ステップごとに、開始地点をランダムにずらす
+            start_idx = random.randint(0, 7)
+            rotated_ring = ring[start_idx:] + ring[:start_idx]
+            search_points.extend(rotated_ring)
 
     # 探索実行
     found = False
@@ -574,9 +587,8 @@ def render_tide_curve_chart(ax, df):
                 data = response.json()
                 api_h = data.get("hourly", {}).get("sea_level_height_msl", [])
 
-                # データが存在すれば、その「投げた座標」を採用
+                # データが存在すれば、その時の「投げた座標」を採用
                 if api_h and any(v is not None for v in api_h):
-                    # こちらが投げた座標(d_lat, d_lon)に基づいて距離を算出
                     dist_km = round(np.sqrt((d_lat * 111)**2 + (d_lon * 111 * np.cos(np.radians(lat)))**2), 1)
 
                     if dist_km > 0.1:
@@ -624,7 +636,6 @@ def render_tide_curve_chart(ax, df):
         trans = ax.transAxes + offset
         ax.text(0.0, 0.0, info_text, transform=trans, color="#d62728", 
                 fontsize=label_fs - 1, ha='left', va='top')
-
 # ======================================================================================
 # 12. 高解像度グラフ画像を生成するサブルーチン（完全復旧版）
 # ======================================================================================
