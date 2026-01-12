@@ -782,7 +782,7 @@ def show_settings_dialog():
         if "save_settings_to_browser" in globals():
             save_settings_to_browser()
         st.cache_data.clear()
-        st.rerun()
+        # st.rerun()
 
 
 # ======================================================================================
