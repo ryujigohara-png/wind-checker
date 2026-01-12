@@ -169,82 +169,76 @@ def fetch_weather_data(lat, lon, days):
         return None
 
 # ======================================================================================
-# 4. 潮位レベルを計算（デバッグログ出力版）
+# 4. 潮位レベルを計算（400 Bad Request 対策・広域スキャン版）
 # ======================================================================================
 def get_tide_level(times, lat, lon):
+    """
+    Open-Meteo Marine APIを使用して潮位データを取得します。
+    非常に長い桁数の座標を適切に丸めることで 400エラーを回避し、
+    広域スキャンによって「海」のデータを確実に特定します。
+    """
     import requests
     import pandas as pd
     import numpy as np
     import time
-    import streamlit as st  # デバッグ表示用
 
-    # --- デバッグ表示エリアの確保 ---
-    debug_area = st.expander("🔍 潮位取得デバッグログ（手詰まり解消用）", expanded=True)
-    
-    if not times:
-        debug_area.error("❌ エラー: times が空です")
+    if not times or len(times) == 0:
         return []
 
-    # 1. 入力値の型チェック
-    debug_area.write(f"🔢 入力値確認: lat={lat} ({type(lat)}), lon={lon} ({type(lon)})")
-    
+    # --- 【重要】400エラー対策：座標を float に変換し、小数点以下4桁に丸める ---
     try:
-        f_lat, f_lon = float(lat), float(lon)
-        debug_area.success(f"✅ 数値変換成功: f_lat={f_lat}, f_lon={f_lon}")
-    except Exception as e:
-        debug_area.error(f"❌ 数値変換失敗: {e}")
+        # round(x, 4) で API が受け入れやすい形式に整えます
+        f_lat = round(float(lat), 4)
+        f_lon = round(float(lon), 4)
+    except:
         return "NOT_SEA"
 
     start_date = times[0].strftime('%Y-%m-%d')
     end_date = times[-1].strftime('%Y-%m-%d')
-    
-    # 探索パターンの定義
+
+    # 探索ステップ：自地点から開始し、段階的に大きく移動
+    # 0.05（約5.5km）、0.15（約17km）
     steps = [0.0, 0.05, 0.15]
     search_offsets = [(0.0, 0.0)]
     for s in steps[1:]:
         search_offsets.extend([(s, 0), (-s, 0), (0, s), (0, -s)])
 
-    # 2. APIリクエストの検証
     res_json = None
-    for i, (d_lat, d_lon) in enumerate(search_offsets):
-        t_lat, t_lon = f_lat + d_lat, f_lon + d_lon
+    success = False
+
+    for d_lat, d_lon in search_offsets:
+        # 丸めた基準座標にオフセットを加算
+        target_lat = round(f_lat + d_lat, 4)
+        target_lon = round(f_lon + d_lon, 4)
+        
         url = "https://marine-api.open-meteo.com/v1/marine"
         params = {
-            "latitude": t_lat, "longitude": t_lon,
-            "hourly": "tide_height", "start_date": start_date, "end_date": end_date, "timezone": "auto"
+            "latitude": target_lat,
+            "longitude": target_lon,
+            "hourly": "tide_height",
+            "start_date": start_date,
+            "end_date": end_date,
+            "timezone": "auto"
         }
-        
-        try:
-            debug_area.write(f"🌐 試行 {i+1}: 座標({t_lat}, {t_lon}) へリクエスト中...")
-            resp = requests.get(url, params=params, timeout=5)
-            
-            if resp.status_code == 200:
-                data = resp.json()
-                t_list = data.get("hourly", {}).get("tide_height", [])
-                
-                # ここで「中身」をチェック
-                valid_count = sum(1 for v in t_list if v is not None)
-                debug_area.write(f"   📊 応答: 200 OK / 有効データ数: {valid_count}/{len(t_list)}")
-                
-                if valid_count > 0:
-                    debug_area.success(f"🎯 海を発見！試行 {i+1} で確定。")
-                    res_json = data
-                    break
-                else:
-                    debug_area.warning(f"   ⚠️ 試行 {i+1}: 応答は正常ですが、全て null (陸地) です。")
-            else:
-                debug_area.error(f"   ❌ APIエラー: ステータスコード {resp.status_code}")
-                
-        except Exception as e:
-            debug_area.error(f"   ❌ 通信エラー: {e}")
-        
-        time.sleep(0.01)
 
-    if not res_json:
-        debug_area.error("💀 全ての地点が陸地判定、または通信失敗のため NOT_SEA を返します。")
+        try:
+            response = requests.get(url, params=params, timeout=5)
+            # 400エラーが出た場合はログ等に記録できるよう response をチェック
+            if response.status_code == 200:
+                data = response.json()
+                t_list = data.get("hourly", {}).get("tide_height", [])
+                if t_list and any(v is not None for v in t_list[:24]):
+                    res_json = data
+                    success = True
+                    break
+            # 400 や 403 などの場合は次のループ（別の座標）を試す
+        except:
+            continue
+        time.sleep(0.02)
+
+    if not success or res_json is None:
         return "NOT_SEA"
 
-    # 3. マッピング処理の検証
     try:
         df_api = pd.DataFrame({
             "time": pd.to_datetime(res_json["hourly"]["time"]),
@@ -255,16 +249,14 @@ def get_tide_level(times, lat, lon):
         levels = []
         for t in times:
             t_naive = t.replace(tzinfo=None) if hasattr(t, 'tzinfo') and t.tzinfo is not None else t
-            match = df_api[df_api["time"] == t_naive]
-            if not match.empty:
-                levels.append(match.iloc[0]["tide_height"])
+            match_row = df_api[df_api["time"] == t_naive]
+            if not match_row.empty:
+                val = match_row.iloc[0]["tide_height"]
+                levels.append(val if val is not None else np.nan)
             else:
                 levels.append(np.nan)
-        
-        debug_area.success(f"✅ マッピング完了: {len(levels)} 件のデータを生成。")
         return levels
-    except Exception as e:
-        debug_area.error(f"❌ 最終処理エラー: {e}")
+    except:
         return "NOT_SEA"
 
 #==========================================================================================
