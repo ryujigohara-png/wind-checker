@@ -169,94 +169,83 @@ def fetch_weather_data(lat, lon, days):
         return None
 
 # ======================================================================================
-# 4. 潮位レベルを計算（Open-Meteo API連携・型エラー/広域探索 対策版）
+# 4. 潮位レベルを計算（デバッグログ出力版）
 # ======================================================================================
 def get_tide_level(times, lat, lon):
-    """
-    Open-Meteo Marine APIを使用して潮位データを取得します。
-    引数lat/lonがLocalStorage由来の文字列であっても確実に数値計算できるよう修正。
-    これにより、太平洋でも湾内でも不当な NOT_SEA 判定を回避します。
-    """
     import requests
     import pandas as pd
     import numpy as np
     import time
+    import streamlit as st  # デバッグ表示用
 
-    # サブルーチン概要：
-    # 1. 入力値の型を数値に強制変換
-    # 2. 螺旋探索（0kmから約22kmまで）を行い、最初に「海」のデータが返った地点を採用
-    # 3. 取得した潮位データを指定された時間軸(times)に正確にマッピング
-
-    if not times or len(times) == 0:
+    # --- デバッグ表示エリアの確保 ---
+    debug_area = st.expander("🔍 潮位取得デバッグログ（手詰まり解消用）", expanded=True)
+    
+    if not times:
+        debug_area.error("❌ エラー: times が空です")
         return []
 
-    # --- 【重要】型エラー対策：lat, lon を確実に数値(float)に変換 ---
+    # 1. 入力値の型チェック
+    debug_area.write(f"🔢 入力値確認: lat={lat} ({type(lat)}), lon={lon} ({type(lon)})")
+    
     try:
-        f_lat = float(lat)
-        f_lon = float(lon)
-    except (ValueError, TypeError):
-        # 万が一数値に変換できない場合は、ここで終了
+        f_lat, f_lon = float(lat), float(lon)
+        debug_area.success(f"✅ 数値変換成功: f_lat={f_lat}, f_lon={f_lon}")
+    except Exception as e:
+        debug_area.error(f"❌ 数値変換失敗: {e}")
         return "NOT_SEA"
 
     start_date = times[0].strftime('%Y-%m-%d')
     end_date = times[-1].strftime('%Y-%m-%d')
+    
+    # 探索パターンの定義
+    steps = [0.0, 0.05, 0.15]
+    search_offsets = [(0.0, 0.0)]
+    for s in steps[1:]:
+        search_offsets.extend([(s, 0), (-s, 0), (0, s), (0, -s)])
 
-    # 探索のステップ幅（APIの仕様に合わせた効率的な間隔）
-    steps = [0.0, 0.02, 0.05, 0.1, 0.2]
-    search_offsets = []
-    for s in steps:
-        if s == 0.0:
-            search_offsets.append((0.0, 0.0))
-        else:
-            # 八方位（東西南北＋斜め）を効率よくスキャン
-            search_offsets.extend([
-                (s, 0), (-s, 0), (0, s), (0, -s),
-                (s, s), (s, -s), (-s, s), (-s, -s)
-            ])
-
+    # 2. APIリクエストの検証
     res_json = None
-    success = False
-
-    # 探索ループ
-    for d_lat, d_lon in search_offsets:
-        # 数値(f_lat)同士で計算するため、TypeErrorは発生しません
-        target_lat = f_lat + d_lat
-        target_lon = f_lon + d_lon
-        
+    for i, (d_lat, d_lon) in enumerate(search_offsets):
+        t_lat, t_lon = f_lat + d_lat, f_lon + d_lon
         url = "https://marine-api.open-meteo.com/v1/marine"
         params = {
-            "latitude": target_lat,
-            "longitude": target_lon,
-            "hourly": "tide_height",
-            "start_date": start_date,
-            "end_date": end_date,
-            "timezone": "auto"
+            "latitude": t_lat, "longitude": t_lon,
+            "hourly": "tide_height", "start_date": start_date, "end_date": end_date, "timezone": "auto"
         }
-
-        try:
-            response = requests.get(url, params=params, timeout=3)
-            if response.status_code == 200:
-                data = response.json()
-                # データの有効性チェック（数値が1つでもあれば「海」と判定）
-                if "hourly" in data and isinstance(data["hourly"].get("tide_height"), list):
-                    t_list = data["hourly"]["tide_height"]
-                    if len(t_list) > 0 and any(v is not None for v in t_list[:24]):
-                        res_json = data
-                        success = True
-                        break # 海が見つかったので探索終了
-        except Exception:
-            # ネットワークエラー等は無視して次の地点を試行
-            continue
         
-        # API負荷軽減のための微小待機
+        try:
+            debug_area.write(f"🌐 試行 {i+1}: 座標({t_lat}, {t_lon}) へリクエスト中...")
+            resp = requests.get(url, params=params, timeout=5)
+            
+            if resp.status_code == 200:
+                data = resp.json()
+                t_list = data.get("hourly", {}).get("tide_height", [])
+                
+                # ここで「中身」をチェック
+                valid_count = sum(1 for v in t_list if v is not None)
+                debug_area.write(f"   📊 応答: 200 OK / 有効データ数: {valid_count}/{len(t_list)}")
+                
+                if valid_count > 0:
+                    debug_area.success(f"🎯 海を発見！試行 {i+1} で確定。")
+                    res_json = data
+                    break
+                else:
+                    debug_area.warning(f"   ⚠️ 試行 {i+1}: 応答は正常ですが、全て null (陸地) です。")
+            else:
+                debug_area.error(f"   ❌ APIエラー: ステータスコード {resp.status_code}")
+                
+        except Exception as e:
+            debug_area.error(f"   ❌ 通信エラー: {e}")
+        
         time.sleep(0.01)
 
-    # 全方位の探索（最大約22km圏内）で見つからなかった場合のみ NOT_SEA
-    if not success or res_json is None:
+    if not res_json:
+        debug_area.error("💀 全ての地点が陸地判定、または通信失敗のため NOT_SEA を返します。")
         return "NOT_SEA"
 
+    # 3. マッピング処理の検証
     try:
-        # APIレスポンスを既存の時間軸にマッピング
         df_api = pd.DataFrame({
             "time": pd.to_datetime(res_json["hourly"]["time"]),
             "tide_height": res_json["hourly"]["tide_height"]
@@ -266,15 +255,16 @@ def get_tide_level(times, lat, lon):
         levels = []
         for t in times:
             t_naive = t.replace(tzinfo=None) if hasattr(t, 'tzinfo') and t.tzinfo is not None else t
-            match_row = df_api[df_api["time"] == t_naive]
-            if match_row.empty:
-                levels.append(np.nan)
+            match = df_api[df_api["time"] == t_naive]
+            if not match.empty:
+                levels.append(match.iloc[0]["tide_height"])
             else:
-                val = match_row.iloc[0]["tide_height"]
-                levels.append(val if val is not None else np.nan)
+                levels.append(np.nan)
+        
+        debug_area.success(f"✅ マッピング完了: {len(levels)} 件のデータを生成。")
         return levels
-
-    except Exception:
+    except Exception as e:
+        debug_area.error(f"❌ 最終処理エラー: {e}")
         return "NOT_SEA"
 
 #==========================================================================================
