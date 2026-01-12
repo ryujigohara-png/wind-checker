@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# ベータ版　更新 2026.1.11 2345 レイアウト変更コンプリート版
+# ベータ版　更新 2026.1.12 1150 凡例、クレジット表記コンプリート版
 """
 1. データ統合・取得仕様
 　• 気象データソース: Open-Meteo APIを使用し、全世界の気象データを取得します。
@@ -1642,6 +1642,34 @@ def render_compact_control_panel(basho_name):
         handle_current_location_update_integrated()
         
 # ======================================================================================
+# 99. フッター情報表示 (凡例およびクレジット表記)
+# ======================================================================================
+def render_footer_info(danger_v):
+    """
+    グラフ下部に表示する凡例と、データソースのクレジット表記（Open-Meteo）を描画します。
+    """
+    st.markdown("---")
+    
+    # --- 1. 凡例の表示 ---
+    # 以前のコードの意匠を継承し、ユーザーが設定した危険風速(danger_v)を動的に表示します
+    st.markdown(
+        f"""
+        <div style="padding: 10px; border-radius: 5px; background-color: #f0f2f6; margin-bottom: 10px;">
+            <span style="font-weight: bold;">📊 凡例:</span><br>
+            <span style="color: #1f77b4;">■</span> 3-5m/s (青) &nbsp;&nbsp; 
+            <span style="color: #ff7f0e;">■</span> 5-10m/s (橙) &nbsp;&nbsp; 
+            <span style="color: #d62728;">■</span> 10m/s以上 (赤) &nbsp;&nbsp; 
+            --- [点線: 危険風速ライン {danger_v}m/s]
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+    
+    # --- 2. クレジット表記 (Open-Meteo) ---
+    # 利用規約に基づき、リンクを含む適切な表記を行います
+    st.caption("Weather data by [Open-Meteo.com](https://open-meteo.com/) (CC BY 4.0)")
+
+# ======================================================================================
 # 100. メイン処理 (再構築版・スクロール対応)
 # ======================================================================================
 def main():
@@ -1676,21 +1704,14 @@ def main():
     now_jst = datetime.now(timezone(timedelta(hours=9)))
 
     # --- 2. 各モジュールの描画 ---
-    # 場所選択モジュール（返り値 basho は表示用の文字列）
-    # basho = render_location_selector_module()
-    
-    # 地図表示モジュール
-    # render_map_module()
-    
-    # 更新・情報表示モジュール（ここに basho を渡す）
-    # render_update_control_module(basho)
-
     # 以前の 92, 93, 94 をすべて1つに集約
     render_compact_control_panel(st.session_state.last_basho)
 
-    
     # グラフエリア（ここでフラグを見て描画を行う）
     render_graph_area_module(danger_v, sel_dirs, design_params, now_jst)
+    
+    # 今回追加：凡例とクレジット表記
+    render_footer_info(danger_v)
     
     if st.session_state.get("is_dev_mode"):
         st.divider()
@@ -1698,4 +1719,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-    
