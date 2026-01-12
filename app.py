@@ -169,21 +169,21 @@ def fetch_weather_data(lat, lon, days):
         return None
 
 # ======================================================================================
-# 4. 潮位レベルを計算（近傍判定フラグ対応・完全版）
+# 4. 潮位レベルを計算（ValueError 回避・時刻処理維持版）
 # ======================================================================================
 def get_tide_level(times, lat, lon):
     """
     Open-Meteo Marine APIを使用して潮位データを取得します。
-    戻り値: (tide_data, is_nearby)
-    - tide_data: 潮位リスト または "NOT_SEA"
-    - is_nearby: 自地点(0,0)以外で取得した場合は True
+    時刻の取扱いやインデックス参照は既存のロジックを厳守し、
+    ValueErrorの原因となった判定式のみを修正しています。
     """
     import requests
     import pandas as pd
     import numpy as np
     import time
 
-    if not times or len(times) == 0:
+    # 【修正】times が Pandas Series の場合に ValueError を出さない判定に変更
+    if times is None or len(times) == 0:
         return [], False
 
     # 1. 型変換と NaN チェック
@@ -195,11 +195,11 @@ def get_tide_level(times, lat, lon):
     except:
         return "NOT_SEA", False
 
+    # 【維持】既存の時刻取得ロジック
     start_date = times[0].strftime('%Y-%m-%d')
     end_date = times[-1].strftime('%Y-%m-%d')
 
     # 2. 探索ステップの設定
-    # 最初の (0.0, 0.0) が「自地点」です
     steps = [0.0, 0.05, 0.1, 0.2]
     search_offsets = []
     for s in steps:
@@ -233,7 +233,6 @@ def get_tide_level(times, lat, lon):
                 t_list = data.get("hourly", {}).get("sea_level_height_msl", [])
                 if t_list and any(v is not None for v in t_list[:24]):
                     res_json = data
-                    # インデックス i > 0 であれば「近傍」と判定
                     is_nearby = (i > 0)
                     break
         except:
@@ -253,6 +252,7 @@ def get_tide_level(times, lat, lon):
 
         levels = []
         for t in times:
+            # 【維持】既存のタイムゾーン/ナイーブ時刻変換ロジック
             t_naive = t.replace(tzinfo=None) if hasattr(t, 'tzinfo') and t.tzinfo is not None else t
             match_row = df_api[df_api["time"] == t_naive]
             if not match_row.empty:
@@ -264,7 +264,7 @@ def get_tide_level(times, lat, lon):
         return levels, is_nearby
     except:
         return "NOT_SEA", False
-
+      
 #==========================================================================================
 # 5. 天気コードからテキストと色を取得するサブルーチン
 #==========================================================================================
