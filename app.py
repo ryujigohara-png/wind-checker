@@ -522,12 +522,12 @@ def render_temp_line_chart(ax, df):
             )
 
 # ======================================================================================
-# 11. 潮位曲線グラフを描画するサブルーチン（方位距離修正・表示位置最適化版）
+# 11. 潮位曲線グラフを描画するサブルーチン（方位・距離計算の厳密化版）
 # ======================================================================================
 def render_tide_curve_chart(ax, df):
     """
     Open-Meteo Marine APIから潮位を取得。
-    方位・距離の計算を修正し、文字サイズに連動して重なりを完全に回避します。
+    30km圏内で最初に見つかった有効な地点の座標を固定し、正確な方位と距離を算出します。
     """
     import requests
     import pandas as pd
@@ -544,61 +544,62 @@ def render_tide_curve_chart(ax, df):
     info_text = ""
     label_fs = CONFIG.get("LABEL_SIZE", 10) 
     
-    # 30km圏内を段階的にスキャン
+    # 段階的探索（0kmから約28kmまで）
     steps = [0.0, 0.05, 0.1, 0.15, 0.2, 0.25]
     found = False
 
-    # 地点特定用の変数を初期化
-    final_res_lat = lat
-    final_res_lon = lon
-
     for s in steps:
         if found: break
-        offsets = [(s, 0), (-s, 0), (0, s), (0, -s), (s, s), (s, -s), (-s, s), (-s, -s)] if s > 0 else [(0, 0)]
+        # 渦巻き状のオフセット
+        offsets = [(0, 0)] if s == 0 else [(s, 0), (-s, 0), (0, s), (0, -s), (s, s), (s, -s), (-s, s), (-s, -s)]
+        
         for d_lat, d_lon in offsets:
             url = "https://marine-api.open-meteo.com/v1/marine"
             params = {
-                "latitude": lat + d_lat, "longitude": lon + d_lon,
-                "hourly": "sea_level_height_msl", "start_date": start_str, "end_date": end_str, "timezone": "auto"
+                "latitude": lat + d_lat, 
+                "longitude": lon + d_lon,
+                "hourly": "sea_level_height_msl", 
+                "start_date": start_str, 
+                "end_date": end_str, 
+                "timezone": "auto"
             }
             try:
                 response = requests.get(url, params=params, timeout=5)
                 if response.status_code == 200:
                     data = response.json()
-                    # APIが実際に採用した地点の座標を正しく取得
+                    # APIが実際に返してきた「地点」の座標
                     api_res_lat = data.get("latitude")
                     api_res_lon = data.get("longitude")
                     api_h = data.get("hourly", {}).get("sea_level_height_msl", [])
                     
                     if api_h and any(v is not None for v in api_h) and api_res_lat is not None:
-                        # 指定地点とAPI実座標の距離を厳密に計算
+                        # 距離の計算
                         dist_km = np.sqrt(((api_res_lat - lat)*111.3)**2 + ((api_res_lon - lon)*111.3*np.cos(np.radians(lat)))**2)
                         
+                        # 30km圏内であれば、その地点で「確定」させる
                         if dist_km <= 30.0:
-                            # 30km以内ならこの地点で確定
-                            final_res_lat = api_res_lat
-                            final_res_lon = api_res_lon
-                            
-                            # 方位と距離のテキスト生成
-                            angle = np.rad2deg(np.arctan2((final_res_lon - lon) * np.cos(np.radians(lat)), (final_res_lat - lat)))
+                            # 方位の計算（この地点の座標を直接使う）
+                            angle = np.rad2deg(np.arctan2((api_res_lon - lon) * np.cos(np.radians(lat)), (api_res_lat - lat)))
                             directions = ["北", "北東", "東", "南東", "南", "南西", "西", "北西", "北"]
                             res_dir = directions[int((angle + 22.5) % 360 // 45)]
                             
                             if dist_km > 0.1:
                                 info_text = f"※指定地点の{res_dir}約{dist_km:.1f}kmにある地点の潮汐データを表示しています。"
                             
-                            # データの抽出
+                            # データの格納
                             df_api = pd.DataFrame({"api_t": pd.to_datetime(data["hourly"]["time"]), "h": api_h})
                             df_api["api_t"] = df_api["api_t"].dt.tz_localize(None)
                             tide_levels = [df_api[df_api["api_t"] == t.replace(tzinfo=None)].iloc[0]["h"] 
                                            if not df_api[df_api["api_t"] == t.replace(tzinfo=None)].empty else np.nan 
                                            for t in df['time']]
-                            found = True
-                            break
-            except: continue
+                            
+                            found = True # 探索成功フラグを立てる
+                            break # 内側ループを抜ける
+            except:
+                continue
             time.sleep(0.01)
 
-    # 1. データがない場合（左寄せ修正）
+    # 1. データがない場合（クリーンアップ処理）
     if tide_levels is None:
         ax.clear()
         ax.set_axis_off()
@@ -606,28 +607,24 @@ def render_tide_curve_chart(ax, df):
                 transform=ax.transAxes, color="gray", fontsize=label_fs, ha='left', va='center')
         return
 
-    # 2. 描画処理
+    # 2. 描画処理（以下変更なし）
     df['tide_cm'] = [v * 100 if v is not None else np.nan for v in tide_levels]
     ax.plot(df['time'], df['tide_cm'], color="#1f77b4", linewidth=2, marker='o', markersize=3, markevery=3)
     ax.set_ylabel("潮位 (cm)", fontsize=label_fs)
     ax.grid(True, axis='y', linestyle='--', alpha=0.5)
 
-    # 数値ラベル
     for i in range(0, len(df), 3):
         dt, val = df['time'].iloc[i], df['tide_cm'].iloc[i]
         if not pd.isna(val):
             ax.text(dt, 1.05, f"{val:.0f}", ha='center', va='bottom', color="#1f77b4", 
                     fontsize=label_fs, transform=ax.get_xaxis_transform())
 
-    # 3. 注意書き位置の修正（さらに1行分下げ、重なりを防止）
+    # 3. 注意書き位置の固定（label_fs * 3.5 を維持）
     if info_text:
-        # 倍率を 2.5 -> 3.5 に上げ、日付ラベルとの距離を十分に確保
         offset = ScaledTranslation(0, - (label_fs * 3.5) / 72, ax.figure.dpi_scale_trans)
         trans = ax.transAxes + offset
-
         ax.text(0.0, 0.0, info_text, transform=trans, color="#d62728", 
                 fontsize=label_fs - 1, ha='left', va='top')
-
 # ======================================================================================
 # 12. 高解像度グラフ画像を生成するサブルーチン（完全復旧版）
 # ======================================================================================
