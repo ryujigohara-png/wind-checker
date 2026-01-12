@@ -169,39 +169,92 @@ def fetch_weather_data(lat, lon, days):
         return None
 
 # ======================================================================================
-# 4. 潮位レベルを計算するサブルーチン
+# 4. 潮位レベルを計算（Open-Meteo API連携版）
 # ======================================================================================
-def get_tide_level(times):
-    from datetime import datetime
-    import numpy as np
+def get_tide_level(times, lat, lon):
+    """
+    Open-Meteo Marine APIを使用して、指定された地点・時刻の潮位データを取得します。
+    引数の times (fetch_weather_data で取得された現地時刻リスト) に基づき、
+    APIから取得した値をマッピングして返します。
+    陸地などの理由でデータが取得できない場合は、文字列 "NOT_SEA" を返します。
+    """
+    import requests
     import pandas as pd
-    
-    # 基準となる満潮時刻（Naive）
-    # 2025/1/1 06:00 (UTC想定) を基準点とする
-    base_full_tide = datetime(2025, 1, 1, 6, 0)
-    cycle_hours = 12.42
-    levels = []
-    
-    for t in times:
-        if pd.isna(t):
-            levels.append(np.nan)
-            continue
+    import numpy as np
+
+    if not times or len(times) == 0:
+        return []
+
+    # 1. 取得範囲の決定 (times[0] および times[-1] を使用)
+    # times は既に Naive な datetime オブジェクトであることを前提とします
+    start_date = times[0].strftime('%Y-%m-%d')
+    end_date = times[-1].strftime('%Y-%m-%d')
+
+    # 2. Open-Meteo Marine API リクエスト
+    # fetch_weather_data と同様に timezone=auto を指定し、現地の時間を取得します
+    url = "https://marine-api.open-meteo.com/v1/marine"
+    params = {
+        "latitude": lat,
+        "longitude": lon,
+        "hourly": "tide_height",
+        "start_date": start_date,
+        "end_date": end_date,
+        "timezone": "auto"
+    }
+
+    try:
+        response = requests.get(url, params=params, timeout=10)
+        res_json = response.json()
+
+        # エラーレスポンス、またはデータが含まれていない場合は陸地（Not Sea）と判定
+        if "hourly" not in res_json or res_json.get("hourly") is None:
+            return "NOT_SEA"
         
-        # --- 修正の核心：計算の不整合を防ぐ ---
-        # df['time'] が今回の修正で Naive（タイムゾーンなし）に統一されたため、
-        # そのまま naive な datetime として扱い、基準時刻との差分を計算します。
-        # 万が一タイムゾーン情報が含まれていた場合でも、replace(tzinfo=None) で除去して
-        # 型エラー（TypeError）を確実に防ぎます。
-        t_naive = t.replace(tzinfo=None) if hasattr(t, 'tzinfo') and t.tzinfo is not None else t
-        
-        # 基準時刻からの経過時間（時間単位）を算出
-        hours_from_base = (t_naive - base_full_tide).total_seconds() / 3600
-        
-        # 正弦波による潮位計算（-100 ～ 100 の範囲）
-        level = 100 * np.cos(2 * np.pi * hours_from_base / cycle_hours)
-        levels.append(level)
-        
-    return levels
+        if "tide_height" not in res_json["hourly"]:
+            return "NOT_SEA"
+
+        # APIからのレスポンスをDataFrame化
+        df_api = pd.DataFrame({
+            "time": pd.to_datetime(res_json["hourly"]["time"]),
+            "tide_height": res_json["hourly"]["tide_height"]
+        })
+
+        # fetch_weather_data と同様、APIが返した「現地時間の数字」をそのままNaiveで保持
+        df_api["time"] = df_api["time"].dt.tz_localize(None)
+
+        # 3. 引数 times の各時刻に最も近い API データをマッピング
+        levels = []
+        for t in times:
+            if pd.isna(t):
+                levels.append(np.nan)
+                continue
+            
+            # 引数 t も Naive であることを保証（念のため）
+            t_naive = t.replace(tzinfo=None) if hasattr(t, 'tzinfo') and t.tzinfo is not None else t
+            
+            # APIデータの中から時刻が一致するものを探す
+            # 1時間ごとのデータなので、基本的には完全一致します
+            match_row = df_api[df_api["time"] == t_naive]
+            
+            if match_row.empty:
+                # 該当時刻のデータがない場合
+                levels.append(np.nan)
+                continue
+                
+            val = match_row.iloc[0]["tide_height"]
+            
+            # Open-Meteo は陸地の場合、値が None (null) で返ることがあります
+            if val is None or np.isnan(val):
+                return "NOT_SEA"
+                
+            levels.append(val)
+
+        return levels
+
+    except Exception as e:
+        # 通信エラー等が発生した際も、安全のために "NOT_SEA" を返して
+        # 異常なグラフ描画を防ぎます
+        return "NOT_SEA"
 
 #==========================================================================================
 # 5. 天気コードからテキストと色を取得するサブルーチン
@@ -455,12 +508,41 @@ def render_temp_line_chart(ax, df):
 #==========================================================================================
 # 11. 潮位曲線グラフを描画するサブルーチン
 #==========================================================================================
-def render_tide_curve_chart(ax, df):
-    ax.plot(df['time'], df['tide_level'], color='royalblue', linewidth=2.5)
-    ax.fill_between(df['time'], df['tide_level'], -110, color='royalblue', alpha=0.15)
-    ax.set_ylabel('潮位', fontsize=CONFIG["LABEL_SIZE"])
-    ax.set_ylim(-120, 120)
-    ax.set_yticks([])
+def render_tide_curve_chart(ax, df, tide_data):
+    """
+    潮位データを曲線グラフとして描画します。
+    データが取得できていない（陸地など）場合は、メッセージを表示します。
+    """
+    import numpy as np
+
+    # 潮位データの判定
+    if tide_data == "NOT_SEA":
+        # データがない場合、メッセージを左寄せ（ha='left'）で表示
+        ax.text(0.02, 0.5, "Not in sea area. No tide data.", 
+                transform=ax.transAxes, color="gray", fontsize=12,
+                ha='left', va='center', fontweight='bold')
+        # 枠線だけ残して軸の目盛りなどは非表示に近い状態にする（共通設定に準拠しつつ）
+        ax.set_yticks([])
+        return
+
+    # tide_data が正常なリストの場合、df に追加して描画
+    df['tide_level'] = tide_data
+    
+    # 潮位曲線の描画
+    ax.plot(df.index, df['tide_level'], color="#1f77b4", linewidth=2, label="Tide Level")
+    
+    # 塗りつぶし（海面をイメージ）
+    ax.fill_between(df.index, df['tide_level'], min(df['tide_level']) - 10, 
+                    color="#1f77b4", alpha=0.1)
+
+    # グラフの高さ（y軸）をデータに合わせて動的に設定
+    y_min = df['tide_level'].min()
+    y_max = df['tide_level'].max()
+    padding = (y_max - y_min) * 0.2 if y_max != y_min else 10
+    ax.set_ylim(y_min - padding, y_max + padding)
+    
+    ax.set_ylabel("Tide (cm)", fontsize=10)
+    ax.grid(True, axis='y', linestyle='--', alpha=0.5)
 
 # ======================================================================================
 # 12. 高解像度グラフ画像を生成するサブルーチン
@@ -503,7 +585,13 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
     active_plots = []
     if design_params.get("show_wind", True): active_plots.append("wind")
     if design_params.get("show_temp", True): active_plots.append("temp")
-    if design_params.get("show_tide", True): active_plots.append("tide")
+    
+    # 潮位データの取得と判定
+    tide_data = None
+    if design_params.get("show_tide", True):
+        # APIから潮位を取得（時刻リストと緯度経度を渡す）
+        tide_data = get_tide_level(df['time'].tolist(), lat, lon)
+        active_plots.append("tide")
     
     if not active_plots: return None, (0, 0), start_idx, df
     
@@ -528,7 +616,8 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
         render_temp_line_chart(axes[idx], df)
         idx += 1
     if "tide" in active_plots:
-        render_tide_curve_chart(axes[idx], df)
+        # 潮位グラフの描画（tide_dataの結果によって表示を分岐）
+        render_tide_curve_chart(axes[idx], df, tide_data)
         idx += 1
 
     for ax in axes:
