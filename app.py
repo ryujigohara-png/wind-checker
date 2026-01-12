@@ -522,12 +522,12 @@ def render_temp_line_chart(ax, df):
             )
 
 # ======================================================================================
-# 11. 潮位曲線グラフを描画するサブルーチン（30km圏内探索・1行左寄せ表示版）
+# 11. 潮位曲線グラフを描画するサブルーチン（動的位置計算・完全消去版）
 # ======================================================================================
 def render_tide_curve_chart(ax, df):
     """
     Open-Meteo Marine APIから潮位を取得。
-    指定地点から30km圏内をスキャンし、有効なデータがあれば方位と距離を算出して表示します。
+    フォントサイズに合わせて注意書きの表示位置を動的に計算し、重なりを防止します。
     """
     import requests
     import pandas as pd
@@ -541,16 +541,15 @@ def render_tide_curve_chart(ax, df):
 
     tide_levels = None
     info_text = ""
+    label_fs = CONFIG.get("LABEL_SIZE", 10) # ユーザー設定の文字サイズ
     
-    # 探索範囲の設定：0.05度(約5.5km)刻みで0.25度(約28km)まで広域スキャン
+    # 30km圏内をスキャン
     steps = [0.0, 0.05, 0.1, 0.15, 0.2, 0.25]
     found = False
 
     for s in steps:
         if found: break
-        # 自地点から渦巻き状に探索（30km圏内を網羅）
         offsets = [(s, 0), (-s, 0), (0, s), (0, -s), (s, s), (s, -s), (-s, s), (-s, -s)] if s > 0 else [(0, 0)]
-        
         for d_lat, d_lon in offsets:
             url = "https://marine-api.open-meteo.com/v1/marine"
             params = {
@@ -566,19 +565,14 @@ def render_tide_curve_chart(ax, df):
                     api_h = data.get("hourly", {}).get("sea_level_height_msl", [])
                     
                     if api_h and any(v is not None for v in api_h):
-                        # 実座標との距離を再計算
                         dist_km = np.sqrt(((res_lat - lat)*111.3)**2 + ((res_lon - lon)*111.3*np.cos(np.radians(lat)))**2)
-                        
                         if dist_km <= 30.0:
-                            # 30km以内なら採用。方位を算出
                             angle = np.rad2deg(np.arctan2((res_lon - lon) * np.cos(np.radians(lat)), (res_lat - lat)))
                             directions = ["北", "北東", "東", "南東", "南", "南西", "西", "北西", "北"]
                             res_dir = directions[int((angle + 22.5) % 360 // 45)]
-                            
                             if dist_km > 0.1:
                                 info_text = f"※指定地点の{res_dir}約{dist_km:.1f}kmにある地点の潮汐データを表示しています。"
                             
-                            # データのマッピング
                             df_api = pd.DataFrame({"api_t": pd.to_datetime(data["hourly"]["time"]), "h": api_h})
                             df_api["api_t"] = df_api["api_t"].dt.tz_localize(None)
                             tide_levels = [df_api[df_api["api_t"] == t.replace(tzinfo=None)].iloc[0]["h"] 
@@ -586,16 +580,15 @@ def render_tide_curve_chart(ax, df):
                                            for t in df['time']]
                             found = True
                             break
-            except:
-                continue
+            except: continue
             time.sleep(0.01)
 
-    label_fs = CONFIG.get("LABEL_SIZE", 10)
+    # データがない場合の処理（青いライン等の残像を完全に消去）
     if tide_levels is None:
+        ax.clear() # 既存のラインや枠をすべて削除
         ax.set_axis_off()
-        # メッセージを中央に表示し、他の描画要素を一切出さない
         ax.text(0.5, 0.5, "※指定地点の近傍(30km圏内)に有効な海域データがないため表示されません", 
-                transform=ax.transAxes, color="gray", fontsize=label_fs, ha='center', va='center')
+                transform=ax.transAxes, color="gray", fontsize=label_fs, ha='left', va='center')
         return
 
     # --- 描画処理 ---
@@ -611,9 +604,13 @@ def render_tide_curve_chart(ax, df):
             ax.text(dt, 1.05, f"{val:.0f}", ha='center', va='bottom', color="#1f77b4", 
                     fontsize=label_fs, transform=ax.get_xaxis_transform())
 
-    # メッセージは左寄せ、1行で表示、y=-0.85
+    # 注意書き位置の動的計算
+    # 日付ラベルが占める高さを考慮し、フォントサイズ(label_fs)に比例したオフセットを設定
+    # 0.1あたりがフォントサイズ10px相当の高さになるため、以下の計算式で自動調整
+    dynamic_y_offset = - (label_fs * 0.12) 
+
     if info_text:
-        ax.text(0.0, -0.85, info_text, transform=ax.transAxes, color="#d62728", 
+        ax.text(0.0, dynamic_y_offset, info_text, transform=ax.transAxes, color="#d62728", 
                 fontsize=label_fs - 1, ha='left', va='top')
 
 # ======================================================================================
