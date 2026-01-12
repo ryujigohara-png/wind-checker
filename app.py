@@ -522,17 +522,18 @@ def render_temp_line_chart(ax, df):
             )
 
 # ======================================================================================
-# 11. 潮位曲線グラフを描画するサブルーチン（動的位置計算・完全消去版）
+# 11. 潮位曲線グラフを描画するサブルーチン（重なり絶対防止版）
 # ======================================================================================
 def render_tide_curve_chart(ax, df):
     """
     Open-Meteo Marine APIから潮位を取得。
-    フォントサイズに合わせて注意書きの表示位置を動的に計算し、重なりを防止します。
+    文字サイズ設定(label_fs)に基づき、重なりを物理的に回避する位置へ注釈を表示します。
     """
     import requests
     import pandas as pd
     import numpy as np
     import time
+    from matplotlib.transforms import ScaledTranslation
 
     lat = df.attrs.get('lat', 35.0)
     lon = df.attrs.get('lon', 135.0)
@@ -541,29 +542,23 @@ def render_tide_curve_chart(ax, df):
 
     tide_levels = None
     info_text = ""
-    label_fs = CONFIG.get("LABEL_SIZE", 10) # ユーザー設定の文字サイズ
+    label_fs = CONFIG.get("LABEL_SIZE", 10) 
     
-    # 30km圏内をスキャン
+    # 30km圏内スキャン（変更なし）
     steps = [0.0, 0.05, 0.1, 0.15, 0.2, 0.25]
     found = False
-
     for s in steps:
         if found: break
         offsets = [(s, 0), (-s, 0), (0, s), (0, -s), (s, s), (s, -s), (-s, s), (-s, -s)] if s > 0 else [(0, 0)]
         for d_lat, d_lon in offsets:
             url = "https://marine-api.open-meteo.com/v1/marine"
-            params = {
-                "latitude": lat + d_lat, "longitude": lon + d_lon,
-                "hourly": "sea_level_height_msl", "start_date": start_str, "end_date": end_str, "timezone": "auto"
-            }
+            params = {"latitude": lat + d_lat, "longitude": lon + d_lon, "hourly": "sea_level_height_msl", "start_date": start_str, "end_date": end_str, "timezone": "auto"}
             try:
                 response = requests.get(url, params=params, timeout=5)
                 if response.status_code == 200:
                     data = response.json()
-                    res_lat = data.get("latitude", lat + d_lat)
-                    res_lon = data.get("longitude", lon + d_lon)
+                    res_lat = data.get("latitude", lat + d_lat); res_lon = data.get("longitude", lon + d_lon)
                     api_h = data.get("hourly", {}).get("sea_level_height_msl", [])
-                    
                     if api_h and any(v is not None for v in api_h):
                         dist_km = np.sqrt(((res_lat - lat)*111.3)**2 + ((res_lon - lon)*111.3*np.cos(np.radians(lat)))**2)
                         if dist_km <= 30.0:
@@ -572,45 +567,43 @@ def render_tide_curve_chart(ax, df):
                             res_dir = directions[int((angle + 22.5) % 360 // 45)]
                             if dist_km > 0.1:
                                 info_text = f"※指定地点の{res_dir}約{dist_km:.1f}kmにある地点の潮汐データを表示しています。"
-                            
                             df_api = pd.DataFrame({"api_t": pd.to_datetime(data["hourly"]["time"]), "h": api_h})
                             df_api["api_t"] = df_api["api_t"].dt.tz_localize(None)
-                            tide_levels = [df_api[df_api["api_t"] == t.replace(tzinfo=None)].iloc[0]["h"] 
-                                           if not df_api[df_api["api_t"] == t.replace(tzinfo=None)].empty else np.nan 
-                                           for t in df['time']]
-                            found = True
-                            break
+                            tide_levels = [df_api[df_api["api_t"] == t.replace(tzinfo=None)].iloc[0]["h"] if not df_api[df_api["api_t"] == t.replace(tzinfo=None)].empty else np.nan for t in df['time']]
+                            found = True; break
             except: continue
             time.sleep(0.01)
 
-    # データがない場合の処理（青いライン等の残像を完全に消去）
+    # 1. データがない場合のクリーンアップ処理（左寄せ修正反映）
     if tide_levels is None:
-        ax.clear() # 既存のラインや枠をすべて削除
+        ax.clear()
         ax.set_axis_off()
-        ax.text(0.5, 0.5, "※指定地点の近傍(30km圏内)に有効な海域データがないため表示されません", 
+        # 枠がないため中央(0.5, 0.5)で問題ありませんが、ご指定通り左寄せ(ha='left')にしました
+        ax.text(0.0, 0.5, "※指定地点の近傍(30km圏内)に有効な海域データがないため表示されません", 
                 transform=ax.transAxes, color="gray", fontsize=label_fs, ha='left', va='center')
         return
 
-    # --- 描画処理 ---
+    # 2. 描画処理
     df['tide_cm'] = [v * 100 if v is not None else np.nan for v in tide_levels]
     ax.plot(df['time'], df['tide_cm'], color="#1f77b4", linewidth=2, marker='o', markersize=3, markevery=3)
     ax.set_ylabel("潮位 (cm)", fontsize=label_fs)
     ax.grid(True, axis='y', linestyle='--', alpha=0.5)
 
-    # 数値ラベル
+    # 潮位数値ラベル
     for i in range(0, len(df), 3):
         dt, val = df['time'].iloc[i], df['tide_cm'].iloc[i]
         if not pd.isna(val):
             ax.text(dt, 1.05, f"{val:.0f}", ha='center', va='bottom', color="#1f77b4", 
                     fontsize=label_fs, transform=ax.get_xaxis_transform())
 
-    # 注意書き位置の動的計算
-    # 日付ラベルが占める高さを考慮し、フォントサイズ(label_fs)に比例したオフセットを設定
-    # 0.1あたりがフォントサイズ10px相当の高さになるため、以下の計算式で自動調整
-    dynamic_y_offset = - (label_fs * 0.12) 
-
+    # 3. 注意書き位置の修正（ピクセル単位の絶対オフセット）
     if info_text:
-        ax.text(0.0, dynamic_y_offset, info_text, transform=ax.transAxes, color="#d62728", 
+        # グラフの下端(x=0, y=0)から、フォントサイズの約2.5倍分だけ下に強制移動させる
+        # これにより文字サイズを変更しても「日付ラベル」を飛び越えてその下に配置されます
+        offset = ScaledTranslation(0, - (label_fs * 2.5) / 72, ax.figure.dpi_scale_trans)
+        trans = ax.transAxes + offset
+
+        ax.text(0.0, 0.0, info_text, transform=trans, color="#d62728", 
                 fontsize=label_fs - 1, ha='left', va='top')
 
 # ======================================================================================
