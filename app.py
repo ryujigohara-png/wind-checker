@@ -169,14 +169,12 @@ def fetch_weather_data(lat, lon, days):
         return None
 
 # ======================================================================================
-# 4. 潮位レベルを計算（Open-Meteo API連携版）
+# 4. 潮位レベルを計算（Open-Meteo API連携・全方位スキャン版）
 # ======================================================================================
 def get_tide_level(times, lat, lon):
     """
-    Open-Meteo Marine APIを使用して、指定された地点・時刻の潮位データを取得します。
-    引数の times (fetch_weather_data で取得された現地時刻リスト) に基づき、
-    APIから取得した値をマッピングして返します。
-    陸地などの理由でデータが取得できない場合は、文字列 "NOT_SEA" を返します。
+    Open-Meteo Marine APIを使用して潮位データを取得します。
+    指定地点が陸地判定の場合、東西南北の近隣（沖合）をスキャンしてデータを補完します。
     """
     import requests
     import pandas as pd
@@ -185,75 +183,84 @@ def get_tide_level(times, lat, lon):
     if not times or len(times) == 0:
         return []
 
-    # 1. 取得範囲の決定 (times[0] および times[-1] を使用)
-    # times は既に Naive な datetime オブジェクトであることを前提とします
+    # 取得範囲の決定
     start_date = times[0].strftime('%Y-%m-%d')
     end_date = times[-1].strftime('%Y-%m-%d')
 
-    # 2. Open-Meteo Marine API リクエスト
-    # fetch_weather_data と同様に timezone=auto を指定し、現地の時間を取得します
-    url = "https://marine-api.open-meteo.com/v1/marine"
-    params = {
-        "latitude": lat,
-        "longitude": lon,
-        "hourly": "tide_height",
-        "start_date": start_date,
-        "end_date": end_date,
-        "timezone": "auto"
-    }
+    # 探索パターンの定義: (緯度オフセット, 経度オフセット)
+    # 0:指定値, 1-4:東西南北に約1.5kmずらす
+    search_patterns = [
+        (0.0, 0.0),    # 指定地点
+        (0.0, -0.015), # 西 (West)
+        (0.0, 0.015),  # 東 (East)
+        (0.015, 0.0),  # 北 (North)
+        (-0.015, 0.0)  # 南 (South)
+    ]
+    
+    res_json = None
+    success = False
+
+    for d_lat, d_lon in search_patterns:
+        target_lat = lat + d_lat
+        target_lon = lon + d_lon
+        
+        url = "https://marine-api.open-meteo.com/v1/marine"
+        params = {
+            "latitude": target_lat,
+            "longitude": target_lon,
+            "hourly": "tide_height",
+            "start_date": start_date,
+            "end_date": end_date,
+            "timezone": "auto"
+        }
+
+        try:
+            # 探索時はレスポンスを早めるためタイムアウトを短めに設定
+            response = requests.get(url, params=params, timeout=5)
+            data = response.json()
+            
+            # hourlyデータが存在し、かつ最初の値が有効（nullでない）かチェック
+            if "hourly" in data and data["hourly"].get("tide_height") is not None:
+                if len(data["hourly"]["tide_height"]) > 0 and data["hourly"]["tide_height"][0] is not None:
+                    res_json = data
+                    success = True
+                    break # 有効な地点が見つかれば探索終了
+        except Exception:
+            continue
+
+    if not success or res_json is None:
+        return "NOT_SEA"
 
     try:
-        response = requests.get(url, params=params, timeout=10)
-        res_json = response.json()
-
-        # エラーレスポンス、またはデータが含まれていない場合は陸地（Not Sea）と判定
-        if "hourly" not in res_json or res_json.get("hourly") is None:
-            return "NOT_SEA"
-        
-        if "tide_height" not in res_json["hourly"]:
-            return "NOT_SEA"
-
         # APIからのレスポンスをDataFrame化
         df_api = pd.DataFrame({
             "time": pd.to_datetime(res_json["hourly"]["time"]),
             "tide_height": res_json["hourly"]["tide_height"]
         })
 
-        # fetch_weather_data と同様、APIが返した「現地時間の数字」をそのままNaiveで保持
+        # 現地時間の数字をそのままNaiveで保持（fetch_weather_dataの仕様に準拠）
         df_api["time"] = df_api["time"].dt.tz_localize(None)
 
-        # 3. 引数 times の各時刻に最も近い API データをマッピング
+        # 引数 times の各時刻にマッピング
         levels = []
         for t in times:
             if pd.isna(t):
                 levels.append(np.nan)
                 continue
             
-            # 引数 t も Naive であることを保証（念のため）
             t_naive = t.replace(tzinfo=None) if hasattr(t, 'tzinfo') and t.tzinfo is not None else t
-            
-            # APIデータの中から時刻が一致するものを探す
-            # 1時間ごとのデータなので、基本的には完全一致します
             match_row = df_api[df_api["time"] == t_naive]
             
             if match_row.empty:
-                # 該当時刻のデータがない場合
                 levels.append(np.nan)
                 continue
                 
             val = match_row.iloc[0]["tide_height"]
-            
-            # Open-Meteo は陸地の場合、値が None (null) で返ることがあります
-            if val is None or np.isnan(val):
-                return "NOT_SEA"
-                
-            levels.append(val)
+            levels.append(val if val is not None else np.nan)
 
         return levels
 
-    except Exception as e:
-        # 通信エラー等が発生した際も、安全のために "NOT_SEA" を返して
-        # 異常なグラフ描画を防ぎます
+    except Exception:
         return "NOT_SEA"
 
 #==========================================================================================
