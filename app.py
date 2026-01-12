@@ -169,13 +169,13 @@ def fetch_weather_data(lat, lon, days):
         return None
 
 # ======================================================================================
-# 4. 潮位レベルを計算（400 Bad Request 対策・広域スキャン版）
+# 4. 潮位レベルを計算（Open-Meteo Marine API 正式パラメータ版）
 # ======================================================================================
 def get_tide_level(times, lat, lon):
     """
     Open-Meteo Marine APIを使用して潮位データを取得します。
-    非常に長い桁数の座標を適切に丸めることで 400エラーを回避し、
-    広域スキャンによって「海」のデータを確実に特定します。
+    API仕様に基づき、パラメータ名を sea_level_height_msl に修正。
+    NaNや型エラーを排除し、400 Bad Request を完全に防止します。
     """
     import requests
     import pandas as pd
@@ -185,29 +185,33 @@ def get_tide_level(times, lat, lon):
     if not times or len(times) == 0:
         return []
 
-    # --- 【重要】400エラー対策：座標を float に変換し、小数点以下4桁に丸める ---
+    # 1. 型変換と NaN チェック（400エラー防止）
     try:
-        # round(x, 4) で API が受け入れやすい形式に整えます
-        f_lat = round(float(lat), 4)
-        f_lon = round(float(lon), 4)
+        f_lat = float(lat)
+        f_lon = float(lon)
+        if np.isnan(f_lat) or np.isnan(f_lon):
+            return "NOT_SEA"
     except:
         return "NOT_SEA"
 
     start_date = times[0].strftime('%Y-%m-%d')
     end_date = times[-1].strftime('%Y-%m-%d')
 
-    # 探索ステップ：自地点から開始し、段階的に大きく移動
-    # 0.05（約5.5km）、0.15（約17km）
-    steps = [0.0, 0.05, 0.15]
-    search_offsets = [(0.0, 0.0)]
-    for s in steps[1:]:
-        search_offsets.extend([(s, 0), (-s, 0), (0, s), (0, -s)])
+    # 2. 探索ステップ（広域スキャン）
+    # 自地点から約22km圏内まで探します
+    steps = [0.0, 0.05, 0.1, 0.2]
+    search_offsets = []
+    for s in steps:
+        if s == 0.0:
+            search_offsets.append((0.0, 0.0))
+        else:
+            search_offsets.extend([(s, 0), (-s, 0), (0, s), (0, -s)])
 
     res_json = None
     success = False
 
+    # 3. APIリクエスト実行
     for d_lat, d_lon in search_offsets:
-        # 丸めた基準座標にオフセットを加算
         target_lat = round(f_lat + d_lat, 4)
         target_lon = round(f_lon + d_lon, 4)
         
@@ -215,7 +219,7 @@ def get_tide_level(times, lat, lon):
         params = {
             "latitude": target_lat,
             "longitude": target_lon,
-            "hourly": "tide_height",
+            "hourly": "sea_level_height_msl",  # ← ここを正式名称に修正
             "start_date": start_date,
             "end_date": end_date,
             "timezone": "auto"
@@ -223,15 +227,14 @@ def get_tide_level(times, lat, lon):
 
         try:
             response = requests.get(url, params=params, timeout=5)
-            # 400エラーが出た場合はログ等に記録できるよう response をチェック
             if response.status_code == 200:
                 data = response.json()
-                t_list = data.get("hourly", {}).get("tide_height", [])
+                # 修正したパラメータ名でデータを抽出
+                t_list = data.get("hourly", {}).get("sea_level_height_msl", [])
                 if t_list and any(v is not None for v in t_list[:24]):
                     res_json = data
                     success = True
                     break
-            # 400 や 403 などの場合は次のループ（別の座標）を試す
         except:
             continue
         time.sleep(0.02)
@@ -239,10 +242,11 @@ def get_tide_level(times, lat, lon):
     if not success or res_json is None:
         return "NOT_SEA"
 
+    # 4. データマッピング
     try:
         df_api = pd.DataFrame({
             "time": pd.to_datetime(res_json["hourly"]["time"]),
-            "tide_height": res_json["hourly"]["tide_height"]
+            "tide_height": res_json["hourly"]["sea_level_height_msl"] # 内部名は tide_height として扱う
         })
         df_api["time"] = df_api["time"].dt.tz_localize(None)
 
