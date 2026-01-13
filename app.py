@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# 正規版　更新 2026.1.13 2350 潮位グラフコンプリート版
+# 正規版　更新 2026.1.14 0020 daialogコンプリート版
 """
 1. データ統合・取得仕様
 　• 気象データソース: Open-Meteo APIを使用し、全世界の気象データを取得します。
@@ -775,7 +775,7 @@ def generate_weather_icons_html(df, ratio_info, display_width, start_idx, icon_m
 # ======================================================================================
 # 20. サイドバーからグラフ表示設定を詳細ダイアログで一括変更するサブルーチン
 # ======================================================================================
-@st.dialog("グラフ表示設定の詳細")
+@st.dialog("グラフ表示設定の詳細", dismissible=False)
 def show_settings_dialog():
     """
     開発者モード時のみ、お気に入り管理ダイアログの「ボタン幅」と「文字数制限」を
@@ -865,10 +865,9 @@ def show_settings_dialog():
             "fav_btn_width": d_fav_w, "fav_name_len": d_fav_len,
             "precip_y": d_precip_y, "icon_margin": d_icon_margin, "ratios": d_ratios
         })
-        if "save_settings_to_browser" in globals():
-            save_settings_to_browser()
+        save_settings_to_browser()
         st.cache_data.clear()
-        # st.rerun()
+        st.rerun()
 
 
 # ======================================================================================
@@ -949,7 +948,7 @@ def calculate_graph_height(base_height, ratios, show_wind, show_temp, show_tide)
 # ==========================================================================================
 # 30. 地図UIをダイアログで表示するサブルーチン (倍率維持・完全版)
 # ==========================================================================================
-@st.dialog("📍 地図で指定")
+@st.dialog("📍 地図で指定", dismissible=False)
 def show_location_map_dialog():
     """
     タイトル下の重複表示を整理。
@@ -1350,7 +1349,7 @@ def show_favorite_control_bar(location_options, current_display_label, current_l
 # ======================================================================================
 # 92_3. お気に入り地点の名称登録ダイアログ（10件制限・選択維持対応）
 # ======================================================================================
-@st.dialog("お気に入り地点の名称確認")
+@st.dialog("お気に入り地点の名称確認", dismissible=False)
 def show_favorite_registration_dialog(default_name, lat, lon):
     """
     お気に入り登録時に「地名」を確認・修正してLocalStorageへ永続保存する。
@@ -1404,7 +1403,7 @@ def show_favorite_registration_dialog(default_name, lat, lon):
 # ======================================================================================
 # 92_4. My Spot（お気に入り）管理ダイアログ（2段構成・堅牢版）
 # ======================================================================================
-@st.dialog("My Spot（お気に入り）の編集")
+@st.dialog("My Spot（お気に入り）の編集", dismissible=False)
 def manage_favorites_dialog():
     """
     スマホの標準挙動（縦並び）に準拠した設計。
