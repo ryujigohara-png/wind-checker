@@ -548,7 +548,7 @@ def render_tide_curve_chart(ax, df):
     tide_levels = None
     info_text = ""
     
-    # --- 探索座標リストの作成（ランダム開始・時計回り） ---
+    # --- 探索座標リストの作成（南北・東西を正しく定義） ---
     steps = [0.0, 0.05, 0.1, 0.15, 0.2, 0.25]
     search_points = []
 
@@ -556,16 +556,16 @@ def render_tide_curve_chart(ax, df):
         if s == 0:
             search_points.append((0, 0))
         else:
-            # 8方向の定義
+            # 8方向の定義（緯度プラスが北、経度プラスが東）
             ring = [
-                (0, s),   # 東
-                (-s, s),  # 南東
-                (-s, 0),  # 南
-                (-s, -s), # 南西
-                (0, -s),  # 西
-                (s, -s),  # 北西
-                (s, 0),   # 北
-                (s, s)    # 北東
+                (s, 0),    # 北
+                (s, s),    # 北東
+                (0, s),    # 東
+                (-s, s),   # 南東
+                (-s, 0),   # 南
+                (-s, -s),  # 南西
+                (0, -s),   # 西
+                (s, -s)    # 北西
             ]
             # 各ステップごとに、開始地点をランダムにずらす
             start_idx = random.randint(0, 7)
@@ -578,7 +578,8 @@ def render_tide_curve_chart(ax, df):
         target_lat = lat + d_lat
         target_lon = lon + d_lon
         
-        url = "https://marine-api.open-meteo.com/v1/marine"
+        # [Open-Meteo Marine API](open-meteo.com) を使用
+        url = "marine-api.open-meteo.com"
         params = {
             "latitude": target_lat, "longitude": target_lon,
             "hourly": "sea_level_height_msl", "start_date": start_str, "end_date": end_str, "timezone": "auto"
@@ -590,16 +591,16 @@ def render_tide_curve_chart(ax, df):
                 data = response.json()
                 api_h = data.get("hourly", {}).get("sea_level_height_msl", [])
 
-                # データが存在すれば、その時の「投げた座標」を採用
                 if api_h and any(v is not None for v in api_h):
                     dist_km = round(np.sqrt((d_lat * 111)**2 + (d_lon * 111 * np.cos(np.radians(lat)))**2), 1)
 
-                    if dist_km > 1.0:
+                    if dist_km > 0.5: # わずかな誤差を除きメッセージ表示
                         # 方位の計算
                         angle = np.rad2deg(np.arctan2(d_lon * np.cos(np.radians(lat)), d_lat))
                         directions = ["北", "北東", "東", "南東", "南", "南西", "西", "北西", "北"]
                         res_dir = directions[int((angle + 22.5) % 360 // 45)]
-                        info_text = f"※指定地点の{res_dir}約{dist_km}kmにある地点の海洋データを表示しています。"
+                        # メッセージをより自然な表現に修正
+                        info_text = f"※指定地点の最寄り（{res_dir}約{dist_km}km）の海洋データを表示しています。"
                     
                     df_api = pd.DataFrame({"api_t": pd.to_datetime(data["hourly"]["time"]), "h": api_h})
                     df_api["api_t"] = df_api["api_t"].dt.tz_localize(None)
@@ -633,12 +634,13 @@ def render_tide_curve_chart(ax, df):
             ax.text(dt, 1.05, f"{val:.0f}", ha='center', va='bottom', color="#1f77b4", 
                     fontsize=label_fs, transform=ax.get_xaxis_transform())
 
-    # メッセージ表示位置（label_fs * 3.5 オフセット）
+    # メッセージ表示位置
     if info_text:
         offset = ScaledTranslation(0, - (label_fs * 3.5) / 72, ax.figure.dpi_scale_trans)
         trans = ax.transAxes + offset
         ax.text(0.0, 0.0, info_text, transform=trans, color="#d62728", 
                 fontsize=label_fs - 1, ha='left', va='top')
+      
 # ======================================================================================
 # 12. 高解像度グラフ画像を生成するサブルーチン（完全復旧版）
 # ======================================================================================
