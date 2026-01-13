@@ -579,7 +579,8 @@ def render_tide_curve_chart(ax, df):
         target_lon = lon + d_lon
         
         # [Open-Meteo Marine API](open-meteo.com) を使用
-        url = "marine-api.open-meteo.com"
+        # url = "marine-api.open-meteo.com"
+        url = "https://marine-api.open-meteo.com/v1/marine"
         params = {
             "latitude": target_lat, "longitude": target_lon,
             "hourly": "sea_level_height_msl", "start_date": start_str, "end_date": end_str, "timezone": "auto"
