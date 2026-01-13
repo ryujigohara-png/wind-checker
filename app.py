@@ -594,7 +594,7 @@ def render_tide_curve_chart(ax, df):
                 if api_h and any(v is not None for v in api_h):
                     dist_km = round(np.sqrt((d_lat * 111)**2 + (d_lon * 111 * np.cos(np.radians(lat)))**2), 1)
 
-                    if dist_km > 0.1:
+                    if dist_km > 1.0:
                         # 方位の計算
                         angle = np.rad2deg(np.arctan2(d_lon * np.cos(np.radians(lat)), d_lat))
                         directions = ["北", "北東", "東", "南東", "南", "南西", "西", "北西", "北"]
