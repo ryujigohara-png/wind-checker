@@ -865,10 +865,9 @@ def show_settings_dialog():
             "fav_btn_width": d_fav_w, "fav_name_len": d_fav_len,
             "precip_y": d_precip_y, "icon_margin": d_icon_margin, "ratios": d_ratios
         })
-        if "save_settings_to_browser" in globals():
-            save_settings_to_browser()
+        save_settings_to_browser()
         st.cache_data.clear()
-        # st.rerun()
+        st.rerun()
 
 
 # ======================================================================================
