@@ -238,13 +238,16 @@ def get_tide_level(times, lat, lon):
                 data = response.json()
                 t_list = data.get("hourly", {}).get("sea_level_height_msl", [])
                 if t_list and any(v is not None for v in t_list[:24]):
+                    # --- 修正箇所：データが見つかった時点で res_json を確定させる ---
                     res_json = data
-                    is_nearby = (i > 0)  # 0番目以外でヒットした場合は True
+                    # 0番目なら False（指定地点）、それ以外なら True（近傍地点）
+                    is_nearby = True if i > 0 else False
                     break
         except:
             continue
         time.sleep(0.02)
 
+    # ここで res_json があれば、i が 0 であっても確実にデータ処理へ進む
     if not res_json:
         return "NOT_SEA", False
 
