@@ -854,7 +854,23 @@ def show_settings_dialog():
     
     st.markdown("---")
     
-    # --- 5. 実行・キャンセルボタン ---
+    # --- 5. リセットボタン (誤操作防止のため少し離して配置) ---
+    if st.button("設定をすべて初期値に戻す", key="reset_all_settings", use_container_width=True):
+        st.session_state.update({
+            "show_wind": CONFIG["SHOW_WIND"], "show_temp": CONFIG["SHOW_TEMP"], "show_tide": CONFIG["SHOW_TIDE"],
+            "width": CONFIG["GRAPH_WIDTH"], "base_height": CONFIG["GRAPH_HIGHT"], "base_font_size": CONFIG["GRAPH_FONT_SIZE"],
+            "label_font_size": CONFIG["LABEL_SIZE"], "danger_v": CONFIG["DEFAULT_DANGER_V"], "sel_dirs": list(CONFIG["DEFAULT_DIRS"]),
+            "min_container_width": CONFIG["CONTENA_MIN_W"], "graph_dpi": CONFIG["DPI"], "show_w_text": CONFIG["SHOW_W_TEXT"],
+            "show_dir_name": CONFIG["SHOW_DIR_NAME"], "hspace": CONFIG["HSPACE"], "label_pad": CONFIG["LABEL_PAD"],
+            "dial_h_gap": CONFIG["DIAL_H_GAP"], "dial_v_gap": CONFIG["DIAL_V_GAP"],
+            "fav_btn_width": CONFIG.get("FAV_BTN_WIDTH", 30), "fav_name_len": CONFIG.get("FAV_NAME_LEN", 12),
+            "precip_y": CONFIG["DEFAULT_PRECIP_Y"], "icon_margin": CONFIG["DEFAULT_ICON_MARGIN"], "ratios": CONFIG["DEFAULT_RATIOS"]
+        })
+        save_settings_to_browser()
+        st.cache_data.clear()
+        st.rerun()
+    
+    # --- 6. 実行・キャンセルボタン ---
     c_exec, c_cancel = st.columns(2)
     with c_exec:
         if st.button("設定を適用して更新", key="apply_all_settings", type="primary", use_container_width=True):
