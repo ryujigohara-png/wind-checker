@@ -119,16 +119,18 @@ CONFIG = {
 ALL_DIRECTIONS = ["北", "北北東", "北東", "東北東", "東", "東南東", "南東", "南南東", "南", "南南西", "南西", "西南西", "西", "西北西", "北西", "北北西"]
 
 # ======================================================================================
-# 1. アプリケーション初期化サブルーチン (PWAマニフェスト対応・確実版)
+# 1. アプリケーション初期化サブルーチン (Android強制アイコン上書き版)
 # ======================================================================================
 def initialize_app():
     """
     ページ設定（アイコン・タイトル）および初期セッション状態を定義する。
-    自作の manifest.json を読み込ませることで、Androidのインストール画面でのアイコンを確定させる。
+    Android Chrome の強力なキャッシュと Streamlit 標準マニフェストを上書きするため、
+    Base64埋め込み方式でアイコンを最優先定義する。
     ※この関数はアプリの実行開始直後に一度だけ呼び出すこと。
     """
     import streamlit as st
     import os
+    import base64
     from PIL import Image
 
     # --- 1. 基本的なページ設定 (ブラウザタブ用) ---
@@ -136,6 +138,22 @@ def initialize_app():
     
     if os.path.exists(icon_path):
         app_icon = Image.open(icon_path)
+        
+        # 画像をBase64に変換
+        with open(icon_path, "rb") as f:
+            encoded_image = base64.b64encode(f.read()).decode()
+        
+        # --- 2. Android/PWA 用の強制上書きHTML ---
+        # 既存のマニフェスト設定を無効化する意図で、複数のサイズを直接流し込みます
+        pwa_html = f"""
+            <link rel="apple-touch-icon" href="data:image/png;base64,{encoded_image}">
+            <link rel="icon" type="image/png" sizes="192x192" href="data:image/png;base64,{encoded_image}">
+            <link rel="icon" type="image/png" sizes="512x512" href="data:image/png;base64,{encoded_image}">
+            <link rel="shortcut icon" href="data:image/png;base64,{encoded_image}">
+            <meta name="mobile-web-app-capable" content="yes">
+            <meta name="apple-mobile-web-app-capable" content="yes">
+        """
+        st.markdown(pwa_html, unsafe_allow_html=True)
     else:
         app_icon = "⛵"
 
@@ -145,18 +163,6 @@ def initialize_app():
         page_icon=app_icon,
         layout="wide"
     )
-
-    # --- 2. Android インストールアイコン用の強制指定 ---
-    # 自作の manifest.json をブラウザに認識させるためのタグ
-    # Streamlit標準の manifest よりも優先させる意図があります
-    pwa_html = """
-        <link rel="manifest" href="./manifest.json">
-        <meta name="mobile-web-app-capable" content="yes">
-        <meta name="apple-mobile-web-app-capable" content="yes">
-        <meta name="application-name" content="Pin_Weather!">
-        <meta name="apple-mobile-web-app-title" content="Pin_Weather!">
-    """
-    st.markdown(pwa_html, unsafe_allow_html=True)
     
 #==========================================================================================
 # 2. グラフに使用する日本語フォントをセットアップ
