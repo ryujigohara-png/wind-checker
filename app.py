@@ -119,50 +119,44 @@ CONFIG = {
 ALL_DIRECTIONS = ["北", "北北東", "北東", "東北東", "東", "東南東", "南東", "南南東", "南", "南南西", "南西", "西南西", "西", "西北西", "北西", "北北西"]
 
 # ======================================================================================
-# 1. アプリケーション初期化サブルーチン (Android/iPhoneアイコン完全対応版)
+# 1. アプリケーション初期化サブルーチン (PWAマニフェスト対応・確実版)
 # ======================================================================================
 def initialize_app():
     """
     ページ設定（アイコン・タイトル）および初期セッション状態を定義する。
-    さらに、Android/iPhone のホーム画面追加時のアイコンをメタタグとして埋め込む。
+    自作の manifest.json を読み込ませることで、Androidのインストール画面でのアイコンを確定させる。
     ※この関数はアプリの実行開始直後に一度だけ呼び出すこと。
     """
     import streamlit as st
     import os
-    import base64
     from PIL import Image
 
-    # --- 1. 基本的なページ設定 ---
+    # --- 1. 基本的なページ設定 (ブラウザタブ用) ---
     icon_path = "pin_weather_01.png"
     
-    # 画像ファイルが存在するかチェック
     if os.path.exists(icon_path):
         app_icon = Image.open(icon_path)
-        
-        # スマホ用アイコン設定（Base64変換してHTMLに埋め込み）
-        with open(icon_path, "rb") as f:
-            encoded_image = base64.b64encode(f.read()).decode()
-        
-        # iPhone用(apple-touch-icon) と Android用(icon / mobile-web-app) の両方を指定
-        icon_html = f"""
-            <link rel="apple-touch-icon" href="data:image/png;base64,{encoded_image}">
-            <link rel="icon" sizes="192x192" href="data:image/png;base64,{encoded_image}">
-            <link rel="icon" sizes="512x512" href="data:image/png;base64,{encoded_image}">
-            <meta name="mobile-web-app-capable" content="yes">
-            <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-        """
-        # st.markdownを使って<head>内にメタタグを注入
-        st.markdown(icon_html, unsafe_allow_html=True)
     else:
-        # ファイルが見つからない場合は絵文字をフォールバックとして使用
         app_icon = "⛵"
 
-    # ページ設定の実行（ブラウザタブ用）
+    # ページ設定の実行
     st.set_page_config(
         page_title="Pin_Weather!",
         page_icon=app_icon,
         layout="wide"
     )
+
+    # --- 2. Android インストールアイコン用の強制指定 ---
+    # 自作の manifest.json をブラウザに認識させるためのタグ
+    # Streamlit標準の manifest よりも優先させる意図があります
+    pwa_html = """
+        <link rel="manifest" href="./manifest.json">
+        <meta name="mobile-web-app-capable" content="yes">
+        <meta name="apple-mobile-web-app-capable" content="yes">
+        <meta name="application-name" content="Pin_Weather!">
+        <meta name="apple-mobile-web-app-title" content="Pin_Weather!">
+    """
+    st.markdown(pwa_html, unsafe_allow_html=True)
     
 #==========================================================================================
 # 2. グラフに使用する日本語フォントをセットアップ
