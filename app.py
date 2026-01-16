@@ -1913,6 +1913,7 @@ def render_footer_info(danger_v):
 # 100. メイン処理 (再構築版・スクロール対応)
 # ======================================================================================
 def main():
+    import os
     # --- 0. アプリ初期化 (最優先で実行) ---
     initialize_app()
 
@@ -1941,7 +1942,20 @@ def main():
     # サイドバーのコントロール（設定変更があれば内部で needs_graph_update = True になる）
     danger_v, sel_dirs, design_params = show_sidebar_controls()
     
-    st.title("⛵Pin_Weather!")
+    # --- タイトルエリアの描画 (絵文字をアイコン画像に変更) ---
+    # カラムを作成して画像とタイトルを横並びにする
+    col_icon, col_title = st.columns([0.12, 0.88]) 
+    with col_icon:
+        icon_path = "pin_weather_01.png"
+        if os.path.exists(icon_path):
+            # width=70 でタイトルの高さとバランスをとっています
+            st.image(icon_path, width=70)
+        else:
+            # 万が一画像がない場合は以前の絵文字を表示
+            st.title("⛵")
+            
+    with col_title:
+        st.title("Pin_Weather!")
     
     # 時間設定
     now_jst = datetime.now(timezone(timedelta(hours=9)))
