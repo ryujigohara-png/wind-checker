@@ -56,7 +56,7 @@ import streamlit.components.v1 as components
 from streamlit_js_eval import streamlit_js_eval, get_geolocation
 
 # ======================================================================================
-# 1. 定数・基本設定 (CONFIG)
+# 0. 定数・基本設定 (CONFIG)
 # ======================================================================================
 CONFIG = {
     "TITLE_SIZE": 20,
@@ -119,45 +119,27 @@ CONFIG = {
 ALL_DIRECTIONS = ["北", "北北東", "北東", "東北東", "東", "東南東", "南東", "南南東", "南", "南南西", "南西", "西南西", "西", "西北西", "北西", "北北西"]
 
 # ======================================================================================
-# 1. アプリケーション初期化サブルーチン (Android強制アイコン上書き版)
+# 1. アプリケーション初期化サブルーチン (st.logo 導入版)
 # ======================================================================================
 def initialize_app():
     """
-    ページ設定（アイコン・タイトル）および初期セッション状態を定義する。
-    Android Chrome の強力なキャッシュと Streamlit 標準マニフェストを上書きするため、
-    Base64埋め込み方式でアイコンを最優先定義する。
+    ページ設定および、アプリ画面内へのロゴ表示 (st.logo) を実行する。
     ※この関数はアプリの実行開始直後に一度だけ呼び出すこと。
     """
     import streamlit as st
     import os
-    import base64
     from PIL import Image
 
-    # --- 1. 基本的なページ設定 (ブラウザタブ用) ---
     icon_path = "pin_weather_01.png"
     
+    # 1. ページ設定（ブラウザタブ用）
     if os.path.exists(icon_path):
         app_icon = Image.open(icon_path)
-        
-        # 画像をBase64に変換
-        with open(icon_path, "rb") as f:
-            encoded_image = base64.b64encode(f.read()).decode()
-        
-        # --- 2. Android/PWA 用の強制上書きHTML ---
-        # 既存のマニフェスト設定を無効化する意図で、複数のサイズを直接流し込みます
-        pwa_html = f"""
-            <link rel="apple-touch-icon" href="data:image/png;base64,{encoded_image}">
-            <link rel="icon" type="image/png" sizes="192x192" href="data:image/png;base64,{encoded_image}">
-            <link rel="icon" type="image/png" sizes="512x512" href="data:image/png;base64,{encoded_image}">
-            <link rel="shortcut icon" href="data:image/png;base64,{encoded_image}">
-            <meta name="mobile-web-app-capable" content="yes">
-            <meta name="apple-mobile-web-app-capable" content="yes">
-        """
-        st.markdown(pwa_html, unsafe_allow_html=True)
+        # アプリ画面内にロゴを表示 (サイドバー上部などに配置される)
+        st.logo(icon_path, size="large") 
     else:
         app_icon = "⛵"
 
-    # ページ設定の実行
     st.set_page_config(
         page_title="Pin_Weather!",
         page_icon=app_icon,
