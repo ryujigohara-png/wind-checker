@@ -1946,7 +1946,7 @@ def main():
     import os
     icon_path = "pin_weather_01.png"
     if os.path.exists(icon_path):
-        st.image(icon_path, width=1000) 
+        st.image(icon_path, width=1537) 
     else:
         st.title("⛵Pin_Weather!")            
        
