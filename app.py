@@ -1946,12 +1946,10 @@ def main():
     import os
     icon_path = "pin_weather_01.png"
     if os.path.exists(icon_path):
-        st.image(icon_path, width=350) 
+        st.image(icon_path, width=400) 
     else:
         st.title("⛵Pin_Weather!")            
-    with col_title:
-        st.title("Pin_Weather!")
-    
+       
     # 時間設定
     now_jst = datetime.now(timezone(timedelta(hours=9)))
 
