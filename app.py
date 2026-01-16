@@ -1275,9 +1275,23 @@ def render_custom_css():
     """
     アプリ全体のCSSスタイルを定義する。
     正規版で定義されていたスクロールコンテナ等のスタイルを管理。
+    ブラウザの自動翻訳による誤変換を防ぐメタタグ・クラス設定を追加。
     """
+    # 1. 翻訳拒否のメタ設定と、既存のデザイン用CSSを一括で適用
     st.markdown("""
+        <meta name="google" content="notranslate">
+        <script>
+            document.documentElement.setAttribute('translate', 'no');
+            document.documentElement.classList.add('notranslate');
+        </script>
+
         <style>
+            /* 翻訳拒否をCSSクラスでも念のため指定 */
+            .main {
+                unicode-bidi: isolate;
+            }
+
+            /* 既存のスタイル設定をそのまま維持 */
             .block-container { padding-top: 2rem !important; padding-bottom: 0rem !important; }
             .scroll-container { 
                 overflow-x: auto; 
