@@ -1949,7 +1949,7 @@ def main():
         icon_path = "pin_weather_01.png"
         if os.path.exists(icon_path):
             # width=70 でタイトルの高さとバランスをとっています
-            st.image(icon_path, width=140)
+            st.image(icon_path, width=160)
         else:
             # 万が一画像がない場合は以前の絵文字を表示
             st.title("⛵")
