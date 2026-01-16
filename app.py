@@ -130,7 +130,7 @@ def initialize_app():
     import os
     from PIL import Image
 
-    icon_path = "pin_weather_01.png"
+    icon_path = "pin_weather_02.png"
     
     # 1. ページ設定（ブラウザタブ用）
     if os.path.exists(icon_path):
@@ -1944,7 +1944,7 @@ def main():
     
     # --- タイトルエリアの修正 (画像ロゴのみを表示) ---
     import os
-    icon_path = "pin_weather_01.png"
+    icon_path = "pin_weather_02.png"
     if os.path.exists(icon_path):
         st.image(icon_path, width=1537) 
     else:
