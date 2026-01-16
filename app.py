@@ -1942,18 +1942,13 @@ def main():
     # サイドバーのコントロール（設定変更があれば内部で needs_graph_update = True になる）
     danger_v, sel_dirs, design_params = show_sidebar_controls()
     
-    # --- タイトルエリアの描画 (絵文字をアイコン画像に変更) ---
-    # カラムを作成して画像とタイトルを横並びにする
-    col_icon, col_title = st.columns([0.12, 0.88]) 
-    with col_icon:
-        icon_path = "pin_weather_01.png"
-        if os.path.exists(icon_path):
-            # width=70 でタイトルの高さとバランスをとっています
-            st.image(icon_path, width=200)
-        else:
-            # 万が一画像がない場合は以前の絵文字を表示
-            st.title("⛵")
-            
+    # --- タイトルエリアの修正 (画像ロゴのみを表示) ---
+    import os
+    icon_path = "pin_weather_01.png"
+    if os.path.exists(icon_path):
+        st.image(icon_path, width=350) 
+    else:
+        st.title("⛵Pin_Weather!")            
     with col_title:
         st.title("Pin_Weather!")
     
