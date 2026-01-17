@@ -1238,10 +1238,6 @@ def show_settings_dialog():
                 st.rerun()
         with c_cancel:
             if st.button(lang_dict["キャンセルして戻る"], key="cancel_all_settings", use_container_width=True):
-                # 【高速化の核心】
-                # 描画スキップフラグを立ててから rerun する。
-                # これにより、全体の再実行は走るが、サブルーチン95が即終了するため爆速で閉じる。
-                st.session_state.skip_graph_once = True
                 st.rerun()
                 
     # ダイアログの実行
@@ -2174,15 +2170,8 @@ def render_header_info(current_basho_name):
 def render_graph_area_module(danger_v, sel_dirs, design_params, now_jst):
     """
     グラフ描画エリアを管理するモジュール。
-    skip_graph_once フラグが True の場合は、重いグラフ生成をスキップして高速に復帰する。
     """
     import streamlit as st
-
-    # --- 【高速化の核心】描画スキップ判定 ---
-    if st.session_state.get("skip_graph_once", False):
-        # フラグをリセットして、何も描画せずに終了する
-        st.session_state.skip_graph_once = False
-        return
         
     # 辞書の取得
     translations = get_language_dict()
