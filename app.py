@@ -145,6 +145,7 @@ def get_language_dict():
             "MSG_GETTING_LOC": "🛰️ 現在地を取得中...",
             "MSG_IDENTIFY_LOC": "現在地の地名を特定中...",
             "ERR_LOC_FAILED": "❌ 位置情報の取得に失敗しました。",
+            "BTN_UPDATE": "更新",
             "グラフを生成中...": "グラフを生成中...",
             "⚙ 詳細設定": "⚙ 詳細設定",
             "📍 My Spot 編集": "📍 My Spot 編集",
@@ -233,6 +234,7 @@ def get_language_dict():
             "MSG_GETTING_LOC": "🛰️ Getting current location...",
             "MSG_IDENTIFY_LOC": "Identifying location name...",
             "ERR_LOC_FAILED": "❌ Failed to get location information.",
+            "BTN_UPDATE": "Update",
             "グラフを生成中...": "Generating graphs...",
             "⚙ 詳細設定": "⚙ Advanced Settings",
             "📍 My Spot 編集": "📍 Edit My Spot",
@@ -2070,52 +2072,49 @@ def handle_current_location_update_integrated():
 def render_header_info(current_basho_name):
     """
     グラフ更新ボタンと日時情報を描画する。
-    ブラウザの現在時刻(now_jst)と現地の時差を使い、選択地点の正確な現地時刻を表示する。
+    表示内容および日時フォーマットを st.session_state.lang に基づき多言語化します。
     """
-    # 関数冒頭で必要なものを定義・インポートし、UnboundLocalErrorを完全に回避
     import streamlit as st
     from datetime import datetime, timedelta
+
+    # 辞書の取得
+    translations = get_language_dict()
+    lang_dict = translations[st.session_state.lang]
 
     # 1. 描画フラグの確認とクリア
     if st.session_state.get("needs_graph_update", True):
-        # 描画が終わったらフラグを下ろす
         st.session_state.needs_graph_update = False
         
-    # --- ここから下の時刻計算・表示ロジックは一切変更せず維持 ---
-    import streamlit as st
-    from datetime import datetime, timedelta
-
-    # 基準となるブラウザ時刻（メイン処理から渡される now_jst を想定）
+    # 基準となるブラウザ時刻
     now_jst = st.session_state.get('now_jst', datetime.now())
 
     try:
-        # 1. 現地の時差情報を取得するために軽量なデータ取得を行う
+        # 現地の時差情報を取得
         df_tmp = fetch_weather_data(st.session_state.lat, st.session_state.lon, 1)
-        
-        # 変数 x: ブラウザの時差を動的に取得
         browser_offset = now_jst.utcoffset()
         browser_offset_s = browser_offset.total_seconds() if browser_offset else 0
-        
-        # 変数 y: 現地の時差（fetch_weather_data で付与された属性）
         local_offset_s = df_tmp.attrs.get('local_offset_seconds', 0)
         
-        # 2. 計算：[ブラウザ時刻] - [ブラウザ時差x] + [現地時差y]
+        # 計算：[ブラウザ時刻] - [ブラウザ時差] + [現地時差]
         now_local = now_jst.replace(tzinfo=None) - timedelta(seconds=browser_offset_s) + timedelta(seconds=local_offset_s)
         
     except Exception:
-        # エラー時はフォールバックとしてブラウザ時刻をそのまま表示
         now_local = now_jst.replace(tzinfo=None)
 
-    date_time_str = now_local.strftime('%Y/%m/%d %H:%M:%S')
-    # ボタンのラベルに現地時刻を反映
-    update_label = f"🔄📊更新 ({date_time_str})"
+    # --- 多言語対応：日時フォーマットとボタンラベル ---
+    # 辞書からフォーマットを取得（例: JPなら '%Y/%m/%d %H:%M:%S', ENなら '%m/%d/%Y %H:%M:%S'）
+    dt_format = lang_dict.get('DATETIME_FORMAT', '%Y/%m/%d %H:%M:%S')
+    date_time_str = now_local.strftime(dt_format)
+    
+    # 辞書から「更新」ラベルを取得
+    update_text = lang_dict.get('BTN_UPDATE', '更新')
+    update_label = f"🔄📊{update_text} ({date_time_str})"
     
     if st.button(update_label, use_container_width=True):
         st.cache_data.clear()
-        # 更新ボタン押下時も描画を許可する
         st.session_state.needs_graph_update = True
         st.rerun()
-
+        
 # ======================================================================================
 # 95. 【main機能分離】⑤グラフ描画エリアモジュール
 # ======================================================================================
