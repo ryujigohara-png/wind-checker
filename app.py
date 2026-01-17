@@ -141,6 +141,10 @@ def get_language_dict():
         "ja": {
             "表示設定": "表示設定",
             "⛵Pin_Weather!": "⛵Pin_Weather!",
+            "BTN_CURRENT_LOC": "🔄📍現在地　　　　　　　　　　",
+            "MSG_GETTING_LOC": "🛰️ 現在地を取得中...",
+            "MSG_IDENTIFY_LOC": "現在地の地名を特定中...",
+            "ERR_LOC_FAILED": "❌ 位置情報の取得に失敗しました。",
             "グラフを生成中...": "グラフを生成中...",
             "⚙ 詳細設定": "⚙ 詳細設定",
             "📍 My Spot 編集": "📍 My Spot 編集",
@@ -225,6 +229,10 @@ def get_language_dict():
         "en": {
             "表示設定": "Display Settings",
             "⛵Pin_Weather!": "⛵Pin_Weather!",
+            "BTN_CURRENT_LOC": "🔄📍Current Location          ",
+            "MSG_GETTING_LOC": "🛰️ Getting current location...",
+            "MSG_IDENTIFY_LOC": "Identifying location name...",
+            "ERR_LOC_FAILED": "❌ Failed to get location information.",
             "グラフを生成中...": "Generating graphs...",
             "⚙ 詳細設定": "⚙ Advanced Settings",
             "📍 My Spot 編集": "📍 Edit My Spot",
@@ -1982,18 +1990,30 @@ def render_update_control_module(basho):
 def handle_current_location_update_integrated():
     """
     「現在地を取得」ボタンを処理し、取得成功時に座標と地名を更新・保存する。
+    表示テキストを st.session_state.lang に基づき多言語化します。
     """
-    if st.button("🔄📍現在地　　　　　　　　　　", use_container_width=True):
+    import streamlit as st
+    from datetime import datetime
+    from streamlit_js_eval import streamlit_js_eval
+
+    # 辞書の取得
+    translations = get_language_dict()
+    lang_dict = translations[st.session_state.lang]
+
+    # ボタンラベルの取得（全角スペースによる調整を維持）
+    btn_label = lang_dict.get("BTN_CURRENT_LOC", "🔄📍現在地　　　　　　　　　　")
+
+    if st.button(btn_label, use_container_width=True):
         st.session_state.waiting_loc = True
         st.session_state.geo_key = f"geo_{datetime.now().timestamp()}"
         st.rerun()
 
     if st.session_state.get("waiting_loc"):
         # メッセージ表示（toastを使用して余白を最小化）
-        st.toast("🛰️ 現在地を取得中...", icon="📍")
+        msg_getting = lang_dict.get("MSG_GETTING_LOC", "🛰️ 現在地を取得中...")
+        st.toast(msg_getting, icon="📍")
         
-        # --- ここからロジックを高速版に差し替え ---
-        # 従来の get_geolocation(component_key=...) ではなく、JSを直接実行して高速化
+        # --- JS実行による位置情報取得ロジック（変更なし） ---
         js_code = """
         new Promise((resolve, reject) => {
             navigator.geolocation.getCurrentPosition(
@@ -2010,20 +2030,21 @@ def handle_current_location_update_integrated():
             );
         })
         """
-        # 実際の取得実行
         loc = streamlit_js_eval(js_expressions=js_code, key=st.session_state.get("geo_key"))
-        # --- 差し替えここまで ---
 
         if loc:
             new_lat = round(loc['coords']['latitude'], 4)
             new_lon = round(loc['coords']['longitude'], 4)
-            with st.spinner("現在地の地名を特定中..."):
+            
+            # 地名特定中のスピナー
+            msg_identifying = lang_dict.get("MSG_IDENTIFY_LOC", "現在地の地名を特定中...")
+            with st.spinner(msg_identifying):
                 place_name = fetch_location_name(new_lat, new_lon)
+            
             new_temp_label = f"{place_name} ({new_lat:.4f}, {new_lon:.4f})"
             st.session_state.waiting_loc = False
             
-            # 座標が更新されるため、グラフ描画フラグをTrueにして保存
-            # update_state_and_save ロジックは一切変更せず維持
+            # 状態更新と保存
             update_state_and_save({
                 "lat": new_lat,
                 "lon": new_lon,
@@ -2033,12 +2054,16 @@ def handle_current_location_update_integrated():
                 "needs_graph_update": True
             })
             st.rerun()
+            
         elif loc is False:
             st.session_state.waiting_loc = False
-            st.error("❌ 位置情報の取得に失敗しました。")
-            if st.button("キャンセル"):
+            # エラーメッセージの多言語化
+            err_msg = lang_dict.get("ERR_LOC_FAILED", "❌ 位置情報の取得に失敗しました。")
+            st.error(err_msg)
+            
+            cancel_label = lang_dict.get("BTN_CANCEL", "キャンセル")
+            if st.button(cancel_label):
                 st.rerun()
-
 # ======================================================================================
 # 94_2. グラフ更新ボタンと日時情報を描画するサブルーチン
 # ======================================================================================
