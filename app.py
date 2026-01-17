@@ -691,9 +691,15 @@ def apply_common_axis_settings(ax, df, formatter, now_jst, design_params):
 def render_wind_bar_chart(ax, df, danger_v, wind_step, design_params=None):
     """
     風速棒グラフを描画し、上部に各種情報を配置する。
-    左端の3時間パディングを考慮し、グラフ枠の左端（インデックス3）から描画基準を合わせる。
-    降水量は0より大きい場合のみ、小数点第1位まで表示する。
+    表示ラベルを st.session_state.lang に基づき多言語化します。
     """
+    import pandas as pd
+    import streamlit as st
+
+    # 辞書の取得
+    translations = get_language_dict()
+    lang_dict = translations[st.session_state.lang]
+
     bar_width = design_params.get("bar_width", 0.035) if design_params else 0.035
     bars = ax.bar(df['time'], df['wind_speed_10m'], color=df['color'], alpha=0.9, width=bar_width)
     ax.axhline(y=danger_v, color='red', linestyle='--', linewidth=CONFIG["HLINE_WIDTH"], alpha=0.8)
@@ -712,12 +718,14 @@ def render_wind_bar_chart(ax, df, danger_v, wind_step, design_params=None):
     max_speed = df['wind_speed_10m'].max() if not df['wind_speed_10m'].dropna().empty else 0
     y_limit = max(max_speed + (4 * step) + 1.0, danger_v + 3.0)
     ax.set_ylim(0, y_limit)
-    ax.set_ylabel('風速 (m/s)', fontsize=l_fs) 
+    
+    # Y軸ラベルの多言語化
+    ax.set_ylabel(lang_dict.get('風速 (m/s)', 'Wind Speed (m/s)'), fontsize=l_fs) 
 
-    # --- ①「降水量mm」の見出し位置修正 ---
-    # グラフの左端（パディング直後の時刻）を取得
+    # --- ①「降水量mm」の見出し位置修正（多言語化） ---
     graph_left_time = df['time'].iloc[0] 
-    ax.text(graph_left_time, precip_y, "降水量mm　", 
+    precip_label = lang_dict.get("降水量mm　", "Precip. mm ")
+    ax.text(graph_left_time, precip_y, precip_label, 
             ha='right', va='bottom', fontsize=l_fs, color="blue", 
             transform=ax.get_xaxis_transform(), clip_on=False)
     
@@ -741,21 +749,22 @@ def render_wind_bar_chart(ax, df, danger_v, wind_step, design_params=None):
             current_y = base_y + base + step
             ax.text(x_pos, current_y, row['arrow'], ha='center', va='bottom', 
                     fontsize=fs+2, fontweight='bold', color=CONFIG["ARROW_COLOR"])
-            # 風向名
+            
+            # 風向名 (既に process_wind_data で多言語化済みの値を使用)
             if show_d:
                 current_y += step
                 ax.text(x_pos, current_y, row['dir_name'], ha='center', va='bottom', fontsize=fs-2)
-            # 天気文字
+            
+            # 天気文字 (既に get_weather_info で多言語化済みの値を使用)
             if show_w:
                 current_y += step
                 ax.text(x_pos, current_y, row['w_text'], ha='center', va='bottom', 
                         color=row['w_color'], fontweight='bold', fontsize=fs-1)
 
-        # --- ③ 降水量数値の表示（3時間ごと、0より大きい場合のみ） ---
+        # --- ③ 降水量数値の表示 ---
         if (i - 3) % 3 == 0:
             precip = row.get('precipitation', 0)
             if pd.notna(precip) and precip > 0:
-                # 棒グラフの中心(x_pos)を使用して、横ズレを完全に防ぐ
                 ax.text(dt, precip_y, f"{precip:.1f}", ha='center', va='bottom', 
                         fontsize=l_fs, color="blue", transform=ax.get_xaxis_transform(), clip_on=False)
                 
