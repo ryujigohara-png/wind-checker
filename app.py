@@ -151,7 +151,7 @@ def get_language_dict():
             "SELECT_PLACE": "地点を選択してください",
             "HELP_FAV_SAVED": "お気に入り登録済み",
             "HELP_FAV_SAVE": "この場所をお気に入りに登録",
-            "グラフを生成中...": "グラフを生成中...",
+            "MSG_GEN_GRAPH": "グラフを生成中...",
             "⚙ 詳細設定": "⚙ 詳細設定",
             "📍 My Spot 編集": "📍 My Spot 編集",
             "グラフ表示設定の詳細": "グラフ表示設定の詳細",
@@ -245,7 +245,7 @@ def get_language_dict():
             "SELECT_PLACE": "Select a location",
             "HELP_FAV_SAVED": "Saved to Favorites",
             "HELP_FAV_SAVE": "Add to Favorites",
-            "グラフを生成中...": "Generating graphs...",
+            "MSG_GEN_GRAPH": "Generating graphs...",
             "⚙ 詳細設定": "⚙ Advanced Settings",
             "📍 My Spot 編集": "📍 Edit My Spot",
             "グラフ表示設定の詳細": "Detailed Display Settings",
@@ -970,9 +970,11 @@ def render_tide_curve_chart(ax, df):
                 fontsize=label_fs - 1, ha='left', va='top')
       
 # ======================================================================================
-# 12. 高解像度グラフ画像を生成するサブルーチン（完全復旧版）
+# 12. 高解像度グラフ画像を生成するサブルーチン
 # ======================================================================================
-@st.cache_data(show_spinner="グラフを生成中...", ttl=600)
+# 多言語化対応のため show_spinner=False に設定。
+# 呼び出し側の render_graph_area_module にて辞書に基づいたスピナーを表示します。
+@st.cache_data(show_spinner=False, ttl=600)
 def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_params, now_jst):
     import pandas as pd
     import io
@@ -1030,7 +1032,7 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
         render_temp_line_chart(axes[idx], df)
         idx += 1
     if "tide" in active_plots:
-        # 【修正の核心】戻り値を受け取らず、(ax, df) のみで呼び出す元の形に戻します
+        # 戻り値を受け取らない元の形を維持
         render_tide_curve_chart(axes[idx], df)
         idx += 1
 
@@ -2131,19 +2133,28 @@ def render_header_info(current_basho_name):
 def render_graph_area_module(danger_v, sel_dirs, design_params, now_jst):
     """
     グラフ描画エリアを管理するモジュール。
-    正規版のスクロール構造を再現し、横長のグラフを適切に表示する。
+    言語設定に基づいたスピナーを表示し、生成されたグラフとアイコンをスクロール構造で描画する。
     """
-    # ---グラフ生成（サブルーチン12の戻り値4つ：img, ratio, idx, df） ---
-    img_b64, ratio_info, start_idx, df_from_graph = generate_high_res_graph(
-        st.session_state.lat, 
-        st.session_state.lon, 
-        danger_v, 
-        tuple(sel_dirs), 
-        design_params, 
-        now_jst
-    )
+    import streamlit as st
+
+    # 辞書の取得
+    translations = get_language_dict()
+    lang_dict = translations[st.session_state.lang]
+
+    # --- 1. グラフ生成（辞書に基づいたスピナーを表示） ---
+    msg_gen = lang_dict.get("MSG_GEN_GRAPH", "グラフを生成中...")
     
-    # ---アイコン・グラフ描画 ---
+    with st.spinner(msg_gen):
+        img_b64, ratio_info, start_idx, df_from_graph = generate_high_res_graph(
+            st.session_state.lat, 
+            st.session_state.lon, 
+            danger_v, 
+            tuple(sel_dirs), 
+            design_params, 
+            now_jst
+        )
+    
+    # --- 2. アイコン・グラフ描画 ---
     if img_b64:
         # 正規版のロジックに基づき、表示幅を計算
         dpi = design_params.get("graph_dpi", CONFIG.get("DPI", 200))
@@ -2151,7 +2162,7 @@ def render_graph_area_module(danger_v, sel_dirs, design_params, now_jst):
         min_w = design_params.get("min_container_width", 800)
         icon_margin = design_params.get("icon_margin", 0)
         
-        # アイコンHTML生成
+        # アイコンHTML生成（内部で「天気」ラベルが多言語化される）
         icons_html = generate_weather_icons_html(
             df_from_graph, 
             ratio_info, 
