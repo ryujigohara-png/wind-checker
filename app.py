@@ -1245,17 +1245,22 @@ def calculate_graph_height(base_height, ratios, show_wind, show_temp, show_tide)
 
 
 # ==========================================================================================
-# 30. 地図UIをダイアログで表示するサブルーチン (倍率維持・完全版)
+# 30. 地図UIをダイアログで表示するサブルーチン (倍率維持・完全版・多言語対応)
 # ==========================================================================================
-@st.dialog("📍 地図で指定", dismissible=False)
 def show_location_map_dialog():
     """
     タイトル下の重複表示を整理。
     「地図中心に📍」ボタン押下時に、マーカーを地図の物理的な中心に確実に表示させる。
     ユーザーが変更した倍率を維持したまま、地図中心を📍に合わせる。
+    表示文字列を st.session_state.lang に基づき切り替えます。
     """
     import folium
     from streamlit_folium import st_folium
+    import streamlit as st
+
+    # 辞書の取得
+    translations = get_language_dict()
+    lang_dict = translations[st.session_state.lang]
 
     # --- 1. 座標と名称の初期管理 ---
     if "temp_lat" not in st.session_state:
@@ -1266,12 +1271,13 @@ def show_location_map_dialog():
         # 初回表示時は現在の地名を表示
         st.session_state.temp_basho = st.session_state.last_basho
     
-    # [追加] 現在の倍率を管理する変数（初期値は13）
+    # 現在の倍率を管理する変数（初期値は13）
     if "temp_zoom" not in st.session_state:
         st.session_state.temp_zoom = 13
     
     # --- 2. メインUI (Fragment構造) ---
-    @st.fragment
+    # ダイアログのタイトルを辞書から取得
+    @st.dialog(lang_dict.get("📍 地図で指定", "📍 Select on Map"), dismissible=False)
     def map_final_fixed_fragment():
         # 表示整理
         st.markdown(f"📍 **{st.session_state.temp_basho}**")
@@ -1279,7 +1285,6 @@ def show_location_map_dialog():
         h_px = st.session_state.get("map_h", CONFIG["MAP_HEIGHT"])
     
         # 地図オブジェクト作成
-        # [修正] zoom_startを固定せず、保持している倍率を適用する
         m = folium.Map(
             location=[st.session_state.temp_lat, st.session_state.temp_lon], 
             zoom_start=st.session_state.temp_zoom
@@ -1292,7 +1297,6 @@ def show_location_map_dialog():
         ).add_to(m)
         
         # 地図の描画
-        # [修正] returned_objectsに "zoom" を追加し、現在の倍率を取得可能にする
         map_out = st_folium(
             m, width=None, height=h_px, 
             key=f"map_v36_final",
@@ -1301,10 +1305,10 @@ def show_location_map_dialog():
     
         st.write("") 
     
-        # 「地図中心に📍」ボタンのロジック
-        if st.button("地図中心に📍", use_container_width=True):
+        # 「地図中心に📍」ボタンのロジック (ラベルを辞書化)
+        if st.button(lang_dict.get("地図中心に📍", "Set 📍 at Center"), use_container_width=True):
             if map_out:
-                # [追加] ユーザーが変更した「今の倍率」を保存
+                # ユーザーが変更した「今の倍率」を保存
                 if map_out.get("zoom") is not None:
                     st.session_state.temp_zoom = map_out["zoom"]
                 
@@ -1313,8 +1317,8 @@ def show_location_map_dialog():
                     st.session_state.temp_lat = map_out["center"]["lat"]
                     st.session_state.temp_lon = map_out["center"]["lng"]
                     
-                    # 名称を更新
-                    with st.spinner("地名取得中..."):
+                    # 名称を更新 (スピナーのメッセージを辞書化)
+                    with st.spinner(lang_dict.get("地名取得中...", "Fetching location name...")):
                         raw_name = fetch_location_name(
                             st.session_state.temp_lat, st.session_state.temp_lon
                         )
@@ -1323,10 +1327,10 @@ def show_location_map_dialog():
                     # フラグメント内を再描画して、テキスト・地図中心・📍をすべて同期
                     st.rerun(scope="fragment")
     
-        # 確定・中止ボタン
+        # 確定・中止ボタン (ラベルを辞書化)
         c1, c2 = st.columns(2)
         with c1:
-            if st.button("確定", use_container_width=True):
+            if st.button(lang_dict.get("確定", "Confirm"), use_container_width=True):
                 # メインの状態を更新
                 st.session_state.lat = st.session_state.temp_lat
                 st.session_state.lon = st.session_state.temp_lon
@@ -1344,7 +1348,7 @@ def show_location_map_dialog():
                 st.rerun()
     
         with c2:
-            if st.button("中止", use_container_width=True):
+            if st.button(lang_dict.get("中止", "Cancel"), use_container_width=True):
                 # グラフ描画を行わずに閉じる
                 for k in ["temp_lat", "temp_lon", "temp_basho", "temp_zoom"]: 
                     st.session_state.pop(k, None)
