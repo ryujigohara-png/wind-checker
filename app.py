@@ -1235,13 +1235,12 @@ def show_settings_dialog():
                 })
                 save_settings_to_browser()
                 st.cache_data.clear()
+                st.session_state.needs_graph_update = True
                 st.rerun()
         with c_cancel:
             if st.button(lang_dict["キャンセルして戻る"], key="cancel_all_settings", use_container_width=True):
-                # 【改良の核心】
-                # st.rerun() を使わず return するだけで、ダイアログは消え、
-                # 背後の重いメイン画面の再描画はスキップされます。
-                return  
+                st.session_state.needs_graph_update = False
+                st.rerun()
 
     # ダイアログの実行
     settings_dialog_content()
