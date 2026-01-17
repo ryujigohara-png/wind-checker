@@ -1238,7 +1238,10 @@ def show_settings_dialog():
                 st.rerun()
         with c_cancel:
             if st.button(lang_dict["キャンセルして戻る"], key="cancel_all_settings", use_container_width=True):
-                st.rerun()
+                # 【改良の核心】
+                # st.rerun() を使わず return するだけで、ダイアログは消え、
+                # 背後の重いメイン画面の再描画はスキップされます。
+                return  
 
     # ダイアログの実行
     settings_dialog_content()
