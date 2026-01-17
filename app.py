@@ -146,6 +146,11 @@ def get_language_dict():
             "MSG_IDENTIFY_LOC": "現在地の地名を特定中...",
             "ERR_LOC_FAILED": "❌ 位置情報の取得に失敗しました。",
             "BTN_UPDATE": "更新",
+            "BTN_MAP": "🗺️地図",
+            "BTN_CURRENT_LOC_SHORT": "🔄📍現在地"
+            "SELECT_PLACE": "地点を選択してください",
+            "HELP_FAV_SAVED": "お気に入り登録済み",
+            "HELP_FAV_SAVE": "この場所をお気に入りに登録",
             "グラフを生成中...": "グラフを生成中...",
             "⚙ 詳細設定": "⚙ 詳細設定",
             "📍 My Spot 編集": "📍 My Spot 編集",
@@ -235,6 +240,11 @@ def get_language_dict():
             "MSG_IDENTIFY_LOC": "Identifying location name...",
             "ERR_LOC_FAILED": "❌ Failed to get location information.",
             "BTN_UPDATE": "Update",
+            "BTN_MAP": "🗺️Map",
+            "BTN_CURRENT_LOC_SHORT": "🔄📍Current",
+            "SELECT_PLACE": "Select a location",
+            "HELP_FAV_SAVED": "Saved to Favorites",
+            "HELP_FAV_SAVE": "Add to Favorites",
             "グラフを生成中...": "Generating graphs...",
             "⚙ 詳細設定": "⚙ Advanced Settings",
             "📍 My Spot 編集": "📍 Edit My Spot",
@@ -2163,17 +2173,21 @@ def render_graph_area_module(danger_v, sel_dirs, design_params, now_jst):
         )
 
 # ======================================================================================
-# 92. 【レイアウト修正版】操作コントロールパネル（機能・ロジック完全維持）
+# 92. 【レイアウト修正版】操作コントロールパネル（多言語対応版）
 # ======================================================================================
 def render_compact_control_panel(basho_name):
     """
     元のロジックを一切変更せず、スマホでの表示を「3行」に凝縮するレイアウト修正版。
-    1行目：場所＋星、2行目：地図＋現在地、3行目：更新（日付時刻）
+    表示テキストを st.session_state.lang に基づき多言語化します。
     """
     import streamlit as st
     from datetime import datetime, timedelta
 
-    # --- レイアウト制御CSS (スマホ横並びと隙間削減のみに限定) ---
+    # 辞書の取得
+    translations = get_language_dict()
+    lang_dict = translations[st.session_state.lang]
+
+    # --- レイアウト制御CSS (維持) ---
     st.markdown("""
         <style>
             [data-testid="column"] {
@@ -2198,7 +2212,7 @@ def render_compact_control_panel(basho_name):
     """, unsafe_allow_html=True)
 
     with st.container():
-        # --- 1. 場所選択 ＋ お気に入り (元の92_2のロジックを完全維持) ---
+        # --- 1. 場所選択 ＋ お気に入り ---
         display_list, total_data = get_combined_location_list(
             CONFIG["LOCATION_MASTER"], 
             st.session_state.lat, 
@@ -2211,56 +2225,59 @@ def render_compact_control_panel(basho_name):
         c1, c2 = st.columns([0.85, 0.15])
         with c1:
             selected_label = st.selectbox(
-                "地点を選択してください", 
+                lang_dict.get("SELECT_PLACE", "地点を選択してください"), 
                 options=display_list, 
                 index=display_list.index(st.session_state.last_basho) if st.session_state.last_basho in display_list else 0,
                 label_visibility="collapsed"
             )
         with c2:
             if is_saved:
-                st.button("✅", key="fav_saved_icon", disabled=True, help="お気に入り登録済み")
+                st.button("✅", key="fav_saved_icon", disabled=True, help=lang_dict.get("HELP_FAV_SAVED", "お気に入り登録済み"))
             else:
-                if st.button("⭐", key="fav_save_action", help="この場所をお気に入りに登録"):
+                if st.button("⭐", key="fav_save_action", help=lang_dict.get("HELP_FAV_SAVE", "この場所をお気に入りに登録")):
                     pure_name = st.session_state.last_basho.split(" (")[0]
                     show_favorite_registration_dialog(pure_name, st.session_state.lat, st.session_state.lon)
 
-        # --- 2. 地図 ＋ 現在地 (元の93と94_1のロジックを統合) ---
+        # --- 2. 地図 ＋ 現在地 ---
         c3, c4 = st.columns([0.5, 0.5])
         with c3:
-            if st.button("🗺️地図", key="btn_map_open", use_container_width=True):
+            map_btn_label = lang_dict.get("BTN_MAP", "🗺️地図")
+            if st.button(map_btn_label, key="btn_map_open", use_container_width=True):
                 show_location_map_dialog()
         with c4:
-            # 🔄📍現在地 ボタン (元の94_1のボタン名称とロジックを維持)
-            if st.button("🔄📍現在地", key="btn_get_gps", use_container_width=True):
+            # 🔄📍現在地 ボタン
+            curr_loc_btn_label = lang_dict.get("BTN_CURRENT_LOC_SHORT", "🔄📍現在地")
+            if st.button(curr_loc_btn_label, key="btn_get_gps", use_container_width=True):
                 st.session_state.waiting_loc = True
                 st.session_state.geo_key = f"geo_{datetime.now().timestamp()}"
                 st.rerun()
 
-        # --- 3. グラフ更新 (元の94_2のロジックを完全維持) ---
+        # --- 3. グラフ更新 ---
         now_jst = st.session_state.get('now_jst', datetime.now())
         try:
-            # 1. 現地の時差情報を取得するために軽量なデータ取得を行う
             df_tmp = fetch_weather_data(st.session_state.lat, st.session_state.lon, 1)
-            # 変数 x: ブラウザの時差を動的に取得
             browser_offset = now_jst.utcoffset()
             browser_offset_s = browser_offset.total_seconds() if browser_offset else 0
-            # 変数 y: 現地の時差（fetch_weather_data で付与された属性）
             local_offset_s = df_tmp.attrs.get('local_offset_seconds', 0)
-            # 2. 計算：[ブラウザ時刻] - [ブラウザ時差x] + [現地時差y]
             now_local = now_jst.replace(tzinfo=None) - timedelta(seconds=browser_offset_s) + timedelta(seconds=local_offset_s)
         except Exception:
             now_local = now_jst.replace(tzinfo=None)
 
-        date_time_str = now_local.strftime('%Y/%m/%d %H:%M:%S')
-        update_label = f"🔄📊更新 ({date_time_str})"
+        dt_format = lang_dict.get('DATETIME_FORMAT', '%Y/%m/%d %H:%M:%S')
+        date_time_str = now_local.strftime(dt_format)
+        update_text = lang_dict.get('BTN_UPDATE', '更新')
+        update_label = f"🔄📊{update_text} ({date_time_str})"
         
         if st.button(update_label, key="btn_graph_refresh", use_container_width=True):
             st.cache_data.clear()
             st.session_state.needs_graph_update = True
             st.rerun()
 
-    # --- 選択変更時のロジック処理 (元の92の後半部分) ---
-    if selected_label == "地図で指定":
+    # --- 選択変更時のロジック処理 ---
+    # 「地図で指定」という文字列も多言語化対応
+    map_select_label = lang_dict.get("MAP_SELECT_LABEL", "地図で指定")
+    
+    if selected_label == map_select_label:
         show_location_map_dialog()
     elif selected_label != st.session_state.last_basho:
         new_lat, new_lon, new_name = total_data[selected_label]
@@ -2272,7 +2289,7 @@ def render_compact_control_panel(basho_name):
             "needs_graph_update": True
         })
 
-    # 現在地取得の待機処理 (元の94_1の後半部分)
+    # 現在地取得の待機処理
     if st.session_state.get("waiting_loc"):
         handle_current_location_update_integrated()
         
