@@ -825,8 +825,8 @@ def render_temp_line_chart(ax, df):
 # ======================================================================================
 def render_tide_curve_chart(ax, df):
     """
-    Open-Meteo Marine APIから潮位を取得。表示を多言語化。
-    30km圏内で最初に見つかった「海洋データ」を採用し、その方位と距離を表示する。
+    Open-Meteo Marine APIから潮位を取得。表示および注釈を多言語化。
+    30km圏内で最初に見つかった「海洋データ」を採用し、その方位と距離を辞書に基づいて表示する。
     """
     import requests
     import pandas as pd
@@ -884,18 +884,16 @@ def render_tide_curve_chart(ax, df):
                     dist_km = round(np.sqrt((d_lat * 111)**2 + (d_lon * 111 * np.cos(np.radians(lat)))**2), 1)
 
                     if dist_km > 0.5:
-                        # 方位の計算と多言語化
+                        # 方位の計算
                         angle = np.rad2deg(np.arctan2(d_lon * np.cos(np.radians(lat)), d_lat))
-                        
-                        # 8方位リストを取得し、終端に「北」相当を連結して9要素にする
+                        # 辞書から8方位リストを取得（DIRECTIONS_8）
                         base_dirs = lang_dict.get("DIRECTIONS_8", ["北", "北東", "東", "南東", "南", "南西", "西", "北西"])
-                        directions_9 = base_dirs + [base_dirs[0]] # これで末尾に「北」が入る
-                        
+                        directions_9 = base_dirs + [base_dirs[0]]
                         res_dir = directions_9[int((angle + 22.5) % 360 // 45)]
                         
-                        # 注釈メッセージの組み立て
-                        msg_tmpl = lang_dict.get("TIDE_INFO_MSG", "※指定地点の最寄り（{dir}約{dist}km）の海洋データを表示しています。")
-                        info_text = msg_tmpl.format(dir=res_dir, dist=dist_km)
+                        # 【修正点】辞書の OCEAN_INFO を使用してメッセージを組み立て
+                        msg_tmpl = lang_dict.get("OCEAN_INFO", "※指定地点の最寄り（{res_dir}約{dist_km}km）の海洋データを表示しています。")
+                        info_text = msg_tmpl.format(res_dir=res_dir, dist_km=dist_km)
                     
                     df_api = pd.DataFrame({"api_t": pd.to_datetime(data["hourly"]["time"]), "h": api_h})
                     df_api["api_t"] = df_api["api_t"].dt.tz_localize(None)
@@ -912,7 +910,8 @@ def render_tide_curve_chart(ax, df):
     if not found or tide_levels is None:
         ax.clear()
         ax.set_axis_off()
-        no_data_msg = lang_dict.get("NO_TIDE_DATA", "※指定地点の近傍(30km圏内)に有効な海洋データがないため表示されません")
+        # 【修正点】辞書の OCEAN_NONE を使用
+        no_data_msg = lang_dict.get("OCEAN_NONE", "※指定地点の近傍(30km圏内)に有効な海洋データがないため表示されません")
         ax.text(0.0, 0.5, no_data_msg, transform=ax.transAxes, color="gray", fontsize=label_fs, ha='left', va='center')
         return
 
@@ -920,7 +919,7 @@ def render_tide_curve_chart(ax, df):
     df['tide_cm'] = [v * 100 if v is not None else np.nan for v in tide_levels]
     ax.plot(df['time'], df['tide_cm'], color="#1f77b4", linewidth=2, marker='o', markersize=3, markevery=3)
     
-    # Y軸ラベル多言語化
+    # 軸ラベルの多言語化
     ax.set_ylabel(lang_dict.get("潮位 (cm)", "Tide (cm)"), fontsize=label_fs)
     ax.grid(True, axis='y', linestyle='--', alpha=0.5)
 
@@ -931,7 +930,7 @@ def render_tide_curve_chart(ax, df):
             ax.text(dt, 1.05, f"{val:.0f}", ha='center', va='bottom', color="#1f77b4", 
                     fontsize=label_fs, transform=ax.get_xaxis_transform())
 
-    # 注釈メッセージ表示
+    # メッセージ表示
     if info_text:
         offset = ScaledTranslation(0, - (label_fs * 3.5) / 72, ax.figure.dpi_scale_trans)
         trans = ax.transAxes + offset
