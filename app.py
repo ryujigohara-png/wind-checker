@@ -1106,12 +1106,12 @@ def show_settings_dialog():
 
 
 # ======================================================================================
-# 21. サイドバー、パラメータ設定（既存仕様維持・多言語対応版）
+# 21. サイドバー、パラメータ設定（言語設定ダイアログ呼び出し版）
 # ======================================================================================
 def show_sidebar_controls():
     """
     サイドバーの入り口。ボタンは縦に並べる既存仕様を維持。
-    最下部に言語切り替えスイッチ（日本語/English）を追加。
+    最下部のスイッチを廃止し、専用ダイアログを呼び出すボタンを配置。
     """
     import streamlit as st
     
@@ -1128,6 +1128,10 @@ def show_sidebar_controls():
 
     if st.sidebar.button(lang_dict["📍 My Spot 編集"], use_container_width=True):
         manage_favorites_dialog()
+
+    # --- 今回追加：言語設定ダイアログの呼び出しボタン ---
+    if st.sidebar.button("🌐 Language / 言語", use_container_width=True):
+        show_language_dialog()
 
     # --- 既存の計算ロジック（一切変更せず維持） ---
     h = calculate_graph_height(
@@ -1157,26 +1161,49 @@ def show_sidebar_controls():
         "graph_dpi": st.session_state.get("graph_dpi", 200)
     }
 
-    # --- 今回追加：言語切り替えスイッチ (一番下に配置) ---
-    st.sidebar.markdown("---")
-    
-    # 選択肢ラベルと内部値の対応
-    lang_options = {"日本語": "ja", "English": "en"}
-    # 現在の言語設定から初期インデックスを計算 (ja:0, en:1)
-    current_idx = 0 if st.session_state.lang == "ja" else 1
-    
-    selected_lang_label = st.sidebar.radio(
-        "Language / 言語",
-        options=list(lang_options.keys()),
-        index=current_idx,
-        horizontal=True
-    )
-    
-    # 選択された値をセッション状態に即時反映
-    st.session_state.lang = lang_options[selected_lang_label]
-
     # 戻り値（一切変更なし）
     return st.session_state.get("danger_v", 10.0), st.session_state.get("sel_dirs", []), design_params
+
+
+# ======================================================================================
+# 21_1. 言語設定専用のモーダルダイアログ。
+# ======================================================================================
+def show_language_dialog():
+    """
+    言語設定専用のモーダルダイアログ。
+    @st.dialog により、表示中は枠外の操作が不活性化されます。
+    """
+    @st.dialog("Language / 言語設定")
+    def language_dialog_content():
+        # 現在の言語に応じた説明文を表示
+        lang_options = {"日本語": "ja", "English": "en"}
+        current_idx = 0 if st.session_state.lang == "ja" else 1
+        
+        st.write("アプリの表示言語を選択してください。")
+        st.write("Please select the display language.")
+        
+        # ダイアログ内でのラジオボタン
+        selected_lang_label = st.radio(
+            "Select Language:",
+            options=list(lang_options.keys()),
+            index=current_idx,
+            label_visibility="collapsed"
+        )
+        
+        st.write("---")
+        col1, col2 = st.columns(2)
+        with col1:
+            # 確定：83番の共通サブルーチンで保存と再描画を実行
+            if st.button("確定 / OK", use_container_width=True, type="primary"):
+                new_lang = lang_options[selected_lang_label]
+                update_state_and_save({"lang": new_lang})
+        with col2:
+            # キャンセル：何もせずダイアログを閉じる
+            if st.button("キャンセル / Cancel", use_container_width=True):
+                st.rerun()
+
+    language_dialog_content()
+    
 
 # ======================================================================================
 # 22. グラフの表示高さを一括計算するサブルーチン
