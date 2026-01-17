@@ -1488,10 +1488,27 @@ def show_location_map_dialog():
 # 30_1. 座標から地名を取得するサブルーチン (fetch_location_name)
 # ==========================================================================================
 def fetch_location_name(lat, lon):
-    """Nominatim APIから「当該レベル＋その1つ下のレベル」を確実に結合して取得する"""
+    """
+    Nominatim APIから「当該レベル＋その1つ下のレベル」を確実に結合して取得する。
+    APIから取得できない場合のデフォルト表示を st.session_state.lang に基づき多言語化します。
+    """
+    import requests
+    import streamlit as st
+
+    # 辞書の取得
+    translations = get_language_dict()
+    lang_dict = translations[st.session_state.lang]
+    default_name = lang_dict.get("指定地点", "指定地点")
+
     try:
+        # accept-languageヘッダーを指定することで、可能な限り現在の言語設定に合わせた地名を取得する
+        lang_code = "en" if st.session_state.lang == "en" else "ja"
         url = f"https://nominatim.openstreetmap.org/reverse?format=json&lat={lat}&lon={lon}&zoom=18"
-        headers = {"User-Agent": "WindChecker/2.0"}
+        headers = {
+            "User-Agent": "WindChecker/2.0",
+            "Accept-Language": lang_code
+        }
+        
         response = requests.get(url, headers=headers, timeout=5)
         if response.status_code == 200:
             addr = response.json().get("address", {})
@@ -1513,10 +1530,10 @@ def fetch_location_name(lat, lon):
             elif len(valid_parts) == 1:
                 return valid_parts[0]
             
-            return "指定地点"
-        return "指定地点"
+            return default_name
+        return default_name
     except:
-        return "指定地点"
+        return default_name
 
 # ==========================================================================================
 # 82. ブラウザへの保存を実行するサブルーチン
