@@ -991,7 +991,6 @@ def show_settings_dialog():
     """
     開発者モード時のみ、お気に入り管理ダイアログの「ボタン幅」と「文字数制限」を
     調整するためのスライダーを表示する機能を追加した完全版。
-    ダイアログタイトルおよび方位名を含め、すべて st.session_state.lang に基づき多言語化します。
     """
     import streamlit as st
 
@@ -999,8 +998,7 @@ def show_settings_dialog():
     translations = get_language_dict()
     lang_dict = translations[st.session_state.lang]
 
-    # --- ダイアログの中身を定義するインナー関数 ---
-    # タイトルも lang_dict から取得することで英語化を確実にします
+    # ダイアログのタイトルを辞書から取得
     @st.dialog(lang_dict.get("グラフ表示設定の詳細", "Graph Settings"), dismissible=False)
     def settings_dialog_content():
         # --- 1. 表示設定（トグル） ---
@@ -1027,15 +1025,19 @@ def show_settings_dialog():
         new_sel_dirs = []
         cols = st.columns(2)
         
-        # 方位リストの表示（承認済み辞書から「北」→「N」などの変換を強制適用）
+        # 元の ALL_DIRECTIONS リストをそのまま使用し、内部の値「d」はいじらない
         for i, d in enumerate(ALL_DIRECTIONS):
             with cols[i % 2]:
-                # lang_dict に "北": "N" という定義がある場合、それを使用
-                display_name = lang_dict.get(d, d)
-                if st.checkbox(display_name, value=(d in current_sel), key=f"dlg_dir_{d}"):
+                # 表示ラベルだけを、辞書の ALL_DIRECTIONS の同じ位置から取得して切り替える
+                # 辞書の中身が ["N", "NNE"...] ならそれが表示される
+                display_label = lang_dict["ALL_DIRECTIONS"][i]
+                
+                # チェックの判定と保存(new_sel_dirs)には、元の日本語「d」をそのまま使う
+                if st.checkbox(display_label, value=(d in current_sel), key=f"dlg_dir_{d}"):
                     new_sel_dirs.append(d)
         
         # --- 4. 開発者用調整 ---
+        # (以下、変更なし)
         is_dev_url = st.query_params.get("mode") == "dev"
         if is_dev_url:
             st.markdown("---")
@@ -1044,19 +1046,15 @@ def show_settings_dialog():
             d_dpi = st.radio("解像度 (DPI)", [200, 300], index=0 if st.session_state.get("graph_dpi", 200) == 200 else 1, horizontal=True)
             d_hspace = st.slider("グラフ間余白", -0.2, 1.5, float(st.session_state.get("hspace", CONFIG["HSPACE"])), 0.05)
             d_label_pad = st.slider("ラベル距離", -5, 10, int(st.session_state.get("label_pad", CONFIG["LABEL_PAD"])))
-        
             st.subheader("地図ダイアログ調整")
             d_dial_h = st.slider("地図ダイアログ横余白 (H-Gap)", 0, 20, int(st.session_state.get("dial_h_gap", CONFIG["DIAL_H_GAP"])))
             d_dial_v = st.slider("地図ダイアログ縦余白 (V-Gap)", 0, 20, int(st.session_state.get("dial_v_gap", CONFIG["DIAL_V_GAP"])))
-        
             st.subheader("MySpot編集ダイアログ調整")
             d_fav_w = st.slider("ボタン幅 (%)", 10, 45, int(st.session_state.get("fav_btn_width", CONFIG.get("FAV_BTN_WIDTH", 30))), 1)
             d_fav_len = st.slider("地名表示制限 (文字)", 5, 25, int(st.session_state.get("fav_name_len", CONFIG.get("FAV_NAME_LEN", 12))), 1)
-        
             st.subheader("降水量・アイコン位置調整")
             d_precip_y = st.slider("降水量ラベル高さ", 0.0, 2.0, float(st.session_state.get("precip_y", CONFIG["DEFAULT_PRECIP_Y"])), 0.05)
             d_icon_margin = st.slider("天気アイコン下余白", 0, 100, int(st.session_state.get("icon_margin", CONFIG["DEFAULT_ICON_MARGIN"])), 5)
-        
             st.subheader("グラフ縦比率設定")
             r = st.session_state.get("ratios", CONFIG["DEFAULT_RATIOS"])
             r0 = st.number_input("比率:風向", 0.5, 10.0, float(r[0]), 0.1)
