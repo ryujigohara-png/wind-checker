@@ -1691,7 +1691,7 @@ def render_location_selector_module():
     """
     # 19番のサブルーチンで選択肢リストを作成
     display_list, total_data = get_combined_location_list(
-        CONFIG["LOCATION_MASTER"], 
+        lang_dict.get("LOCATIONS", CONFIG["LOCATION_MASTER"]), 
         st.session_state.lat, 
         st.session_state.lon
     )
@@ -2214,6 +2214,11 @@ def render_compact_control_panel(basho_name):
     # 辞書の取得
     translations = get_language_dict()
     lang_dict = translations[st.session_state.lang]
+    
+
+    # 辞書の取得
+    translations = get_language_dict()
+    lang_dict = translations[st.session_state.lang]
 
     # --- レイアウト制御CSS (維持) ---
     st.markdown("""
@@ -2242,7 +2247,7 @@ def render_compact_control_panel(basho_name):
     with st.container():
         # --- 1. 場所選択 ＋ お気に入り ---
         display_list, total_data = get_combined_location_list(
-            CONFIG["LOCATION_MASTER"], 
+            lang_dict.get("LOCATIONS", CONFIG["LOCATION_MASTER"]), 
             st.session_state.lat, 
             st.session_state.lon
         )
