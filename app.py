@@ -591,22 +591,38 @@ def process_wind_data(df, target_dirs):
     
     return df
     
-#==========================================================================================
+# ==========================================================================================
 # 7. X軸の時刻フォーマッタを設定するサブルーチン
-#==========================================================================================
+# ==========================================================================================
 def get_x_axis_formatter():
-    jp_weeks = ["月", "火", "水", "木", "金", "土", "日"]
+    """
+    グラフのX軸（時刻・日付）の表示形式を決定する。
+    曜日の表記を言語設定（st.session_state.lang）に基づいて切り替えます。
+    """
+    import matplotlib.dates as mdates
+    import streamlit as st
+
+    # 辞書の取得
+    translations = get_language_dict()
+    lang_dict = translations[st.session_state.lang]
+
+    # 曜日のリストを辞書から取得
+    # 日本語なら ["月", "火", ...], 英語なら ["Mon", "Tue", ...] など
+    weeks = lang_dict.get("WEEKDAYS", ["月", "火", "水", "木", "金", "土", "日"])
+
     def formatter(x, p):
         dt = mdates.num2date(x)
         if dt.hour == 0:
-            # 曜日によって色を決定 (月-金: 青, 土日: 赤)
-            # Matplotlibのテキスト内での色指定は、描画側(apply_common_axis_settings)で
-            # 個別に制御するため、ここでは情報のみ保持。
-            # または、描画時に判定するためここでは文字列のみ返す
-            return dt.strftime('%m/%d') + f'\n({jp_weeks[dt.weekday()]})'
+            # 0時の場合は日付と曜日を表示
+            # 言語設定が英語(en)の場合は 月/日 ではなく Month Day 表記も選べるが、
+            # 今回はフォーマットを維持しつつ、曜日のみを置換。
+            day_str = dt.strftime('%m/%d')
+            week_str = f"({weeks[dt.weekday()]})"
+            return f"{day_str}\n{week_str}"
         else:
             # 時刻から :00 を排除（時のみ表示）し、高さを合わせる空行を追加
             return dt.strftime('%H') + '\n '
+            
     return formatter
     
 # ======================================================================================
