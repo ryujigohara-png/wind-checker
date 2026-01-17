@@ -1725,56 +1725,59 @@ def render_location_selector_module():
     return st.session_state.last_basho
 
 # ======================================================================================
-# 92_1. お気に入り・プリセット・地図指定を統合するサブルーチン（多言語対応版）
+# 92_1. お気に入り・プリセット・地図指定を統合するサブルーチン（翻訳対応版）
 # ======================================================================================
 def get_combined_location_list(preset_master, current_lat, current_lon):
-    """
-    お気に入り(user_locations)、既定値(preset_master)、一時地点、地図指定を統合したリストを返す。
-    表示ラベルおよびシステム項目を st.session_state.lang に基づき多言語化します。
-    """
     import streamlit as st
-
-    # 辞書の取得
     translations = get_language_dict()
     lang_dict = translations[st.session_state.lang]
+    # 地名翻訳用辞書を取得 ( translations['en']['LOCATIONS'] など )
+    loc_translations = lang_dict.get("LOCATIONS", {})
 
-    # LocalStorageから読み込まれているユーザー保存地点を取得
     favorites = st.session_state.get("user_locations", [])
     total_data = {}
     display_list = []
 
-    # 1. 📍お気に入り（LocalStorage保存分）を最優先
+    # 1. 📍お気に入り
     fav_prefix = lang_dict.get("FAV_PREFIX", "📍 ")
     for fav in favorites:
-        # 地名に接頭辞（📍 など）がなければ付与
-        name = fav['name']
-        if not name.startswith(fav_prefix.strip()):
-            name = f"{fav_prefix}{name}"
-            
+        # ユーザーが自由に付けた名前なので、翻訳を試みるがなければそのまま
+        base_name = fav['name']
+        translated_name = loc_translations.get(base_name, base_name)
+        
+        name = translated_name if translated_name.startswith(fav_prefix.strip()) else f"{fav_prefix}{translated_name}"
         label = f"{name} ({fav['lat']:.4f}, {fav['lon']:.4f})"
         display_list.append(label)
         total_data[label] = (fav['lat'], fav['lon'], name)
 
-    # 2. プリセット（CONFIG["LOCATION_MASTER"] 定義分）
+    # 2. プリセット (ここが今回の肝)
     for name, coords in preset_master.items():
-        # 除外キーワードも多言語対応を考慮
-        if name not in ["現在地を取得", "地図で指定", "Get Current Location", "Select on Map"]:
-            label = f"{name} ({coords[0]:.4f}, {coords[1]:.4f})"
+        if name not in ["現在地を取得", "地図で指定"]:
+            # 辞書にあれば英語名、なければ元の日本語名(name)を使用
+            display_name = loc_translations.get(name, name)
+            
+            label = f"{display_name} ({coords[0]:.4f}, {coords[1]:.4f})"
             display_list.append(label)
-            total_data[label] = (coords[0], coords[1], name)
+            total_data[label] = (coords[0], coords[1], display_name)
 
-    # 3. 一時的な確定地点（地図で指定した直後など、まだ保存されていない地点）
+    # 3. 一時的な確定地点 (現在地取得時など)
     t_label = st.session_state.get("temp_label")
     if t_label and t_label not in display_list:
-        display_list.insert(0, t_label) # リストの先頭に挿入
-        total_data[t_label] = (current_lat, current_lon, t_label.split(" (")[0])
+        # "地名 (緯度, 経度)" の形式から地名部分だけ翻訳を試みる
+        raw_name = t_label.split(" (")[0]
+        display_name = loc_translations.get(raw_name, raw_name)
+        new_label = t_label.replace(raw_name, display_name)
+        
+        display_list.insert(0, new_label)
+        total_data[new_label] = (current_lat, current_lon, display_name)
 
-    # 4. 地図で指定（操作トリガーとしての項目）
+    # 4. 地図で指定
     map_label = lang_dict.get("MAP_SELECT_LABEL", "地図で指定")
     display_list.append(map_label)
     total_data[map_label] = (current_lat, current_lon, map_label)
 
     return display_list, total_data
+    
 # ======================================================================================
 # 92_2. 地点選択とお気に入り保存を1行に集約するサブルーチン（ダイアログ・保存フラグ対応）
 # ======================================================================================
@@ -2201,7 +2204,7 @@ def render_graph_area_module(danger_v, sel_dirs, design_params, now_jst):
         )
 
 # ======================================================================================
-# 92. 【レイアウト修正版】操作コントロールパネル（多言語対応版）
+# 96. 【レイアウト修正版】操作コントロールパネル（多言語対応版）
 # ======================================================================================
 def render_compact_control_panel(basho_name):
     """
@@ -2247,7 +2250,7 @@ def render_compact_control_panel(basho_name):
     with st.container():
         # --- 1. 場所選択 ＋ お気に入り ---
         display_list, total_data = get_combined_location_list(
-            lang_dict.get("LOCATIONS", CONFIG["LOCATION_MASTER"]), 
+            CONFIG["LOCATION_MASTER"], 
             st.session_state.lat, 
             st.session_state.lon
         )
