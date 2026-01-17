@@ -201,6 +201,7 @@ def get_language_dict():
             "WEEKS": ["月", "火", "水", "木", "金", "土", "日"],
             "WEATHER_TEXT": {"晴": "晴", "霧": "霧", "雨": "雨", "雪": "雪", "雷": "雷", "？": "？"},
             "ALL_DIRECTIONS": ["北", "北北東", "北東", "東北東", "東", "東南東", "南東", "南南東", "南", "南南西", "南西", "西南西", "西", "西北西", "北西", "北北西"],
+            "NORTH":"北",
             "LOCATIONS": {
                 "高須沖(鹿児島県)": "高須沖(鹿児島県)", "住吉浜沖(大分県)": "住吉浜沖(大分県)",
                 "逗子海岸沖(神奈川県)": "逗子海岸沖(神奈川県)", "津久井浜沖(神奈川県)": "津久井浜沖(神奈川県)",
@@ -277,6 +278,7 @@ def get_language_dict():
             "WEEKS": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
             "WEATHER_TEXT": {"晴": "Sunny", "霧": "Fog", "雨": "Rain", "雪": "Snow", "雷": "T-Storm", "？": "?"},
             "ALL_DIRECTIONS": ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"],
+            "NORTH":"N",
             "LOCATIONS": {
                 "高須沖(鹿児島県)": "Takasu-oki (Kagoshima)", "住吉浜沖(大分県)": "Sumiyoshihama-oki (Oita)",
                 "逗子海岸沖(神奈川県)": "Zushi Beach (Kanagawa)", "津久井浜沖(神奈川県)": "Tsukuiahama-oki (Kanagawa)",
@@ -540,50 +542,55 @@ def get_weather_info(code):
 def process_wind_data(df, target_dirs):
     """
     風向・風速に基づき、表示用の方位名、矢印、および色を決定する。
-    判定ロジックには元の日本語（ALL_DIRECTIONS）を維持し、整合性を保ちます。
+    判定ロジック(judge)は、target_dirsに含まれる表記（日本語/英語）に合わせます。
     """
     import pandas as pd
+    import streamlit as st
 
-    # 内部判定用のリスト（日本語を維持）
-    dirs = ALL_DIRECTIONS + ["北"]
+    # 辞書の取得
+    translations = get_language_dict()
+    lang_dict = translations[st.session_state.lang]
+
+    # 方位リストを辞書から取得（日本語なら「北」、英語なら「N」が入るリスト）
+    # これにより、表示用(dir_name)と判定用(target_dirs)の表記が完全に一致します
+    localized_list = lang_dict.get("ALL_DIRECTIONS", ALL_DIRECTIONS)
+    dirs = localized_list + [lang_dict.get("北", "N")]
+    
     arrows = ["↓", "↙", "↙", "↙", "←", "↖", "↖", "↖", "↑", "↗", "↗", "↗", "→", "↘", "↘", "↘", "↓"]
     
     def get_info(deg):
         if pd.isna(deg): return "", ""
         idx = int((deg + 11.25) / 22.5) % 16
-        # dirs[idx] は「北」「北北東」などの日本語を返す
         return dirs[idx], arrows[idx]
     
-    df['res'] = df['wind_direction_10m'].apply(get_info)
-    df['dir_name'] = df['res'].apply(lambda x: x[0])  # 内部判定用の日本語名
-    df['arrow'] = df['res'].apply(lambda x: x[1])
+    # データの適用
+    res_data = df['wind_direction_10m'].apply(get_info)
+    df['dir_name'] = [r[0] for r in res_data] # 言語設定に依存した方位名が入る
+    df['arrow']    = [r[1] for r in res_data]
     
-    # 前のサブルーチン(5)で多言語化した get_weather_info を使用
+    # 天気テキストの取得
     weather_res = df['weather_code'].apply(get_weather_info)
     df['w_text'] = [r[0] for r in weather_res]
     df['w_color'] = [r[1] for r in weather_res]
     
     def judge(row):
-        """
-        風速と風向きによる色判定。
-        target_dirs に含まれる「日本語の風向名」と row['dir_name'] を比較。
-        """
         speed = row['wind_speed_10m']
         if pd.isna(speed): return "#FFFFFF"
         
-        # 危険風速（10m/s以上）
         if speed >= 10.0: return "crimson"
         
-        # ターゲット方位（日本語）での判定
+        # row['dir_name'] も target_dirs も、同じ言語設定の表記になっているので
+        # そのまま比較するだけで正しく判定されます
         if row['dir_name'] in target_dirs:
             if 5 <= speed < 10.0: return "orange"
             if 3 <= speed < 5: return "skyblue"
             
-        return "#D3D3D3" # 通常色（ライトグレー）
+        return "#D3D3D3"
     
     df['color'] = df.apply(judge, axis=1)
     
     return df
+    
 #==========================================================================================
 # 7. X軸の時刻フォーマッタを設定するサブルーチン
 #==========================================================================================
