@@ -486,36 +486,51 @@ def get_tide_level(times, lat, lon):
     except:
         return "NOT_SEA", False
       
-#==========================================================================================
-# 5. 天気コードからテキストと色を取得するサブルーチン
-#==========================================================================================
+# ==========================================================================================
+# 5. 天気コードからテキストと色を取得するサブルーチン（多言語対応版）
+# ==========================================================================================
 def get_weather_info(code):
     """
     WMO天気コードから表示用テキストと、文字色を決定して返す。
+    表示テキストは st.session_state.lang に基づき辞書から取得します。
     """
-    if pd.isna(code): return "", "black"
+    import pandas as pd
+    import streamlit as st
+
+    # 辞書の取得
+    translations = get_language_dict()
+    lang_dict = translations[st.session_state.lang]
+
+    if pd.isna(code): 
+        return "", "black"
     
     # 0-3: 晴・薄曇
     if code <= 3: 
-        return "晴", "#FF4500" # OrangeRed
+        return lang_dict.get("晴", "Clear"), "#FF4500" # OrangeRed
+    
     # 45, 48: 霧
     if code == 45 or code == 48: 
-        return "霧", "#708090" # SlateGray
+        return lang_dict.get("霧", "Fog"), "#708090" # SlateGray
+    
     # 51-67: 雨
     if code <= 67: 
-        return "雨", "#00008B" # DarkBlue
+        return lang_dict.get("雨", "Rain"), "#00008B" # DarkBlue
+    
     # 71-77: 雪
     if code <= 77: 
-        return "雪", "#00BFFF" # DeepSkyBlue
+        return lang_dict.get("雪", "Snow"), "#00BFFF" # DeepSkyBlue
+    
     # 80-82: 俄か雨
     if code <= 82: 
-        return "雨", "#00008B"
+        return lang_dict.get("雨", "Rain"), "#00008B"
+    
     # 85-86: 激しい雪
     if code <= 86: 
-        return "雪", "#00BFFF"
+        return lang_dict.get("雪", "Snow"), "#00BFFF"
+    
     # 95-99: 雷雨
     if code <= 99: 
-        return "雷", "#8B0000" # DarkRed
+        return lang_dict.get("雷", "Storm"), "#8B0000" # DarkRed
         
     return "？", "black"
 
