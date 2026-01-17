@@ -2245,33 +2245,48 @@ def render_compact_control_panel(basho_name):
 # ======================================================================================
 def render_footer_info(danger_v):
     """
-    グラフ下部に表示する凡例と、データソースのクレジット表記（Open-Meteo）を描画します。
+    グラフ下部に表示する凡例と、データソースのクレジット表記を描画します。
+    表示内容を st.session_state.lang に基づき多言語化します。
     """
+    import streamlit as st
+
+    # 辞書の取得
+    translations = get_language_dict()
+    lang_dict = translations[st.session_state.lang]
+
     st.markdown("---")
     
-    # --- 1. 凡例の表示 ---
-    # 以前のコードの意匠を継承し、ユーザーが設定した危険風速(danger_v)を動的に表示します
+    # --- 1. 凡例の表示 (多言語化) ---
+    # 各ラベルを辞書から取得（デフォルト値として日本語を設定）
+    leg_title   = lang_dict.get("LEGEND_TITLE", "📊 凡例:")
+    leg_blue    = lang_dict.get("LEGEND_BLUE", "3-5m/s (青)")
+    leg_orange  = lang_dict.get("LEGEND_ORANGE", "5-10m/s (橙)")
+    leg_red     = lang_dict.get("LEGEND_RED", "10m/s以上 (赤)")
+    leg_danger  = lang_dict.get("LEGEND_DANGER_LINE", "[赤点線: 危険風速ライン {v}m/s]")
+    leg_note    = lang_dict.get("LEGEND_NOTE", "※青・橙は、詳細設定で選択した色付風向のみ表示")
+
+    # 危険風速ラインの数値を埋め込み
+    danger_text = leg_danger.format(v=danger_v)
+
     st.markdown(
         f"""
         <div style="padding: 10px; border-radius: 5px; background-color: #f0f2f6; margin-bottom: 10px; line-height: 1.6;">
-            <span style="font-weight: bold;">📊 凡例:</span><br>
-            <span style="color: #1f77b4;">■</span> 3-5m/s (青) &nbsp;&nbsp; 
-            <span style="color: #ff7f0e;">■</span> 5-10m/s (橙) &nbsp;&nbsp; 
-            <span style="color: #d62728;">■</span> 10m/s以上 (赤) &nbsp;&nbsp; 
-            <span style="color: #d62728; font-weight: bold;">---</span> <span style="font-size: 0.9em;">[赤点線: 危険風速ライン {danger_v}m/s]</span><br>
+            <span style="font-weight: bold;">{leg_title}</span><br>
+            <span style="color: #1f77b4;">■</span> {leg_blue} &nbsp;&nbsp; 
+            <span style="color: #ff7f0e;">■</span> {leg_orange} &nbsp;&nbsp; 
+            <span style="color: #d62728;">■</span> {leg_red} &nbsp;&nbsp; 
+            <span style="color: #d62728; font-weight: bold;">---</span> <span style="font-size: 0.9em;">{danger_text}</span><br>
             <div style="margin-top: 4px; border-top: 1px solid #ddd; padding-top: 4px;">
-                <small style="color: #666;">※青・橙は、詳細設定で選択した色付風向のみ表示</small>
+                <small style="color: #666;">{leg_note}</small>
             </div>
         </div>
-
         """,
         unsafe_allow_html=True
     )
     
     # --- 2. クレジット表記 (Open-Meteo) ---
-    # 利用規約に基づき、リンクを含む適切な表記を行います
     st.caption("Weather data by [Open-Meteo.com](https://open-meteo.com/) (CC BY 4.0)")
-
+    
 # ======================================================================================
 # 100. メイン処理 (再構築版・スクロール対応)
 # ======================================================================================
