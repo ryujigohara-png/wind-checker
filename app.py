@@ -608,7 +608,7 @@ def get_x_axis_formatter():
 
     # 曜日のリストを辞書から取得
     # 日本語なら ["月", "火", ...], 英語なら ["Mon", "Tue", ...] など
-    weeks = lang_dict.get("WEEKDAYS", ["月", "火", "水", "木", "金", "土", "日"])
+    weeks = lang_dict.get("WEEKS", ["月", "火", "水", "木", "金", "土", "日"])
 
     def formatter(x, p):
         dt = mdates.num2date(x)
