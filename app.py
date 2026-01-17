@@ -631,14 +631,22 @@ def get_x_axis_formatter():
 def apply_common_axis_settings(ax, df, formatter, now_jst, design_params):
     """
     グラフの共通軸設定を適用する。
-    ブラウザの時差(x)と、現地の時差(y)を動的に取得し、現在時刻のラインを算出する。
+    曜日の色分け判定を、現在の言語設定（WEEKSの値）に基づいて動的に行います。
     """
     import matplotlib.dates as mdates
     import matplotlib.pyplot as plt
     from datetime import timedelta
+    import streamlit as st
+
+    # 辞書の取得
+    translations = get_language_dict()
+    lang_dict = translations[st.session_state.lang]
+    # 辞書から現在の曜日リストを取得（判定に使用）
+    weeks = lang_dict.get("WEEKS", ["月", "火", "水", "木", "金", "土", "日"])
+    sat_label = weeks[5]  # 土曜日相当の文字列
+    sun_label = weeks[6]  # 日曜日相当の文字列
 
     # 変数 x: ブラウザ（実行環境）の時差を動的に取得
-    # now_jst がタイムゾーン情報を持っている場合、そのオフセットを秒で取得する
     browser_offset = now_jst.utcoffset()
     browser_offset_s = browser_offset.total_seconds() if browser_offset else 0
     
@@ -646,7 +654,6 @@ def apply_common_axis_settings(ax, df, formatter, now_jst, design_params):
     local_offset_s = df.attrs.get('local_offset_seconds', 0)
     
     # 計算：[ブラウザ時刻] - [ブラウザ時差x] + [現地時差y] = 現地の今の数字
-    # 一旦 UTC に戻してから現地の時差を足す計算を、すべて秒単位で行う
     draw_now = now_jst.replace(tzinfo=None) - timedelta(seconds=browser_offset_s) + timedelta(seconds=local_offset_s)
 
     # 現在時刻ラインを描画
@@ -672,7 +679,8 @@ def apply_common_axis_settings(ax, df, formatter, now_jst, design_params):
     for label in labels:
         text = label.get_text()
         if '(' in text:
-            if '土' in text or '日' in text:
+            # 修正：日本語固定（'土','日'）ではなく、辞書から抽出した文字列で判定
+            if sat_label in text or sun_label in text:
                 label.set_color('red')
             else:
                 label.set_color('blue')
