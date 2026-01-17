@@ -985,14 +985,13 @@ def generate_weather_icons_html(df, ratio_info, display_width, start_idx, icon_m
     
 
 # ======================================================================================
-# 20. サイドバーからグラフ表示設定を詳細ダイアログで一括変更するサブルーチン（多言語対応版）
+# 20. サイドバーからグラフ表示設定を詳細ダイアログで一括変更するサブルーチン
 # ======================================================================================
 @st.dialog("グラフ表示設定の詳細", dismissible=False)
 def show_settings_dialog():
     """
     開発者モード時のみ、お気に入り管理ダイアログの「ボタン幅」と「文字数制限」を
     調整するためのスライダーを表示する機能を追加した完全版。
-    表示文字列を st.session_state.lang に基づき切り替えます。
     """
     import streamlit as st
 
@@ -1023,12 +1022,13 @@ def show_settings_dialog():
     current_sel = st.session_state.get("sel_dirs", list(CONFIG["DEFAULT_DIRS"]))
     new_sel_dirs = []
     cols = st.columns(2)
+    
+    # 方位名（d）をキーにして、辞書から対応する言語の表記（北 -> N など）を取得
     for i, d in enumerate(ALL_DIRECTIONS):
         with cols[i % 2]:
-            # 方位記号（N, NE等）についても辞書から値を取得して表示
-            # 辞書に "N": "N" や "N": "北" と定義されている前提
-            label_d = lang_dict.get(d, d)
-            if st.checkbox(label_d, value=(d in current_sel), key=f"dlg_dir_{d}"):
+            # 辞書から翻訳後の文字列を取得。なければ元の d を使用。
+            display_name = lang_dict.get(d, d)
+            if st.checkbox(display_name, value=(d in current_sel), key=f"dlg_dir_{d}"):
                 new_sel_dirs.append(d)
     
     # --- 4. 開発者用調整 ---
@@ -1110,7 +1110,6 @@ def show_settings_dialog():
     with c_cancel:
         if st.button(lang_dict["キャンセルして戻る"], key="cancel_all_settings", use_container_width=True):
             st.rerun()
-      
 
 
 # ======================================================================================
