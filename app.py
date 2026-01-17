@@ -260,8 +260,8 @@ def get_language_dict():
             "経度": "Lon",
             "地点を追加": "Add Spot",
             "閉じる": "Close",
-            "📍 地図で指定": "📍 Select on Map",
-            "地図中心に📍": "Pin to Center",
+            "📍 地図で指定": "📍 Select on Map",            
+            "地図中心に📍": "📍 Pin to Center",
             "確定": "Confirm",
             "中止": "Cancel",
             "地名取得中...": "Fetching name...",
@@ -1675,176 +1675,185 @@ def show_favorite_control_bar(location_options, current_display_label, current_l
 # ======================================================================================
 # 92_3. お気に入り地点の名称登録ダイアログ（10件制限・選択維持対応）
 # ======================================================================================
-@st.dialog("お気に入り地点の名称確認", dismissible=False)
 def show_favorite_registration_dialog(default_name, lat, lon):
     """
     お気に入り登録時に「地名」を確認・修正してLocalStorageへ永続保存する。
-    10件制限チェックを行い、超過時は保存をブロックして警告を表示する。
+    表示文字列を st.session_state.lang に基づき多言語化します。
     """
     import streamlit as st
 
-    # 現在の登録件数を確認
-    favorites = st.session_state.get("user_locations", [])
-    if len(favorites) >= 10:
-        st.error("🚨 お気に入りの登録制限（10件）に達しています。")
-        st.write("「My Spot 編集」から不要な地点を削除してください。")
-        if st.button("閉じる", use_container_width=True):
-            st.rerun()
-        return
+    # 辞書の取得
+    translations = get_language_dict()
+    lang_dict = translations[st.session_state.lang]
 
-    st.write(f"この地点を「お気に入り」に保存します。（現在: {len(favorites)}/10件）")
-    # 📍をデフォルトで付与
-    initial_val = default_name if default_name.startswith("📍") else f"📍 {default_name}"
-    new_name = st.text_input("登録名（修正可）", value=initial_val)
-    
-    col1, col2 = st.columns(2)
-    with col1:
-        if st.button("OK（保存実行）", use_container_width=True, type="primary"):
+    @st.dialog(lang_dict.get("お気に入り地点の名称確認", "Confirm Favorite Name"), dismissible=False)
+    def favorite_registration_dialog_content():
+        # 現在の登録件数を確認
+        favorites = st.session_state.get("user_locations", [])
+        if len(favorites) >= 10:
+            st.error(lang_dict.get("🚨 お気に入りの登録制限（10件）に達しています。", "🚨 Favorite limit (10 items) reached."))
+            st.write(lang_dict.get("「My Spot 編集」から不要な地点を削除してください。", "Please delete unnecessary spots from 'My Spot Editor'."))
+            if st.button(lang_dict.get("閉じる", "Close"), use_container_width=True):
+                st.rerun()
+            return
+
+        msg_body = lang_dict.get("この地点を「お気に入り」に保存します。", "Save this location to favorites.")
+        st.write(f"{msg_body} ({lang_dict.get('現在', 'Current')}: {len(favorites)}/10)")
+        
+        # 📍をデフォルトで付与 (内部処理は維持)
+        initial_val = default_name if default_name.startswith("📍") else f"📍 {default_name}"
+        new_name = st.text_input(lang_dict.get("登録名（修正可）", "Registration Name"), value=initial_val)
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button(lang_dict.get("OK（保存実行）", "OK (Save)"), use_container_width=True, type="primary"):
+                if "user_locations" not in st.session_state:
+                    st.session_state.user_locations = []
+                
+                # リストに追加 (内部データは日本語を含む new_name をそのまま保持)
+                st.session_state.user_locations.append({
+                    "name": new_name,
+                    "lat": lat,
+                    "lon": lon
+                })
+                
+                st.session_state["last_basho"] = new_name
+                st.session_state["temp_label"] = None
+
+                # 保存処理
+                if "save_settings_to_browser" in globals():
+                    save_settings_to_browser()
+                elif "update_state_and_save" in globals():
+                    update_state_and_save({})
+
+                st.rerun()
+                
+        with col2:
+            if st.button(lang_dict.get("キャンセルして戻る", "Cancel"), use_container_width=True):
+                st.rerun()
+
+    # ダイアログの実行
+    favorite_registration_dialog_content()
+
+# ======================================================================================
+# 92_4. My Spot（お気に入り）管理ダイアログ（2段構成・多言語対応）
+# ======================================================================================
+def manage_favorites_dialog():
+    """
+    スマホの標準挙動（縦並び）に準拠した設計。表示を多言語化。
+    """
+    import streamlit as st
+
+    # 辞書の取得
+    translations = get_language_dict()
+    lang_dict = translations[st.session_state.lang]
+
+    @st.dialog(lang_dict.get("My Spot（お気に入り）の編集", "My Spot Editor"), dismissible=False)
+    def manage_favorites_dialog_content():
+        # CSSは維持
+        st.markdown("""
+            <style>
+                .stButton > button { height: 42px !important; margin-bottom: 4px !important; }
+                .spot-container {
+                    border: 1px solid rgba(151,166,195,0.2);
+                    border-radius: 8px;
+                    padding: 10px;
+                    margin-bottom: 12px;
+                    background-color: rgba(151,166,195,0.05);
+                }
+            </style>
+        """, unsafe_allow_html=True)
+        
+        @st.fragment
+        def internal_manager():
             if "user_locations" not in st.session_state:
                 st.session_state.user_locations = []
             
-            # リストに追加
-            st.session_state.user_locations.append({
-                "name": new_name,
-                "lat": lat,
-                "lon": lon
-            })
+            current_favs = list(st.session_state.user_locations)
             
-            # 📍付きの名前を現在の選択地点として保持
-            st.session_state["last_basho"] = new_name
-            st.session_state["temp_label"] = None
-
-            # 保存処理
-            if "save_settings_to_browser" in globals():
-                save_settings_to_browser()
-            elif "update_state_and_save" in globals():
-                update_state_and_save({})
-
-            st.rerun()
-            
-    with col2:
-        if st.button("Cancel", use_container_width=True):
-            st.rerun()
-
-# ======================================================================================
-# 92_4. My Spot（お気に入り）管理ダイアログ（2段構成・堅牢版）
-# ======================================================================================
-@st.dialog("My Spot（お気に入り）の編集", dismissible=False)
-def manage_favorites_dialog():
-    """
-    スマホの標準挙動（縦並び）に準拠した設計。
-    1段目に地名、2段目に操作ボタンを配置することで、横幅不足による崩れを根本的に回避する。
-    """
-    import streamlit as st
-
-    # CSSは最小限。ボタンの押しやすさと視認性のみを調整
-    st.markdown("""
-        <style>
-            /* ボタンの高さを指で押しやすいサイズに固定 */
-            .stButton > button {
-                height: 42px !important;
-                margin-bottom: 4px !important;
-            }
-            /* 1地点ごとの区切りを明確にする */
-            .spot-container {
-                border: 1px solid rgba(151,166,195,0.2);
-                border-radius: 8px;
-                padding: 10px;
-                margin-bottom: 12px;
-                background-color: rgba(151,166,195,0.05);
-            }
-        </style>
-    """, unsafe_allow_html=True)
-    
-    @st.fragment
-    def internal_manager():
-        if "user_locations" not in st.session_state:
-            st.session_state.user_locations = []
+            if not current_favs:
+                st.info(lang_dict.get("登録されている地点はありません。", "No locations registered."))
+            else:
+                st.caption(f"{lang_dict.get('登録', 'Registered')}: {len(current_favs)} / 10")
         
-        current_favs = list(st.session_state.user_locations)
-        
-        # 地点がある場合の表示
-        if not current_favs:
-            st.info("登録されている地点はありません。")
-        else:
-            st.caption(f"登録: {len(current_favs)} / 10 件")
-    
-            action_idx = None
-            direction = 0 
-            
-            for i in range(len(current_favs)):
-                item = current_favs[i]
-                row_id = f"v_row_{i}_{item['lat']}_{item['lon']}"
-                edit_key = f"is_editing_{row_id}"
+                action_idx = None
+                direction = 0 
                 
-                if edit_key not in st.session_state:
-                    st.session_state[edit_key] = False
-    
-                # 地点ごとに枠で囲む
-                with st.container(border=True):
-                    if st.session_state[edit_key]:
-                        # 名称編集モード
-                        new_name = st.text_input("名前を変更", value=item['name'], key=f"in_{row_id}")
-                        c_s, c_c = st.columns(2)
-                        if c_s.button("保存", key=f"s_{row_id}", type="primary", use_container_width=True):
-                            st.session_state.user_locations[i]['name'] = new_name
-                            st.session_state[edit_key] = False
-                            if "save_settings_to_browser" in globals(): save_settings_to_browser()
-                            st.rerun(scope="fragment")
-                        if c_c.button("戻る", key=f"c_{row_id}", use_container_width=True):
-                            st.session_state[edit_key] = False
-                            st.rerun(scope="fragment")
+                for i in range(len(current_favs)):
+                    item = current_favs[i]
+                    row_id = f"v_row_{i}_{item['lat']}_{item['lon']}"
+                    edit_key = f"is_editing_{row_id}"
+                    
+                    if edit_key not in st.session_state:
+                        st.session_state[edit_key] = False
+        
+                    with st.container(border=True):
+                        if st.session_state[edit_key]:
+                            # 名称編集モード (ラベルを辞書化)
+                            new_name = st.text_input(lang_dict.get("名前を変更", "Edit Name"), value=item['name'], key=f"in_{row_id}")
+                            c_s, c_c = st.columns(2)
+                            if c_s.button(lang_dict.get("保存", "Save"), key=f"s_{row_id}", type="primary", use_container_width=True):
+                                st.session_state.user_locations[i]['name'] = new_name
+                                st.session_state[edit_key] = False
+                                if "save_settings_to_browser" in globals(): save_settings_to_browser()
+                                st.rerun(scope="fragment")
+                            if c_c.button(lang_dict.get("戻る", "Back"), key=f"c_{row_id}", use_container_width=True):
+                                st.session_state[edit_key] = False
+                                st.rerun(scope="fragment")
+                        else:
+                            # --- 1段目：地名 ---
+                            display_label = f" {item['name']} ({item['lat']:.3f}, {item['lon']:.3f})"
+                            if st.button(display_label, key=f"b_{row_id}", use_container_width=True):
+                                st.session_state[edit_key] = True
+                                st.rerun(scope="fragment")
+        
+                            # --- 2段目：操作ボタン ---
+                            c1, c2, c3 = st.columns(3)
+                            with c1:
+                                if st.button("▲", key=f"u_{row_id}", disabled=(i==0), use_container_width=True):
+                                    action_idx, direction = i, -1
+                            with c2:
+                                if st.button("▼", key=f"d_{row_id}", disabled=(i==len(current_favs)-1), use_container_width=True):
+                                    action_idx, direction = i, 1
+                            with c3:
+                                if st.button("🗑️", key=f"x_{row_id}", use_container_width=True):
+                                    action_idx, direction = i, 99
+        
+                # --- ロジック実行 ---
+                if action_idx is not None:
+                    if direction == 99:
+                        st.session_state["pending_del_idx"] = action_idx
                     else:
-                        # --- 1段目：地名（幅一杯に使用） ---
-                        display_label = f" {item['name']} ({item['lat']:.3f}, {item['lon']:.3f})"
-                        if st.button(display_label, key=f"b_{row_id}", use_container_width=True):
-                            st.session_state[edit_key] = True
-                            st.rerun(scope="fragment")
-    
-                        # --- 2段目：操作ボタン（3分割） ---
-                        c1, c2, c3 = st.columns(3)
-                        with c1:
-                            if st.button("▲", key=f"u_{row_id}", disabled=(i==0), use_container_width=True):
-                                action_idx, direction = i, -1
-                        with c2:
-                            if st.button("▼", key=f"d_{row_id}", disabled=(i==len(current_favs)-1), use_container_width=True):
-                                action_idx, direction = i, 1
-                        with c3:
-                            if st.button("🗑️", key=f"x_{row_id}", use_container_width=True):
-                                action_idx, direction = i, 99
-    
-            # --- ロジック実行 (変更なし) ---
-            if action_idx is not None:
-                if direction == 99:
-                    st.session_state["pending_del_idx"] = action_idx
-                else:
-                    target_idx = action_idx + direction
-                    current_favs[action_idx], current_favs[target_idx] = current_favs[target_idx], current_favs[action_idx]
-                    st.session_state.user_locations = current_favs
-                    if "save_settings_to_browser" in globals(): save_settings_to_browser()
-                    st.rerun(scope="fragment")
-    
-            # 削除確認
-            del_target = st.session_state.get("pending_del_idx")
-            if del_target is not None:
-                st.warning(f"「{current_favs[del_target]['name']}」を削除しますか？")
-                y, n = st.columns(2)
-                if y.button("削除", key="del_y", type="primary", use_container_width=True):
-                    current_favs.pop(del_target)
-                    st.session_state.user_locations = current_favs
-                    st.session_state["pending_del_idx"] = None
-                    if "save_settings_to_browser" in globals(): save_settings_to_browser()
-                    st.rerun(scope="fragment")
-                if n.button("中止", key="del_n", use_container_width=True):
-                    st.session_state["pending_del_idx"] = None
-                    st.rerun(scope="fragment")
-    
-        # --- 共通のフッター：地点の有無に関わらず表示 ---
-        st.markdown("---")
-        if st.button("編集を終了して閉じる", key="close_fav", type="secondary", use_container_width=True):
-            st.rerun()
-    
-    internal_manager()
+                        target_idx = action_idx + direction
+                        current_favs[action_idx], current_favs[target_idx] = current_favs[target_idx], current_favs[action_idx]
+                        st.session_state.user_locations = current_favs
+                        if "save_settings_to_browser" in globals(): save_settings_to_browser()
+                        st.rerun(scope="fragment")
+        
+                # 削除確認 (メッセージとボタンを辞書化)
+                del_target = st.session_state.get("pending_del_idx")
+                if del_target is not None:
+                    del_msg = lang_dict.get("を削除しますか？", "Delete this?")
+                    st.warning(f"「{current_favs[del_target]['name']}」 {del_msg}")
+                    y, n = st.columns(2)
+                    if y.button(lang_dict.get("削除", "Delete"), key="del_y", type="primary", use_container_width=True):
+                        current_favs.pop(del_target)
+                        st.session_state.user_locations = current_favs
+                        st.session_state["pending_del_idx"] = None
+                        if "save_settings_to_browser" in globals(): save_settings_to_browser()
+                        st.rerun(scope="fragment")
+                    if n.button(lang_dict.get("中止", "Cancel"), key="del_n", use_container_width=True):
+                        st.session_state["pending_del_idx"] = None
+                        st.rerun(scope="fragment")
+        
+            st.markdown("---")
+            if st.button(lang_dict.get("編集を終了して閉じる", "Finish and Close"), key="close_fav", type="secondary", use_container_width=True):
+                st.rerun()
+        
+        internal_manager()
+
+    # ダイアログの実行
+    manage_favorites_dialog_content()
 
 # ======================================================================================
 # 93. 【main機能分離】②地図表示モジュール
