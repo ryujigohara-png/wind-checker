@@ -1023,27 +1023,33 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
 def generate_weather_icons_html(df, ratio_info, display_width, start_idx, icon_margin=0):
     """
     12番で生成されたdfと物理座標情報を元に、正確な位置へ天気アイコンを配置する。
-    見出し「天気」の位置をグラフ内の「降水量mm」と垂直に揃える。
+    見出し「天気」を言語設定に基づいて多言語化します。
     """
     import pandas as pd
+    import streamlit as st
+
+    # 辞書の取得
+    translations = get_language_dict()
+    lang_dict = translations[st.session_state.lang]
+
     start_x, hour_w = ratio_info
     icon_html = ""
     
-    # l_size_pt = CONFIG.get("LABEL_SIZE", 7)
     l_size_pt = st.session_state.get("label_font_size", CONFIG.get("LABEL_SIZE", 7))
     # グラフ内のフォントサイズ(pt)をpx相当に変換
-    # header_fs_px = l_size_pt * 1.33
     header_fs_px = l_size_pt * 2.5
   
-    # 「天気」見出しの配置：start_x（グラフ枠の左端）を基準にする
-    # 12番の ax.text(graph_left_time, ..., ha='right') と揃えるため translateX(-100%) を使用
+    # --- 「天気」見出しの配置（多言語化） ---
+    # 辞書から「天気」または「Weather」を取得
+    weather_label = lang_dict.get("天気", "Weather")
+    
     label_pos_x = (start_x * display_width) - 16
     icon_html += f'''
         <div style="position: absolute; left: {label_pos_x}px; top: 15px; 
                     transform: translateX(-105%); font-size: {header_fs_px}px; 
                     font-family: 'Noto Sans JP', sans-serif; color: #333; z-index: 5;
                     white-space: nowrap;">
-          天気
+          {weather_label}
         </div>'''
 
     # 指定された開始位置から3時間おきにアイコンを配置
@@ -1063,7 +1069,7 @@ def generate_weather_icons_html(df, ratio_info, display_width, start_idx, icon_m
                 {icon}
             </div>'''
     
-    # 最終的なHTMLコンテナ（デバッグ用の高さを35pxに戻す）
+    # 最終的なHTMLコンテナ
     return f'<div style="position: relative; width: {display_width}px; height: 35px; margin-bottom: {icon_margin}px; overflow: visible;">{icon_html}</div>'
     
 
