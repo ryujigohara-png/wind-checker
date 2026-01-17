@@ -768,22 +768,31 @@ def render_wind_bar_chart(ax, df, danger_v, wind_step, design_params=None):
                 ax.text(dt, precip_y, f"{precip:.1f}", ha='center', va='bottom', 
                         fontsize=l_fs, color="blue", transform=ax.get_xaxis_transform(), clip_on=False)
                 
-#==========================================================================================
+# ==========================================================================================
 # 10. 気温折れ線グラフを描画するサブルーチン
-#==========================================================================================
+# ==========================================================================================
 def render_temp_line_chart(ax, df):
     """
     気温の折れ線グラフを描画し、各時刻（0時と3の倍数）の気温数値をグラフ枠外の上部に表示する。
-    数値のフォントサイズは軸ラベルの設定（CONFIG["LABEL_SIZE"]）に従い、単位「℃」を付与する。
+    表示ラベルを st.session_state.lang に基づき多言語化します。
     """
+    import pandas as pd
+    import streamlit as st
+
+    # 辞書の取得
+    translations = get_language_dict()
+    lang_dict = translations[st.session_state.lang]
+
     # メインの折れ線描画
     ax.plot(df['time'], df['temperature_2m'], color=CONFIG["TEMP_COLOR"], linewidth=2, marker='o', markersize=3, markevery=3)
-    ax.set_ylabel('気温 (℃)', fontsize=CONFIG["LABEL_SIZE"])
+    
+    # Y軸ラベルの多言語化（例: "気温 (℃)" -> "Temp. (°C)"）
+    ax.set_ylabel(lang_dict.get('気温 (℃)', 'Temp. (°C)'), fontsize=CONFIG["LABEL_SIZE"])
     
     # フォントサイズは軸ラベルのサイズを取得
     label_fs = CONFIG["LABEL_SIZE"]
     
-    # y軸の範囲設定（数値表示用に上部に少しだけ余白を持たせるが、数値自体は枠外へ飛ばす）
+    # y軸の範囲設定
     t_max = df['temperature_2m'].max()
     t_min = df['temperature_2m'].min()
     y_range = t_max - t_min if t_max != t_min else 1.0
@@ -796,8 +805,7 @@ def render_temp_line_chart(ax, df):
         
         # 0時、または3の倍数の時刻のみ数値を表示
         if not pd.isna(temp) and (dt.hour % 3 == 0):
-            # transform=ax.get_xaxis_transform() を使用して、
-            # Xは時刻データ、Yは「グラフ枠のすぐ上(1.02)」に固定して描画
+            # transform=ax.get_xaxis_transform() を使用して、枠外へ描画
             ax.text(
                 dt, 
                 1.02, 
@@ -806,8 +814,8 @@ def render_temp_line_chart(ax, df):
                 va='bottom', 
                 fontsize=label_fs,
                 color=CONFIG["TEMP_COLOR"],
-                transform=ax.get_xaxis_transform(), # Y軸の値を0(下端)〜1(上端)の相対位置にする
-                clip_on=False                       # 枠外への描画を許可
+                transform=ax.get_xaxis_transform(),
+                clip_on=False
             )
 
 # ======================================================================================
