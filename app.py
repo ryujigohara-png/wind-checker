@@ -147,7 +147,7 @@ def get_language_dict():
             "ERR_LOC_FAILED": "❌ 位置情報の取得に失敗しました。",
             "BTN_UPDATE": "更新",
             "BTN_MAP": "🗺️地図",
-            "BTN_CURRENT_LOC_SHORT": "🔄📍現在地"
+            "BTN_CURRENT_LOC_SHORT": "🔄📍現在地",
             "SELECT_PLACE": "地点を選択してください",
             "HELP_FAV_SAVED": "お気に入り登録済み",
             "HELP_FAV_SAVE": "この場所をお気に入りに登録",
@@ -241,7 +241,7 @@ def get_language_dict():
             "ERR_LOC_FAILED": "❌ Failed to get location information.",
             "BTN_UPDATE": "Update",
             "BTN_MAP": "🗺️Map",
-            "BTN_CURRENT_LOC_SHORT": "🔄📍Current",
+            "BTN_CURRENT_LOC_SHORT": "🔄📍Current Location",
             "SELECT_PLACE": "Select a location",
             "HELP_FAV_SAVED": "Saved to Favorites",
             "HELP_FAV_SAVE": "Add to Favorites",
