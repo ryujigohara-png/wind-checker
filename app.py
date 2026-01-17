@@ -985,42 +985,50 @@ def generate_weather_icons_html(df, ratio_info, display_width, start_idx, icon_m
     
 
 # ======================================================================================
-# 20. サイドバーからグラフ表示設定を詳細ダイアログで一括変更するサブルーチン
+# 20. サイドバーからグラフ表示設定を詳細ダイアログで一括変更するサブルーチン（多言語対応版）
 # ======================================================================================
 @st.dialog("グラフ表示設定の詳細", dismissible=False)
 def show_settings_dialog():
     """
     開発者モード時のみ、お気に入り管理ダイアログの「ボタン幅」と「文字数制限」を
     調整するためのスライダーを表示する機能を追加した完全版。
+    表示文字列を st.session_state.lang に基づき切り替えます。
     """
     import streamlit as st
 
+    # 辞書の取得
+    translations = get_language_dict()
+    lang_dict = translations[st.session_state.lang]
+
     # --- 1. 表示設定（トグル） ---
-    st.subheader("表示設定")
-    d_show_wind = st.toggle("風向・風速グラフ表示", value=st.session_state.get("show_wind", CONFIG["SHOW_WIND"]))
-    d_show_temp = st.toggle("気温グラフ表示", value=st.session_state.get("show_temp", CONFIG["SHOW_TEMP"]))
-    d_show_tide = st.toggle("潮位グラフ表示", value=st.session_state.get("show_tide", CONFIG["SHOW_TIDE"]))
-    d_show_w_text = st.toggle("天気文字表示", value=st.session_state.get("show_w_text", CONFIG["SHOW_W_TEXT"]))
-    d_show_dir_name = st.toggle("風向名表示", value=st.session_state.get("show_dir_name", CONFIG["SHOW_DIR_NAME"]))
+    st.subheader(lang_dict["表示設定"])
+    d_show_wind = st.toggle(lang_dict["風向・風速グラフ表示"], value=st.session_state.get("show_wind", CONFIG["SHOW_WIND"]))
+    d_show_temp = st.toggle(lang_dict["気温グラフ表示"], value=st.session_state.get("show_temp", CONFIG["SHOW_TEMP"]))
+    d_show_tide = st.toggle(lang_dict["潮位グラフ表示"], value=st.session_state.get("show_tide", CONFIG["SHOW_TIDE"]))
+    d_show_w_text = st.toggle(lang_dict["天気文字表示"], value=st.session_state.get("show_w_text", CONFIG["SHOW_W_TEXT"]))
+    d_show_dir_name = st.toggle(lang_dict["風向名表示"], value=st.session_state.get("show_dir_name", CONFIG["SHOW_DIR_NAME"]))
     
     # --- 2. サイズ・文字（スライダー） ---
     w_cfg, h_cfg, f_cfg = CONFIG["SLIDER_WIDTH"], CONFIG["SLIDER_HEIGHT"], CONFIG["SLIDER_FONT"]
-    d_width = st.slider("グラフ枠横幅 (inch)", w_cfg["min"], w_cfg["max"], float(st.session_state.get("width", CONFIG["GRAPH_WIDTH"])), step=w_cfg["step"])
-    d_base_h = st.slider("グラフ枠縦幅 (inch)", h_cfg["min"], h_cfg["max"], float(st.session_state.get("base_height", CONFIG["GRAPH_HIGHT"])), step=h_cfg["step"])
-    d_base_f = st.slider("グラフ内文字サイズ", f_cfg["min"], f_cfg["max"], int(st.session_state.get("base_font_size", CONFIG["GRAPH_FONT_SIZE"])))
-    d_label_f = st.slider("軸ラベル文字サイズ", f_cfg["min"], f_cfg["max"], int(st.session_state.get("label_font_size", CONFIG["LABEL_SIZE"])))
+    d_width = st.slider(lang_dict["グラフ枠横幅 (inch)"], w_cfg["min"], w_cfg["max"], float(st.session_state.get("width", CONFIG["GRAPH_WIDTH"])), step=w_cfg["step"])
+    d_base_h = st.slider(lang_dict["グラフ枠縦幅 (inch)"], h_cfg["min"], h_cfg["max"], float(st.session_state.get("base_height", CONFIG["GRAPH_HIGHT"])), step=h_cfg["step"])
+    d_base_f = st.slider(lang_dict["グラフ内文字サイズ"], f_cfg["min"], f_cfg["max"], int(st.session_state.get("base_font_size", CONFIG["GRAPH_FONT_SIZE"])))
+    d_label_f = st.slider(lang_dict["軸ラベル文字サイズ"], f_cfg["min"], f_cfg["max"], int(st.session_state.get("label_font_size", CONFIG["LABEL_SIZE"])))
     
     st.markdown("---")
-    d_danger_v = st.number_input("危険風速ライン(m/s)", value=float(st.session_state.get("danger_v", CONFIG["DEFAULT_DANGER_V"])), step=1.0)
+    d_danger_v = st.number_input(lang_dict["危険風速ライン(m/s)"], value=float(st.session_state.get("danger_v", CONFIG["DEFAULT_DANGER_V"])), step=1.0)
     
     # --- 3. 色付風向選択（2列チェックボックス） ---
-    st.subheader("色付風向選択")
+    st.subheader(lang_dict["色付風向選択"])
     current_sel = st.session_state.get("sel_dirs", list(CONFIG["DEFAULT_DIRS"]))
     new_sel_dirs = []
     cols = st.columns(2)
     for i, d in enumerate(ALL_DIRECTIONS):
         with cols[i % 2]:
-            if st.checkbox(d, value=(d in current_sel), key=f"dlg_dir_{d}"):
+            # 方位記号（N, NE等）についても辞書から値を取得して表示
+            # 辞書に "N": "N" や "N": "北" と定義されている前提
+            label_d = lang_dict.get(d, d)
+            if st.checkbox(label_d, value=(d in current_sel), key=f"dlg_dir_{d}"):
                 new_sel_dirs.append(d)
     
     # --- 4. 開発者用調整 ---
@@ -1066,8 +1074,8 @@ def show_settings_dialog():
     
     st.markdown("---")
     
-    # --- 5. リセットボタン (誤操作防止のため少し離して配置) ---
-    if st.button("設定をすべて初期値に戻す", key="reset_all_settings", use_container_width=True):
+    # --- 5. リセットボタン ---
+    if st.button(lang_dict["設定をすべて初期値に戻す"], key="reset_all_settings", use_container_width=True):
         st.session_state.update({
             "show_wind": CONFIG["SHOW_WIND"], "show_temp": CONFIG["SHOW_TEMP"], "show_tide": CONFIG["SHOW_TIDE"],
             "width": CONFIG["GRAPH_WIDTH"], "base_height": CONFIG["GRAPH_HIGHT"], "base_font_size": CONFIG["GRAPH_FONT_SIZE"],
@@ -1085,7 +1093,7 @@ def show_settings_dialog():
     # --- 6. 実行・キャンセルボタン ---
     c_exec, c_cancel = st.columns(2)
     with c_exec:
-        if st.button("設定を適用して更新", key="apply_all_settings", type="primary", use_container_width=True):
+        if st.button(lang_dict["設定を適用して更新"], key="apply_all_settings", type="primary", use_container_width=True):
             st.session_state.update({
                 "show_wind": d_show_wind, "show_temp": d_show_temp, "show_tide": d_show_tide,
                 "width": d_width, "base_height": d_base_h, "base_font_size": d_base_f,
@@ -1100,7 +1108,7 @@ def show_settings_dialog():
             st.cache_data.clear()
             st.rerun()
     with c_cancel:
-        if st.button("キャンセルして戻る", key="cancel_all_settings", use_container_width=True):
+        if st.button(lang_dict["キャンセルして戻る"], key="cancel_all_settings", use_container_width=True):
             st.rerun()
       
 
