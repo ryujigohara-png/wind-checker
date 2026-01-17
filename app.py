@@ -129,6 +129,170 @@ CONFIG = {
 ALL_DIRECTIONS = ["北", "北北東", "北東", "東北東", "東", "東南東", "南東", "南南東", "南", "南南西", "南西", "西南西", "西", "西北西", "北西", "北北西"]
 
 # ======================================================================================
+# 0. 多言語表示用の辞書データを定義するサブルーチン。
+# ======================================================================================
+@st.cache_data
+def get_language_dict():
+    """
+    多言語表示用の辞書データを定義するサブルーチン。
+    @st.cache_data により、2回目以降の呼び出しコストをほぼゼロにします。
+    """
+    return {
+        "ja": {
+            "表示設定": "表示設定",
+            "⛵Pin_Weather!": "⛵Pin_Weather!",
+            "グラフを生成中...": "グラフを生成中...",
+            "⚙ 詳細設定": "⚙ 詳細設定",
+            "📍 My Spot 編集": "📍 My Spot 編集",
+            "グラフ表示設定の詳細": "グラフ表示設定の詳細",
+            "風向・風速グラフ表示": "風向・風速グラフ表示",
+            "気温グラフ表示": "気温グラフ表示",
+            "潮位グラフ表示": "潮位グラフ表示",
+            "天気文字表示": "天気文字表示",
+            "風向名表示": "風向名表示",
+            "グラフ枠横幅 (inch)": "グラフ枠横幅 (inch)",
+            "グラフ枠縦幅 (inch)": "グラフ枠縦幅 (inch)",
+            "グラフ内文字サイズ": "グラフ内文字サイズ",
+            "軸ラベル文字サイズ": "軸ラベル文字サイズ",
+            "危険風速ライン(m/s)": "危険風速ライン(m/s)",
+            "色付風向選択": "色付風向選択",
+            "開発用詳細設定": "開発用詳細設定",
+            "コンテナ最小幅 (px)": "コンテナ最小幅 (px)",
+            "解像度 (DPI)": "解像度 (DPI)",
+            "グラフ間余白": "グラフ間余白",
+            "ラベル距離": "ラベル距離",
+            "地図ダイアログ調整": "地図ダイアログ調整",
+            "地図ダイアログ横余白 (H-Gap)": "地図ダイアログ横余白 (H-Gap)",
+            "地図ダイアログ縦余白 (V-Gap)": "地図ダイアログ縦余白 (V-Gap)",
+            "MySpot編集ダイアログ調整": "MySpot編集ダイアログ調整",
+            "ボタン幅 (%)": "ボタン幅 (%)",
+            "地名表示制限 (文字)": "地名表示制限 (文字)",
+            "降水量・アイコン位置調整": "降水量・アイコン位置調整",
+            "降水量ラベル高さ": "降水量ラベル高さ",
+            "天気アイコン下余白": "天気アイコン下余白",
+            "グラフ縦比率設定": "グラフ縦比率設定",
+            "比率:風向": "比率:風向",
+            "比率:気温": "比率:気温",
+            "比率:潮位": "比率:潮位",
+            "設定をすべて初期値に戻す": "設定をすべて初期値に戻す",
+            "設定を適用して更新": "設定を適用して更新",
+            "キャンセルして戻る": "キャンセルして戻る",
+            "現在の登録地点 (クリックで削除)": "現在の登録地点 (クリックで削除)",
+            "--- 地点の追加 ---": "--- 地点の追加 ---",
+            "地名を入力": "地名を入力",
+            "緯度": "緯度",
+            "経度": "経度",
+            "地点を追加": "地点を追加",
+            "閉じる": "閉じる",
+            "📍 地図で指定": "📍 地図で指定",
+            "地図中心に📍": "地図中心に📍",
+            "確定": "確定",
+            "中止": "中止",
+            "地名取得中...": "地名取得中...",
+            "指定地点": "指定地点",
+            "風速 (m/s)": "風速 (m/s)",
+            "気温 (℃)": "気温 (℃)",
+            "潮位 (cm)": "潮位 (cm)",
+            "降水量mm　": "降水量mm　",
+            "天気": "天気",
+            "OCEAN_INFO": "※指定地点の最寄り（{res_dir}約{dist_km}km）の海洋データを表示しています。",
+            "OCEAN_NONE": "※指定地点の近傍(30km圏内)に有効な海洋データがないため表示されません",
+            "DISCLAIMER": "※本データは予測値であり、実際の天候と異なる場合があります。航海や活動の際は、必ず最新の気象情報を確認し、自己責任でご利用ください。",
+            "WEEKS": ["月", "火", "水", "木", "金", "土", "日"],
+            "WEATHER_TEXT": {"晴": "晴", "霧": "霧", "雨": "雨", "雪": "雪", "雷": "雷", "？": "？"},
+            "ALL_DIRECTIONS": ["北", "北北東", "北東", "東北東", "東", "東南東", "南東", "南南東", "南", "南南西", "南西", "西南西", "西", "西北西", "北西", "北北西"],
+            "LOCATIONS": {
+                "高須沖(鹿児島県)": "高須沖(鹿児島県)", "住吉浜沖(大分県)": "住吉浜沖(大分県)",
+                "逗子海岸沖(神奈川県)": "逗子海岸沖(神奈川県)", "津久井浜沖(神奈川県)": "津久井浜沖(神奈川県)",
+                "御前崎沖(静岡県)": "御前崎沖(静岡県)", "本栖湖中央(山梨県)": "本栖湖中央(山梨県)",
+                "浜名湖村櫛沖(静岡県)": "浜名湖村櫛沖(静岡県)", "甲子園浜沖(兵庫県)": "甲子園浜沖(兵庫県)",
+                "柏原沖(鹿児島県)": "柏原沖(鹿児島県)", "磯海岸沖(鹿児島県)": "磯海岸沖(鹿児島県)",
+                "江口浜沖(鹿児島県)": "江口浜沖(鹿児島県)", "垂水港(鹿児島県)": "垂水港(鹿児島県)",
+                "海潟(鹿児島県)": "海潟(鹿児島県)", "カナハ沖(マウイ島)": "カナハ沖(マウイ島)",
+                "ポゾ沖(グランカナリア)": "ポゾ沖(グランカナリア)", "グリュイッサン沖(DEFI)": "グリュイッサン沖(DEFI)",
+                "アンスバタ沖(ニューカレドニア)": "アンスバタ沖(ニューカレドニア)", "ニューヨーク(米国)": "ニューヨーク(米国)",
+                "ロンドン(英国)": "ロンドン(英国)"
+            }
+        },
+        "en": {
+            "表示設定": "Display Settings",
+            "⛵Pin_Weather!": "⛵Pin_Weather!",
+            "グラフを生成中...": "Generating graphs...",
+            "⚙ 詳細設定": "⚙ Advanced Settings",
+            "📍 My Spot 編集": "📍 Edit My Spot",
+            "グラフ表示設定の詳細": "Detailed Display Settings",
+            "風向・風速グラフ表示": "Show Wind Speed/Dir",
+            "気温グラフ表示": "Show Temperature",
+            "潮位グラフ表示": "Show Tide Level",
+            "天気文字表示": "Show Weather Text",
+            "風向名表示": "Show Wind Dir Name",
+            "グラフ枠横幅 (inch)": "Graph Width (inch)",
+            "グラフ枠縦幅 (inch)": "Graph Height (inch)",
+            "グラフ内文字サイズ": "Graph Font Size",
+            "軸ラベル文字サイズ": "Axis Label Size",
+            "危険風速ライン(m/s)": "Danger Wind (m/s)",
+            "色付風向選択": "Colored Wind Dir",
+            "開発用詳細設定": "Developer Settings",
+            "コンテナ最小幅 (px)": "Min Width (px)",
+            "解像度 (DPI)": "Resolution (DPI)",
+            "グラフ間余白": "Graph Spacing",
+            "ラベル距離": "Label Distance",
+            "地図ダイアログ調整": "Map Dialog Adjust",
+            "地図ダイアログ横余白 (H-Gap)": "Map H-Gap",
+            "地図ダイアログ縦余白 (V-Gap)": "Map V-Gap",
+            "MySpot編集ダイアログ調整": "MySpot Edit Adjust",
+            "ボタン幅 (%)": "Button Width (%)",
+            "地名表示制限 (文字)": "Name Length Limit",
+            "降水量・アイコン位置調整": "Precip/Icon Adjust",
+            "降水量ラベル高さ": "Precip Label Y",
+            "天気アイコン下余白": "Icon Bottom Margin",
+            "グラフ縦比率設定": "Graph Ratio Settings",
+            "比率:風向": "Ratio: Wind",
+            "比率:気温": "Ratio: Temp",
+            "比率:潮位": "Ratio: Tide",
+            "設定をすべて初期値に戻す": "Reset All to Default",
+            "設定を適用して更新": "Apply and Update",
+            "キャンセルして戻る": "Cancel",
+            "現在の登録地点 (クリックで削除)": "Current My Spots (Click to delete)",
+            "--- 地点の追加 ---": "--- Add New Spot ---",
+            "地名を入力": "Enter Name",
+            "緯度": "Lat",
+            "経度": "Lon",
+            "地点を追加": "Add Spot",
+            "閉じる": "Close",
+            "📍 地図で指定": "📍 Select on Map",
+            "地図中心に📍": "Pin to Center",
+            "確定": "Confirm",
+            "中止": "Cancel",
+            "地名取得中...": "Fetching name...",
+            "指定地点": "Custom Location",
+            "風速 (m/s)": "Wind Speed (m/s)",
+            "気温 (℃)": "Temp (℃)",
+            "潮位 (cm)": "Tide (cm)",
+            "降水量mm　": "Precip (mm) ",
+            "天気": "Weather",
+            "OCEAN_INFO": "*Showing marine data from {res_dir} approx. {dist_km}km away.",
+            "OCEAN_NONE": "*No marine data within 30km.",
+            "DISCLAIMER": "*Data are forecasts. Check official reports and use at your own risk.",
+            "WEEKS": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+            "WEATHER_TEXT": {"晴": "Sunny", "霧": "Fog", "雨": "Rain", "雪": "Snow", "雷": "T-Storm", "？": "?"},
+            "ALL_DIRECTIONS": ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"],
+            "LOCATIONS": {
+                "高須沖(鹿児島県)": "Takasu-oki (Kagoshima)", "住吉浜沖(大分県)": "Sumiyoshihama-oki (Oita)",
+                "逗子海岸沖(神奈川県)": "Zushi Beach (Kanagawa)", "津久井浜沖(神奈川県)": "Tsukuiahama-oki (Kanagawa)",
+                "御前崎沖(静岡県)": "Omaezaki-oki (Shizuoka)", "本栖湖中央(山梨県)": "Lake Motosu (Yamanashi)",
+                "浜名湖村櫛沖(静岡県)": "Lake Hamana Murakushi (Shizuoka)", "甲子園浜沖(兵庫県)": "Koshienhama-oki (Hyogo)",
+                "柏原沖(鹿児島県)": "Kashivara-oki (Kagoshima)", "磯海岸沖(鹿児島県)": "Iso Beach (Kagoshima)",
+                "江口浜沖(鹿児島県)": "Eguchihama-oki (Kagoshima)", "垂水港(鹿児島県)": "Tarumizu Port (Kagoshima)",
+                "海潟(鹿児島県)": "Kaigata (Kagoshima)", "カナハ沖(マウイ島)": "Kanaha (Maui)",
+                "ポゾ沖(グランカナリア)": "Pozo (Gran Canaria)", "グリュイッサン沖(DEFI)": "Gruissan (DEFI)",
+                "アンスバタ沖(ニューカレドニア)": "Anse Vata (New Caledonia)", "ニューヨーク(米国)": "New York (USA)",
+                "ロンドン(英国)": "London (UK)"
+            }
+        }
+    }
+
+# ======================================================================================
 # 1. アプリケーション初期化サブルーチン (st.logo 導入版)
 # ======================================================================================
 def initialize_app():
@@ -155,7 +319,7 @@ def initialize_app():
         page_icon=app_icon,
         layout="wide"
     )
-    
+
 #==========================================================================================
 # 2. グラフに使用する日本語フォントをセットアップ
 #==========================================================================================
@@ -1941,18 +2105,25 @@ def main():
     # --- 0. アプリ初期化 (最優先で実行) ---
     initialize_app()
 
+    # --- [追加] 言語設定の初期化とキャッシュ利用 ---
+    if 'lang' not in st.session_state:
+        st.session_state.lang = "ja"
+    
+    # 辞書取得 (キャッシュにより高速実行)
+    translations = get_language_dict()
+    lang_dict = translations[st.session_state.lang]
+
     # --- 1. 状態の初期化 ---
-    # 1. URLパラメータから開発者モードの状態を判定（SessionState内のみで保持）
+    # 1. URLパラメータから開発者モードの状態を判定
     if "mode" in st.query_params and st.query_params["mode"] == "dev":
         st.session_state.is_dev_mode = True
     else:
-        # パラメータがない場合は、LocalStorageの状態に関わらずFalseにする（永続化しない場合）
         st.session_state.is_dev_mode = False
     
     if 'lat' not in st.session_state: st.session_state.lat = CONFIG["DEFAULT_LAT"]
     if 'lon' not in st.session_state: st.session_state.lon = CONFIG["DEFAULT_LON"]
     if 'last_basho' not in st.session_state: st.session_state.last_basho = CONFIG["DEFAULT_BASHO"]
-    # 描画抑制フラグ：このフラグが True のときだけ重い処理を実行する
+    
     if 'needs_graph_update' not in st.session_state:
         st.session_state.needs_graph_update = True
 
@@ -1963,33 +2134,36 @@ def main():
     render_custom_css()
     setup_font(st.session_state.get("base_font_size", CONFIG["GRAPH_FONT_SIZE"]))
     
-    # サイドバーのコントロール（設定変更があれば内部で needs_graph_update = True になる）
+    # サイドバーのコントロール
     danger_v, sel_dirs, design_params = show_sidebar_controls()
     
     # --- タイトルエリアの修正 (画像ロゴのみを表示) ---
-    import os
     icon_path = "pin_weather_02.png"
     if os.path.exists(icon_path):
         st.image(icon_path, width=800) 
     else:
-        st.title("⛵Pin_Weather!")            
+        # リテラルを辞書参照に変更
+        st.title(lang_dict["⛵Pin_Weather!"])            
        
     # 時間設定
     now_jst = datetime.now(timezone(timedelta(hours=9)))
 
     # --- 2. 各モジュールの描画 ---
-    # 以前の 92, 93, 94 をすべて1つに集約
     render_compact_control_panel(st.session_state.last_basho)
 
-    # グラフエリア（ここでフラグを見て描画を行う）
+    # グラフエリア
     render_graph_area_module(danger_v, sel_dirs, design_params, now_jst)
     
-    # 今回追加：凡例とクレジット表記
+    # 凡例とクレジット表記
     render_footer_info(danger_v)
+    
+    # --- [追加] フッター：免責事項の表示 ---
+    st.markdown("---")
+    st.caption(lang_dict["DISCLAIMER"])
     
     if st.session_state.get("is_dev_mode"):
         st.divider()
         st.write("Debug: Session State", st.session_state)
-
+        
 if __name__ == "__main__":
     main()
