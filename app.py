@@ -201,6 +201,7 @@ def get_language_dict():
             "WEEKS": ["月", "火", "水", "木", "金", "土", "日"],
             "WEATHER_TEXT": {"晴": "晴", "霧": "霧", "雨": "雨", "雪": "雪", "雷": "雷", "？": "？"},
             "ALL_DIRECTIONS": ["北", "北北東", "北東", "東北東", "東", "東南東", "南東", "南南東", "南", "南南西", "南西", "西南西", "西", "西北西", "北西", "北北西"],
+            "DIRECTIONS_8": ["北", "北東", "東", "南東", "南", "南西", "西", "北西"],
             "NORTH":"北",
             "LOCATIONS": {
                 "高須沖(鹿児島県)": "高須沖(鹿児島県)", "住吉浜沖(大分県)": "住吉浜沖(大分県)",
@@ -278,6 +279,7 @@ def get_language_dict():
             "WEEKS": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
             "WEATHER_TEXT": {"晴": "Sunny", "霧": "Fog", "雨": "Rain", "雪": "Snow", "雷": "T-Storm", "？": "?"},
             "ALL_DIRECTIONS": ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"],
+            "DIRECTIONS_8": ["N", "NE", "E", "SE", "S", "SW", "W", "NW"],
             "NORTH":"N",
             "LOCATIONS": {
                 "高須沖(鹿児島県)": "Takasu-oki (Kagoshima)", "住吉浜沖(大分県)": "Sumiyoshihama-oki (Oita)",
@@ -819,19 +821,24 @@ def render_temp_line_chart(ax, df):
             )
 
 # ======================================================================================
-# 11. 潮位曲線グラフを描画するサブルーチン（ランダムスキャン・海洋データ版）
+# 11. 潮位曲線グラフを描画するサブルーチン
 # ======================================================================================
 def render_tide_curve_chart(ax, df):
     """
-    Open-Meteo Marine APIから潮位を取得。
-    探索の開始方向をランダムに決定し、30km圏内で最初に見つかった「海洋データ」を採用します。
+    Open-Meteo Marine APIから潮位を取得。表示を多言語化。
+    30km圏内で最初に見つかった「海洋データ」を採用し、その方位と距離を表示する。
     """
     import requests
     import pandas as pd
     import numpy as np
     import time
     import random
+    import streamlit as st
     from matplotlib.transforms import ScaledTranslation
+
+    # 辞書の取得
+    translations = get_language_dict()
+    lang_dict = translations[st.session_state.lang]
 
     lat = df.attrs.get('lat', 35.0)
     lon = df.attrs.get('lon', 135.0)
@@ -842,7 +849,7 @@ def render_tide_curve_chart(ax, df):
     tide_levels = None
     info_text = ""
     
-    # --- 探索座標リストの作成（南北・東西を正しく定義） ---
+    # --- 探索座標リストの作成 ---
     steps = [0.0, 0.05, 0.1, 0.15, 0.2, 0.25]
     search_points = []
 
@@ -850,18 +857,7 @@ def render_tide_curve_chart(ax, df):
         if s == 0:
             search_points.append((0, 0))
         else:
-            # 8方向の定義（緯度プラスが北、経度プラスが東）
-            ring = [
-                (s, 0),    # 北
-                (s, s),    # 北東
-                (0, s),    # 東
-                (-s, s),   # 南東
-                (-s, 0),   # 南
-                (-s, -s),  # 南西
-                (0, -s),   # 西
-                (s, -s)    # 北西
-            ]
-            # 各ステップごとに、開始地点をランダムにずらす
+            ring = [(s, 0), (s, s), (0, s), (-s, s), (-s, 0), (-s, -s), (0, -s), (s, -s)]
             start_idx = random.randint(0, 7)
             rotated_ring = ring[start_idx:] + ring[:start_idx]
             search_points.extend(rotated_ring)
@@ -872,8 +868,6 @@ def render_tide_curve_chart(ax, df):
         target_lat = lat + d_lat
         target_lon = lon + d_lon
         
-        # [Open-Meteo Marine API](open-meteo.com) を使用
-        # url = "marine-api.open-meteo.com"
         url = "https://marine-api.open-meteo.com/v1/marine"
         params = {
             "latitude": target_lat, "longitude": target_lon,
@@ -889,13 +883,19 @@ def render_tide_curve_chart(ax, df):
                 if api_h and any(v is not None for v in api_h):
                     dist_km = round(np.sqrt((d_lat * 111)**2 + (d_lon * 111 * np.cos(np.radians(lat)))**2), 1)
 
-                    if dist_km > 0.5: # わずかな誤差を除きメッセージ表示
-                        # 方位の計算
+                    if dist_km > 0.5:
+                        # 方位の計算と多言語化
                         angle = np.rad2deg(np.arctan2(d_lon * np.cos(np.radians(lat)), d_lat))
-                        directions = ["北", "北東", "東", "南東", "南", "南西", "西", "北西", "北"]
-                        res_dir = directions[int((angle + 22.5) % 360 // 45)]
-                        # メッセージをより自然な表現に修正
-                        info_text = f"※指定地点の最寄り（{res_dir}約{dist_km}km）の海洋データを表示しています。"
+                        
+                        # 8方位リストを取得し、終端に「北」相当を連結して9要素にする
+                        base_dirs = lang_dict.get("DIRECTIONS_8", ["北", "北東", "東", "南東", "南", "南西", "西", "北西"])
+                        directions_9 = base_dirs + [base_dirs[0]] # これで末尾に「北」が入る
+                        
+                        res_dir = directions_9[int((angle + 22.5) % 360 // 45)]
+                        
+                        # 注釈メッセージの組み立て
+                        msg_tmpl = lang_dict.get("TIDE_INFO_MSG", "※指定地点の最寄り（{dir}約{dist}km）の海洋データを表示しています。")
+                        info_text = msg_tmpl.format(dir=res_dir, dist=dist_km)
                     
                     df_api = pd.DataFrame({"api_t": pd.to_datetime(data["hourly"]["time"]), "h": api_h})
                     df_api["api_t"] = df_api["api_t"].dt.tz_localize(None)
@@ -912,14 +912,16 @@ def render_tide_curve_chart(ax, df):
     if not found or tide_levels is None:
         ax.clear()
         ax.set_axis_off()
-        ax.text(0.0, 0.5, "※指定地点の近傍(30km圏内)に有効な海洋データがないため表示されません", 
-                transform=ax.transAxes, color="gray", fontsize=label_fs, ha='left', va='center')
+        no_data_msg = lang_dict.get("NO_TIDE_DATA", "※指定地点の近傍(30km圏内)に有効な海洋データがないため表示されません")
+        ax.text(0.0, 0.5, no_data_msg, transform=ax.transAxes, color="gray", fontsize=label_fs, ha='left', va='center')
         return
 
     # 描画処理
     df['tide_cm'] = [v * 100 if v is not None else np.nan for v in tide_levels]
     ax.plot(df['time'], df['tide_cm'], color="#1f77b4", linewidth=2, marker='o', markersize=3, markevery=3)
-    ax.set_ylabel("潮位 (cm)", fontsize=label_fs)
+    
+    # Y軸ラベル多言語化
+    ax.set_ylabel(lang_dict.get("潮位 (cm)", "Tide (cm)"), fontsize=label_fs)
     ax.grid(True, axis='y', linestyle='--', alpha=0.5)
 
     # 数値ラベル
@@ -929,7 +931,7 @@ def render_tide_curve_chart(ax, df):
             ax.text(dt, 1.05, f"{val:.0f}", ha='center', va='bottom', color="#1f77b4", 
                     fontsize=label_fs, transform=ax.get_xaxis_transform())
 
-    # メッセージ表示位置
+    # 注釈メッセージ表示
     if info_text:
         offset = ScaledTranslation(0, - (label_fs * 3.5) / 72, ax.figure.dpi_scale_trans)
         trans = ax.transAxes + offset
