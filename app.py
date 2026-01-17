@@ -141,6 +141,8 @@ def get_language_dict():
         "ja": {
             "表示設定": "表示設定",
             "⛵Pin_Weather!": "⛵Pin_Weather!",
+            "FAV_PREFIX": "📍 ",
+            "MAP_SELECT_LABEL": "地図で指定",
             "BTN_CURRENT_LOC": "🔄📍現在地　　　　　　　　　　",
             "MSG_GETTING_LOC": "🛰️ 現在地を取得中...",
             "MSG_IDENTIFY_LOC": "現在地の地名を特定中...",
@@ -235,6 +237,8 @@ def get_language_dict():
         "en": {
             "表示設定": "Display Settings",
             "⛵Pin_Weather!": "⛵Pin_Weather!",
+            "FAV_PREFIX": "📍 ",
+            "MAP_SELECT_LABEL": "Select on Map",
             "BTN_CURRENT_LOC": "🔄📍Current Location          ",
             "MSG_GETTING_LOC": "🛰️ Getting current location...",
             "MSG_IDENTIFY_LOC": "Identifying location name...",
@@ -1719,28 +1723,40 @@ def render_location_selector_module():
     return st.session_state.last_basho
 
 # ======================================================================================
-# 92_1. お気に入り・プリセット・地図指定を統合するサブルーチン（構造化・完全版）
+# 92_1. お気に入り・プリセット・地図指定を統合するサブルーチン（多言語対応版）
 # ======================================================================================
 def get_combined_location_list(preset_master, current_lat, current_lon):
     """
     お気に入り(user_locations)、既定値(preset_master)、一時地点、地図指定を統合したリストを返す。
+    表示ラベルおよびシステム項目を st.session_state.lang に基づき多言語化します。
     """
+    import streamlit as st
+
+    # 辞書の取得
+    translations = get_language_dict()
+    lang_dict = translations[st.session_state.lang]
+
     # LocalStorageから読み込まれているユーザー保存地点を取得
     favorites = st.session_state.get("user_locations", [])
     total_data = {}
     display_list = []
 
     # 1. 📍お気に入り（LocalStorage保存分）を最優先
+    fav_prefix = lang_dict.get("FAV_PREFIX", "📍 ")
     for fav in favorites:
-        # 地名に 📍 がなければ付与して区別しやすくする
-        name = fav['name'] if fav['name'].startswith("📍") else f"📍 {fav['name']}"
+        # 地名に接頭辞（📍 など）がなければ付与
+        name = fav['name']
+        if not name.startswith(fav_prefix.strip()):
+            name = f"{fav_prefix}{name}"
+            
         label = f"{name} ({fav['lat']:.4f}, {fav['lon']:.4f})"
         display_list.append(label)
         total_data[label] = (fav['lat'], fav['lon'], name)
 
     # 2. プリセット（CONFIG["LOCATION_MASTER"] 定義分）
     for name, coords in preset_master.items():
-        if name not in ["現在地を取得", "地図で指定"]:
+        # 除外キーワードも多言語対応を考慮
+        if name not in ["現在地を取得", "地図で指定", "Get Current Location", "Select on Map"]:
             label = f"{name} ({coords[0]:.4f}, {coords[1]:.4f})"
             display_list.append(label)
             total_data[label] = (coords[0], coords[1], name)
@@ -1752,12 +1768,11 @@ def get_combined_location_list(preset_master, current_lat, current_lon):
         total_data[t_label] = (current_lat, current_lon, t_label.split(" (")[0])
 
     # 4. 地図で指定（操作トリガーとしての項目）
-    map_label = "地図で指定"
+    map_label = lang_dict.get("MAP_SELECT_LABEL", "地図で指定")
     display_list.append(map_label)
-    total_data[map_label] = (current_lat, current_lon, "地図で指定")
+    total_data[map_label] = (current_lat, current_lon, map_label)
 
     return display_list, total_data
-
 # ======================================================================================
 # 92_2. 地点選択とお気に入り保存を1行に集約するサブルーチン（ダイアログ・保存フラグ対応）
 # ======================================================================================
