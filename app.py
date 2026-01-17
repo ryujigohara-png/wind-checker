@@ -1529,6 +1529,8 @@ def save_settings_to_browser():
         "show_wind": st.session_state.show_wind,
         "show_temp": st.session_state.show_temp,
         "show_tide": st.session_state.show_tide,
+        "show_w_text": st.session_state.get("show_w_text", CONFIG["SHOW_W_TEXT"]),
+        "show_dir_name": st.session_state.get("show_dir_name", CONFIG["SHOW_DIR_NAME"]),
         "width": st.session_state.width,
         "base_height": st.session_state.base_height,
         "base_font_size": st.session_state.base_font_size,
@@ -1538,8 +1540,6 @@ def save_settings_to_browser():
         "is_dev_mode": st.session_state.get("is_dev_mode", False),
         "label_pad": st.session_state.get("label_pad", CONFIG["LABEL_PAD"]),
         "hspace": st.session_state.get("hspace", CONFIG["HSPACE"]),
-        "show_w_text": st.session_state.get("show_w_text", CONFIG["SHOW_W_TEXT"]),
-        "show_dir_name": st.session_state.get("show_dir_name", CONFIG["SHOW_DIR_NAME"]),
         "ratios": st.session_state.get("ratios", CONFIG["DEFAULT_RATIOS"]),
         # 【重要】お気に入りリストを保存対象に含める
         "user_locations": st.session_state.get("user_locations", []),
@@ -1581,6 +1581,8 @@ def sync_all_settings():
         "show_wind": CONFIG["SHOW_WIND"],
         "show_temp": CONFIG["SHOW_TEMP"],
         "show_tide": CONFIG["SHOW_TIDE"],
+        "show_w_text": CONFIG["SHOW_W_TEXT"],
+        "show_dir_name": CONFIG["SHOW_DIR_NAME"],
         "lat": CONFIG["DEFAULT_LAT"],
         "lon": CONFIG["DEFAULT_LON"],
         "last_basho": CONFIG["DEFAULT_BASHO"],
@@ -1622,6 +1624,8 @@ def sync_all_settings():
             st.session_state.show_wind = data.get("show_wind", CONFIG["SHOW_WIND"])
             st.session_state.show_temp = data.get("show_temp", CONFIG["SHOW_TEMP"])
             st.session_state.show_tide = data.get("show_tide", CONFIG["SHOW_TIDE"])
+            st.session_state.show_w_text = data.get("show_w_text", CONFIG["SHOW_W_TEXT"])
+            st.session_state.show_dir_name = data.get("show_dir_name", CONFIG["SHOW_DIR_NAME"])
             st.session_state.width = float(data.get("width", CONFIG["GRAPH_WIDTH"]))
             st.session_state.base_height = float(data.get("base_height", CONFIG["GRAPH_HIGHT"]))
             st.session_state.base_font_size = int(data.get("base_font_size", CONFIG["GRAPH_FONT_SIZE"]))
@@ -1631,8 +1635,6 @@ def sync_all_settings():
             st.session_state.is_dev_mode = data.get("is_dev_mode", CONFIG.get("SHOW_DEV_MODE", False))
             st.session_state.label_pad = data.get("label_pad", CONFIG["LABEL_PAD"])
             st.session_state.hspace = data.get("hspace", CONFIG["HSPACE"])
-            st.session_state.show_w_text = data.get("show_w_text", CONFIG["SHOW_W_TEXT"])
-            st.session_state.show_dir_name = data.get("show_dir_name", CONFIG["SHOW_DIR_NAME"])
             st.session_state.ratios = data.get("ratios", CONFIG["DEFAULT_RATIOS"])
             # 【重要】お気に入りリストの復元
             st.session_state.user_locations = data.get("user_locations", [])
