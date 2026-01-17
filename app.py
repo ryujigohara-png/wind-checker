@@ -1106,24 +1106,30 @@ def show_settings_dialog():
 
 
 # ======================================================================================
-# 21. サイドバー、パラメータ設定（既存仕様維持・縦並び）
+# 21. サイドバー、パラメータ設定（既存仕様維持・多言語対応版）
 # ======================================================================================
 def show_sidebar_controls():
     """
     サイドバーの入り口。ボタンは縦に並べる既存仕様を維持。
+    最下部に言語切り替えスイッチ（日本語/English）を追加。
     """
     import streamlit as st
     
-    st.sidebar.header("表示設定")
+    # 辞書の取得 (キャッシュにより高速実行)
+    translations = get_language_dict()
+    lang_dict = translations[st.session_state.lang]
+    
+    # --- 表示文字列のみを辞書参照に置換 ---
+    st.sidebar.header(lang_dict["表示設定"])
     
     # ユーザー指定通りの縦並び
-    if st.sidebar.button("⚙ 詳細設定", use_container_width=True):
+    if st.sidebar.button(lang_dict["⚙ 詳細設定"], use_container_width=True):
         show_settings_dialog()
 
-    if st.sidebar.button("📍 My Spot 編集", use_container_width=True):
+    if st.sidebar.button(lang_dict["📍 My Spot 編集"], use_container_width=True):
         manage_favorites_dialog()
 
-    # 既存の計算ロジック（一切変更せず維持）
+    # --- 既存の計算ロジック（一切変更せず維持） ---
     h = calculate_graph_height(
         st.session_state.get("base_height", CONFIG["GRAPH_HIGHT"]),
         st.session_state.get("ratios", CONFIG["DEFAULT_RATIOS"]),
@@ -1150,6 +1156,26 @@ def show_sidebar_controls():
         "min_container_width": st.session_state.get("min_container_width", 2500),
         "graph_dpi": st.session_state.get("graph_dpi", 200)
     }
+
+    # --- 今回追加：言語切り替えスイッチ (一番下に配置) ---
+    st.sidebar.markdown("---")
+    
+    # 選択肢ラベルと内部値の対応
+    lang_options = {"日本語": "ja", "English": "en"}
+    # 現在の言語設定から初期インデックスを計算 (ja:0, en:1)
+    current_idx = 0 if st.session_state.lang == "ja" else 1
+    
+    selected_lang_label = st.sidebar.radio(
+        "Language / 言語",
+        options=list(lang_options.keys()),
+        index=current_idx,
+        horizontal=True
+    )
+    
+    # 選択された値をセッション状態に即時反映
+    st.session_state.lang = lang_options[selected_lang_label]
+
+    # 戻り値（一切変更なし）
     return st.session_state.get("danger_v", 10.0), st.session_state.get("sel_dirs", []), design_params
 
 # ======================================================================================
@@ -1350,7 +1376,9 @@ def save_settings_to_browser():
         "user_locations": st.session_state.get("user_locations", []),
         "map_lat": st.session_state.get("map_lat", st.session_state.lat),
         "map_lon": st.session_state.get("map_lon", st.session_state.lon),
-        "temp_label": st.session_state.get("temp_label", None)
+        "temp_label": st.session_state.get("temp_label", None),
+        # --- 今回追加：言語設定の保存 ---
+        "lang": st.session_state.get("lang", "ja")
     }
     json_data = json.dumps(save_data, ensure_ascii=False)
     # クォートのエスケープ処理を追加してJSエラーを防止
@@ -1392,7 +1420,9 @@ def sync_all_settings():
         "base_font_size": CONFIG["GRAPH_FONT_SIZE"],
         "label_font_size": CONFIG["LABEL_SIZE"],
         "danger_v": CONFIG["DEFAULT_DANGER_V"],
-        "sel_dirs": CONFIG["DEFAULT_DIRS"]
+        "sel_dirs": CONFIG["DEFAULT_DIRS"],
+        # --- 今回追加：初期化リストに lang を追加 ---
+        "lang": "ja"
     }
     
     for var_name, default_val in init_vars.items():
@@ -1437,6 +1467,11 @@ def sync_all_settings():
             st.session_state.ratios = data.get("ratios", CONFIG["DEFAULT_RATIOS"])
             # 【重要】お気に入りリストの復元
             st.session_state.user_locations = data.get("user_locations", [])
+            
+            # --- 今回追加：言語設定の復元 ---
+            if "lang" in data:
+                st.session_state.lang = data["lang"]
+                
             st.session_state.initialized = True
             st.rerun()
         except Exception:
