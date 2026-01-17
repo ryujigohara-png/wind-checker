@@ -1235,13 +1235,15 @@ def show_settings_dialog():
                 })
                 save_settings_to_browser()
                 st.cache_data.clear()
-                st.session_state.needs_graph_update = True
                 st.rerun()
         with c_cancel:
             if st.button(lang_dict["キャンセルして戻る"], key="cancel_all_settings", use_container_width=True):
-                st.session_state.needs_graph_update = False
+                # 【高速化の核心】
+                # 描画スキップフラグを立ててから rerun する。
+                # これにより、全体の再実行は走るが、サブルーチン95が即終了するため爆速で閉じる。
+                st.session_state.skip_graph_once = True
                 st.rerun()
-
+                
     # ダイアログの実行
     settings_dialog_content()
 
@@ -2172,10 +2174,16 @@ def render_header_info(current_basho_name):
 def render_graph_area_module(danger_v, sel_dirs, design_params, now_jst):
     """
     グラフ描画エリアを管理するモジュール。
-    言語設定に基づいたスピナーを表示し、生成されたグラフとアイコンをスクロール構造で描画する。
+    skip_graph_once フラグが True の場合は、重いグラフ生成をスキップして高速に復帰する。
     """
     import streamlit as st
 
+    # --- 【高速化の核心】描画スキップ判定 ---
+    if st.session_state.get("skip_graph_once", False):
+        # フラグをリセットして、何も描画せずに終了する
+        st.session_state.skip_graph_once = False
+        return
+        
     # 辞書の取得
     translations = get_language_dict()
     lang_dict = translations[st.session_state.lang]
