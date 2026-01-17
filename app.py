@@ -534,37 +534,56 @@ def get_weather_info(code):
         
     return "？", "black"
 
-#==========================================================================================
+# ==========================================================================================
 # 6. 風向き・速度・色の判定を行うデータ処理サブルーチン
-#==========================================================================================
+# ==========================================================================================
 def process_wind_data(df, target_dirs):
+    """
+    風向・風速に基づき、表示用の方位名、矢印、および色を決定する。
+    判定ロジックには元の日本語（ALL_DIRECTIONS）を維持し、整合性を保ちます。
+    """
+    import pandas as pd
+
+    # 内部判定用のリスト（日本語を維持）
     dirs = ALL_DIRECTIONS + ["北"]
     arrows = ["↓", "↙", "↙", "↙", "←", "↖", "↖", "↖", "↑", "↗", "↗", "↗", "→", "↘", "↘", "↘", "↓"]
+    
     def get_info(deg):
         if pd.isna(deg): return "", ""
         idx = int((deg + 11.25) / 22.5) % 16
+        # dirs[idx] は「北」「北北東」などの日本語を返す
         return dirs[idx], arrows[idx]
     
     df['res'] = df['wind_direction_10m'].apply(get_info)
-    df['dir_name'] = df['res'].apply(lambda x: x[0])
+    df['dir_name'] = df['res'].apply(lambda x: x[0])  # 内部判定用の日本語名
     df['arrow'] = df['res'].apply(lambda x: x[1])
+    
+    # 前のサブルーチン(5)で多言語化した get_weather_info を使用
     weather_res = df['weather_code'].apply(get_weather_info)
     df['w_text'] = [r[0] for r in weather_res]
     df['w_color'] = [r[1] for r in weather_res]
     
     def judge(row):
+        """
+        風速と風向きによる色判定。
+        target_dirs に含まれる「日本語の風向名」と row['dir_name'] を比較。
+        """
         speed = row['wind_speed_10m']
         if pd.isna(speed): return "#FFFFFF"
+        
+        # 危険風速（10m/s以上）
         if speed >= 10.0: return "crimson"
+        
+        # ターゲット方位（日本語）での判定
         if row['dir_name'] in target_dirs:
             if 5 <= speed < 10.0: return "orange"
             if 3 <= speed < 5: return "skyblue"
-        return "#D3D3D3"
+            
+        return "#D3D3D3" # 通常色（ライトグレー）
     
     df['color'] = df.apply(judge, axis=1)
-    #潮位なぜか入っていた  df['tide_level'] = get_tide_level(df['time'])
+    
     return df
-
 #==========================================================================================
 # 7. X軸の時刻フォーマッタを設定するサブルーチン
 #==========================================================================================
