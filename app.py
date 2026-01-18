@@ -1471,6 +1471,10 @@ def show_location_map_dialog():
                 st.session_state.lon = st.session_state.temp_lon
                 st.session_state.last_basho = st.session_state.temp_basho
                 
+                # 【重要】不整合解消：地図座標と作業座標をメイン座標に完全同期させる
+                st.session_state.map_lat = st.session_state.temp_lat
+                st.session_state.map_lon = st.session_state.temp_lon
+                
                 # コンボボックスの選択肢に表示させるため temp_label に格納
                 st.session_state.temp_label = st.session_state.temp_basho
                 
@@ -1841,13 +1845,13 @@ def show_favorite_control_bar(location_options, current_display_label, current_l
     return selected
 
 # ======================================================================================
-# 92_3. お気に入り地点の名称登録ダイアログ（全座標変数同期版）
+# 92_3. お気に入り地点の名称登録ダイアログ（10件制限・選択維持・座標同期対応）
 # ======================================================================================
 def show_favorite_registration_dialog(default_name, lat, lon):
     """
-    お気に入り登録時に「地名」を確認・修正して保存する。
-    lat/lon, map_lat/map_lon, temp_lat/temp_lon の全てを同期させ、
-    メイン画面のコンボボックスおよび登録済み判定（✅）を正常に動作させます。
+    お気に入り登録時に「地名」を確認・修正してLocalStorageへ永続保存する。
+    登録後、メイン画面のコンボボックスおよび地図座標変数が当該地点を指すように同期します。
+    表示文字列を st.session_state.lang に基づき多言語化します。
     """
     import streamlit as st
 
@@ -1861,6 +1865,7 @@ def show_favorite_registration_dialog(default_name, lat, lon):
         favorites = st.session_state.get("user_locations", [])
         if len(favorites) >= 10:
             st.error(lang_dict.get("🚨 お気に入りの登録制限（10件）に達しています。", "🚨 Favorite limit (10 items) reached."))
+            st.write(lang_dict.get("「My Spot 編集」から不要な地点を削除してください。", "Please delete unnecessary spots from 'My Spot Editor'."))
             if st.button(lang_dict.get("閉じる", "Close"), use_container_width=True):
                 st.rerun()
             return
@@ -1868,7 +1873,7 @@ def show_favorite_registration_dialog(default_name, lat, lon):
         msg_body = lang_dict.get("この地点を「お気に入り」に保存します。", "Save this location to favorites.")
         st.write(f"{msg_body} ({lang_dict.get('現在', 'Current')}: {len(favorites)}/10)")
         
-        # 📍をデフォルトで付与
+        # 📍をデフォルトで付与 (内部処理は維持)
         initial_val = default_name if default_name.startswith("📍") else f"📍 {default_name}"
         new_name = st.text_input(lang_dict.get("登録名（修正可）", "Registration Name"), value=initial_val)
         
@@ -1878,15 +1883,15 @@ def show_favorite_registration_dialog(default_name, lat, lon):
                 if "user_locations" not in st.session_state:
                     st.session_state.user_locations = []
                 
-                # 1. お気に入りリストに追加
+                # リストに追加 (内部データは日本語を含む new_name をそのまま保持)
                 st.session_state.user_locations.append({
                     "name": new_name,
                     "lat": lat,
                     "lon": lon
                 })
                 
-                # 2. セッション内の全座標変数を同期
-                # これにより、どの変数を参照していても不整合が起きなくなります
+                # --- メイン画面との同期処理 ---
+                # 1. 表示用の座標キーをすべて更新
                 st.session_state.lat = lat
                 st.session_state.lon = lon
                 st.session_state.map_lat = lat
@@ -1894,20 +1899,19 @@ def show_favorite_registration_dialog(default_name, lat, lon):
                 st.session_state.temp_lat = lat
                 st.session_state.temp_lon = lon
                 
-                # 3. コンボボックスの選択名を今登録した名前に更新
+                # 2. コンボボックスの選択名を新登録名に設定
                 st.session_state.last_basho = new_name
                 
-                # 4. 描画フラグの更新と一時ラベルのクリア
+                # 3. グラフ更新フラグと一時ラベルのクリア
                 st.session_state.needs_graph_update = True
                 st.session_state.temp_label = None
 
-                # 5. 保存処理の実行
+                # 保存処理の呼び出し
                 if "save_settings_to_browser" in globals():
                     save_settings_to_browser()
                 elif "update_state_and_save" in globals():
                     update_state_and_save({})
 
-                # 6. アプリを再起動してメイン画面に反映
                 st.rerun()
                 
         with col2:
