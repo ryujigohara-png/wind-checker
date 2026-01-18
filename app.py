@@ -575,25 +575,33 @@ def get_weather_info(code):
     return "？", "black"
 
 # ==========================================================================================
-# 6. 風向き・速度・色の判定を行うデータ処理サブルーチン
+# 6. 風向き・速度・色の判定を行うデータ処理サブルーチン（修正版）
 # ==========================================================================================
 def process_wind_data(df, target_dirs):
     """
     風向・風速に基づき、表示用の方位名、矢印、および色を決定する。
-    判定ロジック(judge)は、target_dirsに含まれる表記（日本語/英語）に合わせます。
     """
     import pandas as pd
     import streamlit as st
 
-    # 辞書の取得
+    # 1. 辞書の取得
     translations = get_language_dict()
     lang_dict = translations[st.session_state.lang]
 
-    # 方位リストを辞書から取得（日本語なら「北」、英語なら「N」が入るリスト）
-    # これにより、表示用(dir_name)と判定用(target_dirs)の表記が完全に一致します
+    # 2. 方位リストの準備
+    # ALL_DIRECTIONS（日本語基準）と、現在の言語の localized_list のインデックスを対応させる
     localized_list = lang_dict.get("ALL_DIRECTIONS", ALL_DIRECTIONS)
-    dirs = localized_list + [lang_dict.get("北", "N")]
     
+    # 判定用のターゲットリストを現在の言語表記に変換する
+    # 例: target_dirs が ["北", "南"] のとき、英語設定なら ["N", "S"] に変換される
+    current_target_localized = []
+    for d in target_dirs:
+        if d in ALL_DIRECTIONS:
+            idx = ALL_DIRECTIONS.index(d)
+            current_target_localized.append(localized_list[idx])
+
+    # 表示用の方位名リスト（0度〜360度を16分割したもの。最後に北を重複させて0/360両対応）
+    dirs = localized_list + [lang_dict.get("NORTH", "N")]
     arrows = ["↓", "↙", "↙", "↙", "←", "↖", "↖", "↖", "↑", "↗", "↗", "↗", "→", "↘", "↘", "↘", "↓"]
     
     def get_info(deg):
@@ -601,12 +609,12 @@ def process_wind_data(df, target_dirs):
         idx = int((deg + 11.25) / 22.5) % 16
         return dirs[idx], arrows[idx]
     
-    # データの適用
+    # 方位名と矢印を適用
     res_data = df['wind_direction_10m'].apply(get_info)
-    df['dir_name'] = [r[0] for r in res_data] # 言語設定に依存した方位名が入る
+    df['dir_name'] = [r[0] for r in res_data] 
     df['arrow']    = [r[1] for r in res_data]
     
-    # 天気テキストの取得
+    # 天気情報の取得
     weather_res = df['weather_code'].apply(get_weather_info)
     df['w_text'] = [r[0] for r in weather_res]
     df['w_color'] = [r[1] for r in weather_res]
@@ -615,11 +623,11 @@ def process_wind_data(df, target_dirs):
         speed = row['wind_speed_10m']
         if pd.isna(speed): return "#FFFFFF"
         
+        # 10m/s以上は一律で赤
         if speed >= 10.0: return "crimson"
         
-        # row['dir_name'] も target_dirs も、同じ言語設定の表記になっているので
-        # そのまま比較するだけで正しく判定されます
-        if row['dir_name'] in target_dirs:
+        # ローカライズされた方位名と比較
+        if row['dir_name'] in current_target_localized:
             if 5 <= speed < 10.0: return "orange"
             if 3 <= speed < 5: return "skyblue"
             
