@@ -2338,25 +2338,6 @@ def render_compact_control_panel(basho_name):
                 st.session_state.geo_key = f"geo_{datetime.now().timestamp()}"
                 st.rerun()
 
-# ======================================================================================
-# デバッグ用：セッション状態の生数値をサイドバーで監視する
-# ======================================================================================
-with st.sidebar.expander("🔍 座標ステート監視 (Debug)", expanded=True):
-    st.write(f"**表示用 (lat):** `{st.session_state.get('lat')}`")
-    st.write(f"**保存用 (map_lat):** `{st.session_state.get('map_lat')}`")
-    st.write(f"**作業用 (temp_lat):** `{st.session_state.get('temp_lat')}`")
-    st.write(f"**選択地点 (last_basho):** `{st.session_state.get('last_basho')}`")
-    st.write(f"**一時ラベル (temp_label):** `{st.session_state.get('temp_label')}`")
-    
-    # ボタンを押した時に同期が走っているか確認するための補助ボタン
-    if st.button("Force Sync Check"):
-        st.write("Current State Captured.")
-# ======================================================================================
-# ======================================================================================
-
-
-    
-
         # --- 3. グラフ更新 ---
         now_jst = st.session_state.get('now_jst', datetime.now())
         try:
