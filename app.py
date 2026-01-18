@@ -1465,7 +1465,7 @@ def show_location_map_dialog():
         # 確定・中止ボタン (ラベルを辞書化)
         c1, c2 = st.columns(2)
         with c1:
-            if st.button(lang_dict.get("確定", "Confirm"), use_container_width=True):
+            if st.button(lang_dict.get("確定", "Confirm"), use_container_width=True, type="primary"):
                 # メインの状態を更新
                 st.session_state.lat = st.session_state.temp_lat
                 st.session_state.lon = st.session_state.temp_lon
@@ -1481,6 +1481,13 @@ def show_location_map_dialog():
                 # グラフ描画を行うフラグを立てる
                 st.session_state.needs_graph_update = True
                 
+                # --- 【重要】ここが不足していました：確定直後にブラウザへ保存 ---
+                if "save_settings_to_browser" in globals():
+                    save_settings_to_browser()
+                elif "update_state_and_save" in globals():
+                    update_state_and_save({})
+                # --------------------------------------------------------
+
                 # 一時変数をクリア
                 for k in ["temp_lat", "temp_lon", "temp_basho", "temp_zoom"]: 
                     st.session_state.pop(k, None)
@@ -2254,24 +2261,6 @@ def render_compact_control_panel(basho_name):
     表示テキストを st.session_state.lang に基づき多言語化します。
     """
 
-# ======================================================================================
-# デバッグ用：セッション状態の生数値をサイドバーで監視する
-# ======================================================================================
-with st.sidebar.expander("🔍 座標ステート監視 (Debug)", expanded=True):
-    st.write(f"**表示用 (lat):** `{st.session_state.get('lat')}`")
-    st.write(f"**保存用 (map_lat):** `{st.session_state.get('map_lat')}`")
-    st.write(f"**作業用 (temp_lat):** `{st.session_state.get('temp_lat')}`")
-    st.write(f"**選択地点 (last_basho):** `{st.session_state.get('last_basho')}`")
-    st.write(f"**一時ラベル (temp_label):** `{st.session_state.get('temp_label')}`")
-    
-    # ボタンを押した時に同期が走っているか確認するための補助ボタン
-    if st.button("Force Sync Check"):
-        st.write("Current State Captured.")
-# ======================================================================================
-# ======================================================================================
-
-
-    
     import streamlit as st
     from datetime import datetime, timedelta
 
@@ -2348,6 +2337,25 @@ with st.sidebar.expander("🔍 座標ステート監視 (Debug)", expanded=True)
                 st.session_state.waiting_loc = True
                 st.session_state.geo_key = f"geo_{datetime.now().timestamp()}"
                 st.rerun()
+
+# ======================================================================================
+# デバッグ用：セッション状態の生数値をサイドバーで監視する
+# ======================================================================================
+with st.sidebar.expander("🔍 座標ステート監視 (Debug)", expanded=True):
+    st.write(f"**表示用 (lat):** `{st.session_state.get('lat')}`")
+    st.write(f"**保存用 (map_lat):** `{st.session_state.get('map_lat')}`")
+    st.write(f"**作業用 (temp_lat):** `{st.session_state.get('temp_lat')}`")
+    st.write(f"**選択地点 (last_basho):** `{st.session_state.get('last_basho')}`")
+    st.write(f"**一時ラベル (temp_label):** `{st.session_state.get('temp_label')}`")
+    
+    # ボタンを押した時に同期が走っているか確認するための補助ボタン
+    if st.button("Force Sync Check"):
+        st.write("Current State Captured.")
+# ======================================================================================
+# ======================================================================================
+
+
+    
 
         # --- 3. グラフ更新 ---
         now_jst = st.session_state.get('now_jst', datetime.now())
