@@ -1909,9 +1909,11 @@ def show_favorite_registration_dialog(default_name, lat, lon):
                 # 2. コンボボックスの選択名を新登録名に設定
                 st.session_state.last_basho = new_name
                 
-                # 3. グラフ更新フラグと一時ラベルのクリア
+                # 3. グラフ更新フラグを立てる
                 st.session_state.needs_graph_update = True
-                st.session_state.temp_label = None
+                
+                # --- 【重要・修正箇所】コンボボックスの不一致を防ぐため、None ではなく登録した名称を強制セット ---
+                st.session_state.temp_label = new_name
 
                 # 保存処理の呼び出し
                 if "save_settings_to_browser" in globals():
