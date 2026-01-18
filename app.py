@@ -1846,7 +1846,7 @@ def show_favorite_control_bar(location_options, current_display_label, current_l
 def show_favorite_registration_dialog(default_name, lat, lon):
     """
     お気に入り登録時に「地名」を確認・修正してLocalStorageへ永続保存する。
-    表示文字列を st.session_state.lang に基づき多言語化します。
+    保存後、メイン画面のコンボボックスとグラフが当該地点に切り替わるように同期します。
     """
     import streamlit as st
 
@@ -1878,22 +1878,28 @@ def show_favorite_registration_dialog(default_name, lat, lon):
                 if "user_locations" not in st.session_state:
                     st.session_state.user_locations = []
                 
-                # リストに追加 (内部データは日本語を含む new_name をそのまま保持)
+                # 1. リストに追加
                 st.session_state.user_locations.append({
                     "name": new_name,
                     "lat": lat,
                     "lon": lon
                 })
                 
-                st.session_state["last_basho"] = new_name
-                st.session_state["temp_label"] = None
+                # 2. メイン画面のコンボボックスおよび描画と同期するための状態更新
+                # これにより、st.rerun() 後に サブルーチン 96 が new_name を初期選択として読み込みます
+                st.session_state.lat = lat
+                st.session_state.lon = lon
+                st.session_state.last_basho = new_name
+                st.session_state.needs_graph_update = True  # 新しい地点のグラフを描画させる
+                st.session_state.temp_label = None          # 「指定地点」ラベルをクリア
 
-                # 保存処理
+                # 3. ブラウザへの保存処理
                 if "save_settings_to_browser" in globals():
                     save_settings_to_browser()
                 elif "update_state_and_save" in globals():
                     update_state_and_save({})
 
+                # 4. アプリを再起動して反映
                 st.rerun()
                 
         with col2:
@@ -1902,7 +1908,6 @@ def show_favorite_registration_dialog(default_name, lat, lon):
 
     # ダイアログの実行
     favorite_registration_dialog_content()
-
 # ======================================================================================
 # 92_4. My Spot（お気に入り）管理ダイアログ（2段構成・多言語対応）
 # ======================================================================================
