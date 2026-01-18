@@ -2253,6 +2253,25 @@ def render_compact_control_panel(basho_name):
     元のロジックを一切変更せず、スマホでの表示を「3行」に凝縮するレイアウト修正版。
     表示テキストを st.session_state.lang に基づき多言語化します。
     """
+
+# ======================================================================================
+# デバッグ用：セッション状態の生数値をサイドバーで監視する
+# ======================================================================================
+with st.sidebar.expander("🔍 座標ステート監視 (Debug)", expanded=True):
+    st.write(f"**表示用 (lat):** `{st.session_state.get('lat')}`")
+    st.write(f"**保存用 (map_lat):** `{st.session_state.get('map_lat')}`")
+    st.write(f"**作業用 (temp_lat):** `{st.session_state.get('temp_lat')}`")
+    st.write(f"**選択地点 (last_basho):** `{st.session_state.get('last_basho')}`")
+    st.write(f"**一時ラベル (temp_label):** `{st.session_state.get('temp_label')}`")
+    
+    # ボタンを押した時に同期が走っているか確認するための補助ボタン
+    if st.button("Force Sync Check"):
+        st.write("Current State Captured.")
+# ======================================================================================
+# ======================================================================================
+
+
+    
     import streamlit as st
     from datetime import datetime, timedelta
 
