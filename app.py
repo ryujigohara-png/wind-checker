@@ -437,7 +437,7 @@ def get_tide_level(times, lat, lon):
         return None, False, lat, lon
 
     def request_api(t_lat, t_lon):
-        url = "https://api.open-meteo.com/v1/marine"
+        url = "https://marine-api.open-meteo.com/v1/marine"
 
         # 小数点以下4桁に丸める（APIの推奨精度に合わせる）
         t_lat = round(float(t_lat), 4)
