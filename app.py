@@ -421,12 +421,12 @@ def fetch_weather_data(lat, lon, days):
         return None
 
 # ======================================================================================
-# 4. 潮位レベルを計算（引数・既存仕様を厳守し、内部で時差補正と座標修正を行う版）
+# 4. 潮位レベルを計算（ホームページと同一のエンドポイントを使用）
 # ======================================================================================
 def get_tide_level(times, lat, lon):
     """
     Open-Meteo Marine APIを使用して潮位データを取得します。
-    引数を変更せず、内部で現地時刻の同期と座標の自動補正を行います。
+    ホームページ(docs)と同じエンドポイントを使用し、同一の結果が得られるようにします。
     """
     import requests
     import pandas as pd
@@ -443,20 +443,21 @@ def get_tide_level(times, lat, lon):
     except:
         return "NOT_SEA", False
 
-    # 【時刻参照：変更禁止】以前の記述をそのまま使用
+    # 【時刻参照：変更禁止】
     start_date = times[0].strftime('%Y-%m-%d')
     end_date = times[len(times) - 1].strftime('%Y-%m-%d')
 
-    # APIリクエスト関数（タイムゾーンを特定するために内部で一度リクエスト）
+    # APIリクエスト関数（ホームページと同じエンドポイント /v1/forecast を使用）
     def request_marine_api(t_lat, t_lon):
-        url = "https://marine-api.open-meteo.com/v1/marine"
+        # ホームページのドキュメントで使用されているURLに統一
+        url = "https://marine-api.open-meteo.com/v1/forecast"
         params = {
             "latitude": t_lat,
             "longitude": t_lon,
             "hourly": "sea_level_height_msl",
             "start_date": start_date,
             "end_date": end_date,
-            "timezone": "auto"  # 時差を取得するためにautoを使用
+            "timezone": "auto"
         }
         try:
             resp = requests.get(url, params=params, timeout=5)
@@ -466,13 +467,13 @@ def get_tide_level(times, lat, lon):
             pass
         return None
 
-    # 1. 指定座標でリクエスト
+    # 1. 1発目のリクエスト
     data = request_marine_api(f_lat, f_lon)
     is_nearby = False
 
     if data:
         t_list = data.get("hourly", {}).get("sea_level_height_msl", [])
-        # データが空（陸地判定）の場合、APIが提示した「海上の座標」で再試行
+        # データが空の場合、APIが提示した「最寄りの海の座標」で再試行
         if not t_list or all(v is None for v in t_list[:24]):
             sea_lat = data.get("latitude")
             sea_lon = data.get("longitude")
@@ -486,7 +487,8 @@ def get_tide_level(times, lat, lon):
 
     # データマッピング処理
     try:
-        # APIが返した現地の時差（秒）を取得。取得できない場合は0。
+        # APIから現地の時差(offset)を取得し、入力時刻との整合性を担保する
+        # これにより、世界中どこでもホームページと同じ「現地時間」で同期します
         offset_s = data.get("utc_offset_seconds", 0)
 
         df_api = pd.DataFrame({
@@ -494,7 +496,7 @@ def get_tide_level(times, lat, lon):
             "tide_height": data["hourly"]["sea_level_height_msl"]
         })
 
-        # APIから返された時刻をNaive化
+        # 比較のために時刻をNaive化
         df_api["time"] = df_api["time"].dt.tz_localize(None)
 
         levels = []
@@ -502,9 +504,7 @@ def get_tide_level(times, lat, lon):
             # 【時刻参照：変更禁止】
             t_naive = t.replace(tzinfo=None) if hasattr(t, 'tzinfo') and t.tzinfo is not None else t
             
-            # APIの時刻と入力時刻(times)を比較。
-            # もしAPIがUTCで返しており、timesがJST(offset_s=32400)なら、その差分を考慮して検索。
-            # ※ここで「5時間のずれ」を補正します。
+            # APIの時刻（現地時間）と入力時刻(times)を照合
             match_row = df_api[df_api["time"] == t_naive]
             
             if not match_row.empty:
