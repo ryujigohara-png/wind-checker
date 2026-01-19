@@ -426,7 +426,7 @@ def fetch_weather_data(lat, lon, days):
 def get_tide_level(times, lat, lon):
     """
     Open-Meteo Marine APIを使用して潮位データを取得します。
-    今日一番最初のロジックに戻し、URLに座標が確実に含まれるように修正しました。
+    リクエスト直前の変数の中身と、最終的なURLを両方表示して、座標の消失箇所を特定します。
     """
     import requests
     import pandas as pd
@@ -437,20 +437,24 @@ def get_tide_level(times, lat, lon):
         return None, False, lat, lon
 
     def request_api(t_lat, t_lon):
-        # 認可条件：必須の座標、変数、および時差設定のみの最小構成
         url = "https://api.open-meteo.com/v1/marine"
+        
+        # --- 【検証】URLを組み立てる直前の変数の値を表示 ---
+        st.write(f"DEBUG 1 - 内部関数の引数: t_lat='{t_lat}', t_lon='{t_lon}'")
+        # ----------------------------------------------
+
         params = {
-            "latitude": t_lat,    # 緯度を明示的に指定
-            "longitude": t_lon,   # 経度を明示的に指定
+            "latitude": t_lat,
+            "longitude": t_lon,
             "hourly": "sea_level_height_msl",
             "timezone": "auto",
-            "cell_selection": "sea" # 海を優先
+            "cell_selection": "sea"
         }
         
-        # --- 確認用のURLを画面に表示 ---
+        # --- 【検証】最終的に生成されたURLを表示 ---
         prep = requests.Request('GET', url, params=params).prepare()
-        st.write(f"DEBUG - API URL: {prep.url}")
-        # ----------------------------
+        st.write(f"DEBUG 2 - 生成されたURL: {prep.url}")
+        # ---------------------------------------
 
         try:
             resp = requests.get(url, params=params, timeout=5)
@@ -460,15 +464,16 @@ def get_tide_level(times, lat, lon):
             pass
         return None
 
+    # サブルーチンが受け取った直後の値も念のため表示
+    st.write(f"DEBUG 0 - サブルーチン受取値: lat='{lat}', lon='{lon}'")
+
     # 1. リクエスト実行
     data = request_api(lat, lon)
-    res_lat, res_lon = lat, lon
-    is_nearby = False
-
+    
     if not data or "hourly" not in data:
         return None, False, lat, lon
 
-    # 2. 取得したデータから必要な時刻を抽出（今日一番最初のマッチングロジック）
+    # 2. データ抽出（今日一番最初の確実なロジック）
     df_api = pd.DataFrame({
         "time": pd.to_datetime(data["hourly"]["time"]),
         "h": data["hourly"]["sea_level_height_msl"]
@@ -479,7 +484,6 @@ def get_tide_level(times, lat, lon):
     found_any = False
     for t in times:
         t_naive = t.replace(tzinfo=None)
-        # 厳密な一致判定
         match = df_api[df_api["time"] == t_naive]
         if not match.empty:
             val = match.iloc[0]["h"]
@@ -489,7 +493,7 @@ def get_tide_level(times, lat, lon):
         else:
             levels.append(np.nan)
     
-    return (levels if found_any else None), is_nearby, res_lat, res_lon
+    return (levels if found_any else None), False, lat, lon
       
 # ==========================================================================================
 # 5. 天気コードからテキストと色を取得するサブルーチン（多言語対応版）
