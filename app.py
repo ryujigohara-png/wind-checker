@@ -438,6 +438,10 @@ def get_tide_level(times, lat, lon):
 
     def request_api(t_lat, t_lon):
         url = "https://api.open-meteo.com/v1/marine"
+
+        # 小数点以下4桁に丸める（APIの推奨精度に合わせる）
+        t_lat = round(float(t_lat), 4)
+        t_lon = round(float(t_lon), 4)
         
         # --- 【検証】URLを組み立てる直前の変数の値を表示 ---
         st.write(f"DEBUG 1 - 内部関数の引数: t_lat='{t_lat}', t_lon='{t_lon}'")
@@ -467,10 +471,6 @@ def get_tide_level(times, lat, lon):
     # サブルーチンが受け取った直後の値も念のため表示
     st.write(f"DEBUG 0 - サブルーチン受取値: lat='{lat}', lon='{lon}'")
 
-    # 小数点以下4桁に丸める（APIの推奨精度に合わせる）
-    t_lat = round(float(t_lat), 4)
-    t_lon = round(float(t_lon), 4)
-    
     # 1. リクエスト実行
     data = request_api(lat, lon)
     
