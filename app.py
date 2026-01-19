@@ -836,22 +836,22 @@ def render_temp_line_chart(ax, df):
 # ======================================================================================
 # 11. 潮位曲線グラフを描画するサブルーチン
 # ======================================================================================
-def render_tide_curve_chart(ax, df):
+def render_tide_curve_chart(ax, df, lat, lon): # 引数に lat, lon を追加
     """
     サブルーチン4(get_tide_level)を呼び出してデータを取得し、グラフを描画します。
     """
     import numpy as np
     import streamlit as st
+    import pandas as pd # 欠落防止のため追加
     from matplotlib.transforms import ScaledTranslation
 
     translations = get_language_dict()
     lang_dict = translations[st.session_state.lang]
 
-    lat = df.attrs.get('lat')
-    lon = df.attrs.get('lon')
+    # df.attrs からではなく、引数で受け取った lat, lon をそのまま使用します
     label_fs = CONFIG.get("LABEL_SIZE", 10)
 
-    # サブルーチン4を呼び出し
+    # サブルーチン4を呼び出し（ここで確実に数値を渡します）
     tide_levels, is_nearby, res_lat, res_lon = get_tide_level(df['time'], lat, lon)
 
     # データなし処理（既存メッセージ維持）
@@ -875,7 +875,7 @@ def render_tide_curve_chart(ax, df):
             ax.text(dt, 1.05, f"{val:.0f}", ha='center', va='bottom', color="#1f77b4", 
                     fontsize=label_fs, transform=ax.get_xaxis_transform())
 
-    # 方位・距離メッセージ（既存のOCEAN_INFOを使用）
+    # 方位・距離メッセージ
     dist_km = round(np.sqrt(((res_lat - lat) * 111)**2 + ((res_lon - lon) * 111 * np.cos(np.radians(lat)))**2), 1)
     if is_nearby and dist_km > 0.5:
         angle = np.rad2deg(np.arctan2((res_lon - lon) * np.cos(np.radians(lat)), (res_lat - lat)))
@@ -954,7 +954,7 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
         idx += 1
     if "tide" in active_plots:
         # 戻り値を受け取らない元の形を維持
-        render_tide_curve_chart(axes[idx], df)
+        render_tide_curve_chart(axes[idx], df, lat, lon)
         idx += 1
 
     for ax in axes:
