@@ -444,7 +444,7 @@ def get_tide_level(times, lat, lon):
         t_lon = round(float(t_lon), 4)
         
         # --- 【検証】URLを組み立てる直前の変数の値を表示 ---
-        st.write(f"DEBUG 1 - 内部関数の引数: t_lat='{t_lat}', t_lon='{t_lon}'")
+        # st.write(f"DEBUG 1 - 内部関数の引数: t_lat='{t_lat}', t_lon='{t_lon}'")
         # ----------------------------------------------
 
         params = {
@@ -457,7 +457,8 @@ def get_tide_level(times, lat, lon):
         
         # --- 【検証】最終的に生成されたURLを表示 ---
         prep = requests.Request('GET', url, params=params).prepare()
-        st.write(f"DEBUG 2 - 生成されたURL: {prep.url}")
+        # st.write(f"DEBUG 2 - 生成されたURL: {prep.url}")
+        st.write(f"marine-api URL: {prep.url}")
         # ---------------------------------------
 
         try:
@@ -469,7 +470,7 @@ def get_tide_level(times, lat, lon):
         return None
 
     # サブルーチンが受け取った直後の値も念のため表示
-    st.write(f"DEBUG 0 - サブルーチン受取値: lat='{lat}', lon='{lon}'")
+    # st.write(f"DEBUG 0 - サブルーチン受取値: lat='{lat}', lon='{lon}'")
 
     # 1. リクエスト実行
     data = request_api(lat, lon)
