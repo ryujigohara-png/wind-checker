@@ -426,7 +426,7 @@ def fetch_weather_data(lat, lon, days):
 def get_tide_level(times, lat, lon):
     """
     Open-Meteo Marine APIを使用して潮位データを取得します。
-    一部にNullが含まれていても、取得できた範囲でデータを返します。
+    期間指定パラメータによるエラーを避けるため、デフォルトの7日分から必要な範囲を抽出します。
     """
     import requests
     import pandas as pd
@@ -435,49 +435,43 @@ def get_tide_level(times, lat, lon):
     if times is None or len(times) == 0:
         return None, False, lat, lon
 
-    # Pandas Seriesから開始・終了日を取得（.ilocを使用して安全に参照）
-    start_date_str = times.iloc[0].strftime('%Y-%m-%d')
-    end_date_str = times.iloc[-1].strftime('%Y-%m-%d')
-
     def request_api(t_lat, t_lon):
-        # ホームページ(docs)と同一のエンドポイント
-        url = "https://marine-api.open-meteo.com/v1/forecast"
+        # 認可条件：必須の座標、変数、および時差設定のみの最小構成
+        url = "https://api.open-meteo.com/v1/marine"
         params = {
-            "latitude": t_lat, "longitude": t_lon,
+            "latitude": t_lat,
+            "longitude": t_lon,
             "hourly": "sea_level_height_msl",
-            "start_date": start_date_str, 
-            "end_date": end_date_str,
-            "timezone": "auto"
+            "timezone": "auto" # 現地時差をサーバー側で解決
         }
         try:
-            return requests.get(url, params=params, timeout=5).json()
+            resp = requests.get(url, params=params, timeout=5)
+            if resp.status_code == 200:
+                return resp.json()
         except:
-            return None
+            pass
+        return None
 
-    # 1. 指定座標でリクエスト
+    # 1. 指定座標でリクエスト実行
     data = request_api(lat, lon)
     res_lat, res_lon = lat, lon
     is_nearby = False
 
     if data:
         api_h = data.get("hourly", {}).get("sea_level_height_msl", [])
-        
-        # 全てがNoneの場合のみ、陸地判定として座標修正を試みる
+        # 全データがNone（陸地判定）の場合のみ、API提示の座標で一度だけ再試行
         if not api_h or all(v is None for v in api_h):
             sea_lat, sea_lon = data.get("latitude"), data.get("longitude")
             if sea_lat is not None and sea_lon is not None:
-                # 座標に変化がある場合のみ再試行
-                if abs(sea_lat - lat) > 0.0001 or abs(sea_lon - lon) > 0.0001:
-                    data = request_api(sea_lat, sea_lon)
-                    if data:
-                        res_lat, res_lon = sea_lat, sea_lon
-                        is_nearby = True
+                data = request_api(sea_lat, sea_lon)
+                if data:
+                    res_lat, res_lon = sea_lat, sea_lon
+                    is_nearby = True
 
-    # 最終的なデータの存在チェック
     if not data or "hourly" not in data:
         return None, False, lat, lon
 
-    # 3. マッピング処理
+    # 2. 取得したデータ（今日0:00からの7日間）から必要な時刻を抽出
     df_api = pd.DataFrame({
         "time": pd.to_datetime(data["hourly"]["time"]),
         "h": data["hourly"]["sea_level_height_msl"]
@@ -497,7 +491,7 @@ def get_tide_level(times, lat, lon):
         else:
             levels.append(np.nan)
     
-    # 1点でも有効な数値（潮位）があれば描画へ回す
+    # 1点でも有効な数値があれば成功として返す
     return (levels if found_any else None), is_nearby, res_lat, res_lon
       
 # ==========================================================================================
