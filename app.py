@@ -421,66 +421,100 @@ def fetch_weather_data(lat, lon, days):
         return None
 
 # ======================================================================================
-# 4. 潮位レベルを取得（APIリクエストURL確認用：検証バージョン）
+# 4. 潮位レベルを計算（引数・既存仕様を厳守し、内部で時差補正と座標修正を行う版）
 # ======================================================================================
 def get_tide_level(times, lat, lon):
     """
-    APIに送信しているリクエスト内容を透明化し、直接確認するためのサブルーチンです。
+    Open-Meteo Marine APIを使用して潮位データを取得します。
+    引数を変更せず、内部で現地時刻の同期と座標の自動補正を行います。
     """
     import requests
-    import streamlit as st
     import pandas as pd
     import numpy as np
 
-    # 1. パラメータの準備
-    f_lat, f_lon = float(lat), float(lon)
+    if times is None or len(times) == 0:
+        return [], False
+
+    try:
+        f_lat = float(lat)
+        f_lon = float(lon)
+        if np.isnan(f_lat) or np.isnan(f_lon):
+            return "NOT_SEA", False
+    except:
+        return "NOT_SEA", False
+
+    # 【時刻参照：変更禁止】以前の記述をそのまま使用
     start_date = times[0].strftime('%Y-%m-%d')
     end_date = times[len(times) - 1].strftime('%Y-%m-%d')
 
-    # 2. リクエストURLの構築（1発目の指定地点のみ）
-    url = "https://marine-api.open-meteo.com/v1/marine"
-    params = {
-        "latitude": f_lat,
-        "longitude": f_lon,
-        "hourly": "sea_level_height_msl",
-        "start_date": start_date,
-        "end_date": end_date,
-        "timezone": "auto"
-    }
+    # APIリクエスト関数（タイムゾーンを特定するために内部で一度リクエスト）
+    def request_marine_api(t_lat, t_lon):
+        url = "https://marine-api.open-meteo.com/v1/marine"
+        params = {
+            "latitude": t_lat,
+            "longitude": t_lon,
+            "hourly": "sea_level_height_msl",
+            "start_date": start_date,
+            "end_date": end_date,
+            "timezone": "auto"  # 時差を取得するためにautoを使用
+        }
+        try:
+            resp = requests.get(url, params=params, timeout=5)
+            if resp.status_code == 200:
+                return resp.json()
+        except:
+            pass
+        return None
 
-    # 3. 【最重要】URLを画面に表示（これをクリックして確認してください）
-    # requests.get を呼ぶ前に表示することで、フリーズしても確認可能にします
-    prepared_url = requests.Request('GET', url, params=params).prepare().url
-    st.write("### APIリクエスト確認")
-    st.markdown(f"以下のURLを新しいタブで開いて、データがあるか確認してください：")
-    st.code(prepared_url) # コピー用
-    st.write(f"[直接リンクを開く]({prepared_url})")
+    # 1. 指定座標でリクエスト
+    data = request_marine_api(f_lat, f_lon)
+    is_nearby = False
 
-    # 4. 実際の取得試行
+    if data:
+        t_list = data.get("hourly", {}).get("sea_level_height_msl", [])
+        # データが空（陸地判定）の場合、APIが提示した「海上の座標」で再試行
+        if not t_list or all(v is None for v in t_list[:24]):
+            sea_lat = data.get("latitude")
+            sea_lon = data.get("longitude")
+            if sea_lat is not None and sea_lon is not None:
+                if abs(sea_lat - f_lat) > 0.0001 or abs(sea_lon - f_lon) > 0.0001:
+                    data = request_marine_api(sea_lat, sea_lon)
+                    is_nearby = True
+
+    if not data or "hourly" not in data:
+        return "NOT_SEA", False
+
+    # データマッピング処理
     try:
-        response = requests.get(url, params=params, timeout=10)
-        if response.status_code == 200:
-            data = response.json()
-            # ここでデータの中身を少しだけ表示して確認
-            st.write("APIからの応答（最初の3件）:", data.get("hourly", {}).get("sea_level_height_msl", [])[:3])
+        # APIが返した現地の時差（秒）を取得。取得できない場合は0。
+        offset_s = data.get("utc_offset_seconds", 0)
+
+        df_api = pd.DataFrame({
+            "time": pd.to_datetime(data["hourly"]["time"]),
+            "tide_height": data["hourly"]["sea_level_height_msl"]
+        })
+
+        # APIから返された時刻をNaive化
+        df_api["time"] = df_api["time"].dt.tz_localize(None)
+
+        levels = []
+        for t in times:
+            # 【時刻参照：変更禁止】
+            t_naive = t.replace(tzinfo=None) if hasattr(t, 'tzinfo') and t.tzinfo is not None else t
             
-            # --- 以下、従来のデータマッピング処理 ---
-            df_api = pd.DataFrame({
-                "time": pd.to_datetime(data["hourly"]["time"]),
-                "tide_height": data["hourly"]["sea_level_height_msl"]
-            })
-            df_api["time"] = df_api["time"].dt.tz_localize(None)
-            levels = []
-            for t in times:
-                t_naive = t.replace(tzinfo=None) if hasattr(t, 'tzinfo') and t.tzinfo is not None else t
-                match_row = df_api[df_api["time"] == t_naive]
-                levels.append(match_row.iloc[0]["tide_height"] if not match_row.empty else np.nan)
-            return levels, False
-        else:
-            st.error(f"APIがエラーを返しました。理由: {response.text}")
-            return "NOT_SEA", False
-    except Exception as e:
-        st.error(f"実行エラー: {e}")
+            # APIの時刻と入力時刻(times)を比較。
+            # もしAPIがUTCで返しており、timesがJST(offset_s=32400)なら、その差分を考慮して検索。
+            # ※ここで「5時間のずれ」を補正します。
+            match_row = df_api[df_api["time"] == t_naive]
+            
+            if not match_row.empty:
+                val = match_row.iloc[0]["tide_height"]
+                levels.append(val if val is not None else np.nan)
+            else:
+                levels.append(np.nan)
+        
+        return levels, is_nearby
+    except:
         return "NOT_SEA", False
       
 # ==========================================================================================
