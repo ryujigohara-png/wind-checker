@@ -421,114 +421,66 @@ def fetch_weather_data(lat, lon, days):
         return None
 
 # ======================================================================================
-# 4. 潮位レベルを計算（Streamlitデバッグ用：原因特定バージョン）
+# 4. 潮位レベルを取得（APIリクエストURL確認用：検証バージョン）
 # ======================================================================================
 def get_tide_level(times, lat, lon):
     """
-    Open-Meteo Marine APIを使用して潮位データを取得します。
-    Streamlitの画面上にエラー詳細を表示して原因を特定します。
+    APIに送信しているリクエスト内容を透明化し、直接確認するためのサブルーチンです。
     """
     import requests
+    import streamlit as st
     import pandas as pd
     import numpy as np
-    import time
-    import streamlit as st  # Streamlit表示用
 
-    if times is None or len(times) == 0:
-        return [], False
-
-    try:
-        f_lat = float(lat)
-        f_lon = float(lon)
-    except Exception as e:
-        st.error(f"座標変換エラー: {e}")
-        return "NOT_SEA", False
-
+    # 1. パラメータの準備
+    f_lat, f_lon = float(lat), float(lon)
     start_date = times[0].strftime('%Y-%m-%d')
     end_date = times[len(times) - 1].strftime('%Y-%m-%d')
 
-    # デバッグ情報：リクエスト期間の表示
-    # st.info(f"リクエスト期間: {start_date} から {end_date}")
+    # 2. リクエストURLの構築（1発目の指定地点のみ）
+    url = "https://marine-api.open-meteo.com/v1/marine"
+    params = {
+        "latitude": f_lat,
+        "longitude": f_lon,
+        "hourly": "sea_level_height_msl",
+        "start_date": start_date,
+        "end_date": end_date,
+        "timezone": "auto"
+    }
 
-    steps = [0.0, 0.05, 0.1, 0.2]
-    search_offsets = []
-    for s in steps:
-        if s == 0.0:
-            search_offsets.append((0.0, 0.0))
-        else:
-            search_offsets.extend([(s, 0), (-s, 0), (0, s), (0, -s)])
+    # 3. 【最重要】URLを画面に表示（これをクリックして確認してください）
+    # requests.get を呼ぶ前に表示することで、フリーズしても確認可能にします
+    prepared_url = requests.Request('GET', url, params=params).prepare().url
+    st.write("### APIリクエスト確認")
+    st.markdown(f"以下のURLを新しいタブで開いて、データがあるか確認してください：")
+    st.code(prepared_url) # コピー用
+    st.write(f"[直接リンクを開く]({prepared_url})")
 
-    res_json = None
-    is_nearby = False
-
-    for i, (d_lat, d_lon) in enumerate(search_offsets):
-        target_lat = round(f_lat + d_lat, 4)
-        target_lon = round(f_lon + d_lon, 4)
-        
-        url = "https://marine-api.open-meteo.com/v1/marine"
-        params = {
-            "latitude": target_lat,
-            "longitude": target_lon,
-            "hourly": "sea_level_height_msl",
-            "start_date": start_date,
-            "end_date": end_date,
-            "timezone": "auto"
-        }
-
-        try:
-            response = requests.get(url, params=params, timeout=5)
-            if response.status_code == 200:
-                data = response.json()
-                t_list = data.get("hourly", {}).get("sea_level_height_msl", [])
-                
-                # データが空、またはすべて None の場合
-                if not t_list or all(v is None for v in t_list[:24]):
-                    if i == 0:
-                        st.warning(f"指定地点({target_lat}, {target_lon})にデータがありません。近傍を探索します。")
-                    continue
-                
-                res_json = data
-                is_nearby = True if i > 0 else False
-                break
-            else:
-                # APIがエラーを返した場合、その理由を画面に出す
-                st.error(f"APIエラー (Status: {response.status_code})")
-                st.write(f"理由: {response.text}")
-                st.write(f"リクエストURL: {response.url}")
-
-        except Exception as e:
-            st.error(f"通信エラー: {e}")
-            continue
-        time.sleep(0.02)
-
-    if not res_json:
-        st.error("全ての探索範囲で海洋データが見つかりませんでした (NOT_SEA)")
-        return "NOT_SEA", False
-
+    # 4. 実際の取得試行
     try:
-        df_api = pd.DataFrame({
-            "time": pd.to_datetime(res_json["hourly"]["time"]),
-            "tide_height": res_json["hourly"]["sea_level_height_msl"]
-        })
-        
-        # タイムゾーンのずれを確認するためのログ
-        # st.write("API取得時刻（最初の3件）:", df_api["time"].head(3).tolist())
-        
-        df_api["time"] = df_api["time"].dt.tz_localize(None)
-
-        levels = []
-        for t in times:
-            t_naive = t.replace(tzinfo=None) if hasattr(t, 'tzinfo') and t.tzinfo is not None else t
-            match_row = df_api[df_api["time"] == t_naive]
-            if not match_row.empty:
-                val = match_row.iloc[0]["tide_height"]
-                levels.append(val if val is not None else np.nan)
-            else:
-                levels.append(np.nan)
-        
-        return levels, is_nearby
+        response = requests.get(url, params=params, timeout=10)
+        if response.status_code == 200:
+            data = response.json()
+            # ここでデータの中身を少しだけ表示して確認
+            st.write("APIからの応答（最初の3件）:", data.get("hourly", {}).get("sea_level_height_msl", [])[:3])
+            
+            # --- 以下、従来のデータマッピング処理 ---
+            df_api = pd.DataFrame({
+                "time": pd.to_datetime(data["hourly"]["time"]),
+                "tide_height": data["hourly"]["sea_level_height_msl"]
+            })
+            df_api["time"] = df_api["time"].dt.tz_localize(None)
+            levels = []
+            for t in times:
+                t_naive = t.replace(tzinfo=None) if hasattr(t, 'tzinfo') and t.tzinfo is not None else t
+                match_row = df_api[df_api["time"] == t_naive]
+                levels.append(match_row.iloc[0]["tide_height"] if not match_row.empty else np.nan)
+            return levels, False
+        else:
+            st.error(f"APIがエラーを返しました。理由: {response.text}")
+            return "NOT_SEA", False
     except Exception as e:
-        st.error(f"データ処理中にエラーが発生しました: {e}")
+        st.error(f"実行エラー: {e}")
         return "NOT_SEA", False
       
 # ==========================================================================================
