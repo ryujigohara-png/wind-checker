@@ -467,6 +467,10 @@ def get_tide_level(times, lat, lon):
     # サブルーチンが受け取った直後の値も念のため表示
     st.write(f"DEBUG 0 - サブルーチン受取値: lat='{lat}', lon='{lon}'")
 
+    # 小数点以下4桁に丸める（APIの推奨精度に合わせる）
+    t_lat = round(float(t_lat), 4)
+    t_lon = round(float(t_lon), 4)
+    
     # 1. リクエスト実行
     data = request_api(lat, lon)
     
