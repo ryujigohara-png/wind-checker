@@ -442,7 +442,8 @@ def get_tide_level(times, lat, lon):
             "latitude": t_lat,
             "longitude": t_lon,
             "hourly": "sea_level_height_msl",
-            "timezone": "auto" # 現地時差をサーバー側で解決
+            "timezone": "auto",         # 現地時差をサーバー側で解決
+            "cell_selection": "sea"     # ←ここを新しく追加し、海を優先させます
         }
         try:
             resp = requests.get(url, params=params, timeout=5)
