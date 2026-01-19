@@ -435,17 +435,17 @@ def get_tide_level(times, lat, lon):
     if times is None or len(times) == 0:
         return None, False, lat, lon
 
-    start_date = times[0].strftime('%Y-%m-%d')
-    end_date = times[-1].strftime('%Y-%m-%d')
+    # 【修正点】Pandas Seriesの末尾参照を .iloc[-1] に変更
+    start_date = times.iloc[0].strftime('%Y-%m-%d')
+    end_date = times.iloc[-1].strftime('%Y-%m-%d')
 
     def request_api(t_lat, t_lon):
-        # ホームページ(docs)と同一のエンドポイントを使用
         url = "https://marine-api.open-meteo.com/v1/forecast"
         params = {
             "latitude": t_lat, "longitude": t_lon,
             "hourly": "sea_level_height_msl",
             "start_date": start_date, "end_date": end_date,
-            "timezone": "auto" # 5時間のずれを防ぐため現地時差を取得
+            "timezone": "auto"
         }
         try:
             return requests.get(url, params=params, timeout=5).json()
@@ -459,26 +459,24 @@ def get_tide_level(times, lat, lon):
 
     if data:
         api_h = data.get("hourly", {}).get("sea_level_height_msl", [])
-        # データが空（陸地判定）の場合、APIが提示した座標（海）で1度だけ再試行
         if not api_h or all(v is None for v in api_h[:24]):
             sea_lat, sea_lon = data.get("latitude"), data.get("longitude")
             if sea_lat is not None and sea_lon is not None:
                 data = request_api(sea_lat, sea_lon)
                 if data:
+                    api_h = data.get("hourly", {}).get("sea_level_height_msl", [])
                     res_lat, res_lon = sea_lat, sea_lon
                     is_nearby = True
 
     if not data or "hourly" not in data:
         return None, False, lat, lon
 
-    # 5時間のずれ修正：API時刻をNaive化して保持
     df_api = pd.DataFrame({
         "time": pd.to_datetime(data["hourly"]["time"]),
         "h": data["hourly"]["sea_level_height_msl"]
     })
     df_api["time"] = df_api["time"].dt.tz_localize(None)
 
-    # 入力時刻(times)に一致するデータを抽出
     levels = []
     for t in times:
         t_naive = t.replace(tzinfo=None)
