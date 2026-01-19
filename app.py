@@ -421,43 +421,35 @@ def fetch_weather_data(lat, lon, days):
         return None
 
 # ======================================================================================
-# 4. 潮位レベルを計算（既存仕様を厳守し、戻り値のみ拡張したバージョン）
+# 4. 潮位レベルを計算（Streamlitデバッグ用：原因特定バージョン）
 # ======================================================================================
 def get_tide_level(times, lat, lon):
     """
     Open-Meteo Marine APIを使用して潮位データを取得します。
-    
-    【変更点】
-    1. ValueError防止のため if not times を if times is None or len(times) == 0 に変更。
-    2. 戻り値を、データ(levels)と近傍フラグ(is_nearby)のタプルに変更。
-    
-    【厳守事項】
-    時刻の参照（times[0], times[len(times)-1], t_naive の作成）は、
-    以前正常に動作していたコードの記述をそのまま使用し、一切変更しません。
+    Streamlitの画面上にエラー詳細を表示して原因を特定します。
     """
     import requests
     import pandas as pd
     import numpy as np
     import time
+    import streamlit as st  # Streamlit表示用
 
-    # 空判定の修正（Pandasの仕様によるValueErrorを物理的に回避）
     if times is None or len(times) == 0:
         return [], False
 
-    # 型変換と NaN チェック
     try:
         f_lat = float(lat)
         f_lon = float(lon)
-        if np.isnan(f_lat) or np.isnan(f_lon):
-            return "NOT_SEA", False
-    except:
+    except Exception as e:
+        st.error(f"座標変換エラー: {e}")
         return "NOT_SEA", False
 
-    # 【時刻参照：変更禁止】以前の記述をそのまま再現
     start_date = times[0].strftime('%Y-%m-%d')
     end_date = times[len(times) - 1].strftime('%Y-%m-%d')
 
-    # 探索ステップの設定
+    # デバッグ情報：リクエスト期間の表示
+    # st.info(f"リクエスト期間: {start_date} から {end_date}")
+
     steps = [0.0, 0.05, 0.1, 0.2]
     search_offsets = []
     for s in steps:
@@ -469,7 +461,6 @@ def get_tide_level(times, lat, lon):
     res_json = None
     is_nearby = False
 
-    # APIリクエスト実行
     for i, (d_lat, d_lon) in enumerate(search_offsets):
         target_lat = round(f_lat + d_lat, 4)
         target_lon = round(f_lon + d_lon, 4)
@@ -489,31 +480,44 @@ def get_tide_level(times, lat, lon):
             if response.status_code == 200:
                 data = response.json()
                 t_list = data.get("hourly", {}).get("sea_level_height_msl", [])
-                if t_list and any(v is not None for v in t_list[:24]):
-                    # --- 修正箇所：データが見つかった時点で res_json を確定させる ---
-                    res_json = data
-                    # 0番目なら False（指定地点）、それ以外なら True（近傍地点）
-                    is_nearby = True if i > 0 else False
-                    break
-        except:
+                
+                # データが空、またはすべて None の場合
+                if not t_list or all(v is None for v in t_list[:24]):
+                    if i == 0:
+                        st.warning(f"指定地点({target_lat}, {target_lon})にデータがありません。近傍を探索します。")
+                    continue
+                
+                res_json = data
+                is_nearby = True if i > 0 else False
+                break
+            else:
+                # APIがエラーを返した場合、その理由を画面に出す
+                st.error(f"APIエラー (Status: {response.status_code})")
+                st.write(f"理由: {response.text}")
+                st.write(f"リクエストURL: {response.url}")
+
+        except Exception as e:
+            st.error(f"通信エラー: {e}")
             continue
         time.sleep(0.02)
 
-    # ここで res_json があれば、i が 0 であっても確実にデータ処理へ進む
     if not res_json:
+        st.error("全ての探索範囲で海洋データが見つかりませんでした (NOT_SEA)")
         return "NOT_SEA", False
 
-    # データマッピング
     try:
         df_api = pd.DataFrame({
             "time": pd.to_datetime(res_json["hourly"]["time"]),
             "tide_height": res_json["hourly"]["sea_level_height_msl"]
         })
+        
+        # タイムゾーンのずれを確認するためのログ
+        # st.write("API取得時刻（最初の3件）:", df_api["time"].head(3).tolist())
+        
         df_api["time"] = df_api["time"].dt.tz_localize(None)
 
         levels = []
         for t in times:
-            # 【時刻参照：変更禁止】以前の記述をそのまま再現
             t_naive = t.replace(tzinfo=None) if hasattr(t, 'tzinfo') and t.tzinfo is not None else t
             match_row = df_api[df_api["time"] == t_naive]
             if not match_row.empty:
@@ -523,7 +527,8 @@ def get_tide_level(times, lat, lon):
                 levels.append(np.nan)
         
         return levels, is_nearby
-    except:
+    except Exception as e:
+        st.error(f"データ処理中にエラーが発生しました: {e}")
         return "NOT_SEA", False
       
 # ==========================================================================================
