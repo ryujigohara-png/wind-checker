@@ -426,7 +426,7 @@ def fetch_weather_data(lat, lon, days):
 def get_tide_level(times, lat, lon):
     """
     Open-Meteo Marine APIを使用して潮位データを取得します。
-    螺旋探索を廃止し、APIが返す「海上の点」を利用して一発取得を狙います。
+    一部にNullが含まれていても、取得できた範囲でデータを返します。
     """
     import requests
     import pandas as pd
@@ -435,16 +435,18 @@ def get_tide_level(times, lat, lon):
     if times is None or len(times) == 0:
         return None, False, lat, lon
 
-    # 【修正点】Pandas Seriesの末尾参照を .iloc[-1] に変更
-    start_date = times.iloc[0].strftime('%Y-%m-%d')
-    end_date = times.iloc[-1].strftime('%Y-%m-%d')
+    # Pandas Seriesから開始・終了日を取得（.ilocを使用して安全に参照）
+    start_date_str = times.iloc[0].strftime('%Y-%m-%d')
+    end_date_str = times.iloc[-1].strftime('%Y-%m-%d')
 
     def request_api(t_lat, t_lon):
+        # ホームページ(docs)と同一のエンドポイント
         url = "https://marine-api.open-meteo.com/v1/forecast"
         params = {
             "latitude": t_lat, "longitude": t_lon,
             "hourly": "sea_level_height_msl",
-            "start_date": start_date, "end_date": end_date,
+            "start_date": start_date_str, 
+            "end_date": end_date_str,
             "timezone": "auto"
         }
         try:
@@ -452,25 +454,30 @@ def get_tide_level(times, lat, lon):
         except:
             return None
 
-    # 1. 1発目のリクエスト
+    # 1. 指定座標でリクエスト
     data = request_api(lat, lon)
     res_lat, res_lon = lat, lon
     is_nearby = False
 
     if data:
         api_h = data.get("hourly", {}).get("sea_level_height_msl", [])
-        if not api_h or all(v is None for v in api_h[:24]):
+        
+        # 全てがNoneの場合のみ、陸地判定として座標修正を試みる
+        if not api_h or all(v is None for v in api_h):
             sea_lat, sea_lon = data.get("latitude"), data.get("longitude")
             if sea_lat is not None and sea_lon is not None:
-                data = request_api(sea_lat, sea_lon)
-                if data:
-                    api_h = data.get("hourly", {}).get("sea_level_height_msl", [])
-                    res_lat, res_lon = sea_lat, sea_lon
-                    is_nearby = True
+                # 座標に変化がある場合のみ再試行
+                if abs(sea_lat - lat) > 0.0001 or abs(sea_lon - lon) > 0.0001:
+                    data = request_api(sea_lat, sea_lon)
+                    if data:
+                        res_lat, res_lon = sea_lat, sea_lon
+                        is_nearby = True
 
+    # 最終的なデータの存在チェック
     if not data or "hourly" not in data:
         return None, False, lat, lon
 
+    # 3. マッピング処理
     df_api = pd.DataFrame({
         "time": pd.to_datetime(data["hourly"]["time"]),
         "h": data["hourly"]["sea_level_height_msl"]
@@ -478,12 +485,20 @@ def get_tide_level(times, lat, lon):
     df_api["time"] = df_api["time"].dt.tz_localize(None)
 
     levels = []
+    found_any = False
     for t in times:
         t_naive = t.replace(tzinfo=None)
         match = df_api[df_api["time"] == t_naive]
-        levels.append(match.iloc[0]["h"] if not match.empty else np.nan)
+        if not match.empty:
+            val = match.iloc[0]["h"]
+            levels.append(val)
+            if val is not None:
+                found_any = True
+        else:
+            levels.append(np.nan)
     
-    return levels, is_nearby, res_lat, res_lon
+    # 1点でも有効な数値（潮位）があれば描画へ回す
+    return (levels if found_any else None), is_nearby, res_lat, res_lon
       
 # ==========================================================================================
 # 5. 天気コードからテキストと色を取得するサブルーチン（多言語対応版）
