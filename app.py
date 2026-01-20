@@ -216,6 +216,8 @@ def get_language_dict():
             "LEGEND_DANGER_LINE": "[赤点線: 危険風速ライン {v}m/s]",
             "LEGEND_NOTE": "※青・橙は、詳細設定で選択した色付風向のみ表示",
             "DISCLAIMER": "※本データは予測値であり、実際の天候と異なる場合があります。航海や活動の際は、必ず最新の気象情報を確認し、自己責任でご利用ください。",
+            "LINK_WEATHER": "天気予報APIデータ"
+            "LINK_MARINE": "海洋気象APIデータ"
             "WEEKS": ["月", "火", "水", "木", "金", "土", "日"],
             "WEATHER_TEXT": {"晴": "晴", "霧": "霧", "雨": "雨", "雪": "雪", "雷": "雷", "？": "？"},
             "ALL_DIRECTIONS": ["北", "北北東", "北東", "東北東", "東", "東南東", "南東", "南南東", "南", "南南西", "南西", "西南西", "西", "西北西", "北西", "北北西"],
@@ -312,6 +314,8 @@ def get_language_dict():
             "LEGEND_DANGER_LINE": "[Red Dash: Danger Line {v}m/s]",
             "LEGEND_NOTE": "*Blue/Orange bars are shown only for directions selected in Advanced Settings.",
             "DISCLAIMER": "*Data are forecasts. Check official reports and use at your own risk.",
+            "LINK_WEATHER": "Weather Forecast API Data",
+            "LINK_MARINE": "Marine Weather API Data",
             "WEEKS": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
             "WEATHER_TEXT": {"晴": "Sunny", "霧": "Fog", "雨": "Rain", "雪": "Snow", "雷": "T-Storm", "？": "?"},
             "ALL_DIRECTIONS": ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"],
@@ -456,9 +460,9 @@ def get_tide_level(times, lat, lon):
         }
         
         # --- 【検証】最終的に生成されたURLを表示 ---
-        prep = requests.Request('GET', url, params=params).prepare()
+        # prep = requests.Request('GET', url, params=params).prepare()
         # st.write(f"DEBUG 2 - 生成されたURL: {prep.url}")
-        st.write(f"marine-api URL: {prep.url}")
+        # st.write(f"marine-api URL: {prep.url}")
         # ---------------------------------------
 
         try:
@@ -2350,16 +2354,13 @@ def main():
     # --- 0. アプリ初期化 (最優先で実行) ---
     initialize_app()
 
-    # --- [追加] 言語設定の初期化とキャッシュ利用 ---
     if 'lang' not in st.session_state:
         st.session_state.lang = "ja"
     
-    # 辞書取得 (キャッシュにより高速実行)
     translations = get_language_dict()
     lang_dict = translations[st.session_state.lang]
 
     # --- 1. 状態の初期化 ---
-    # 1. URLパラメータから開発者モードの状態を判定
     if "mode" in st.query_params and st.query_params["mode"] == "dev":
         st.session_state.is_dev_mode = True
     else:
@@ -2372,37 +2373,44 @@ def main():
     if 'needs_graph_update' not in st.session_state:
         st.session_state.needs_graph_update = True
 
-    # LocalStorageからの復元
     sync_all_settings()
-    
-    # スタイルとフォントの設定
     render_custom_css()
     setup_font(st.session_state.get("base_font_size", CONFIG["GRAPH_FONT_SIZE"]))
     
-    # サイドバーのコントロール
     danger_v, sel_dirs, design_params = show_sidebar_controls()
     
-    # --- タイトルエリアの修正 (画像ロゴのみを表示) ---
     icon_path = "pin_weather_02.png"
     if os.path.exists(icon_path):
         st.image(icon_path, width=800) 
     else:
-        # リテラルを辞書参照に変更
         st.title(lang_dict["⛵Pin_Weather!"])            
        
-    # 時間設定
     now_jst = datetime.now(timezone(timedelta(hours=9)))
 
     # --- 2. 各モジュールの描画 ---
     render_compact_control_panel(st.session_state.last_basho)
-
-    # グラフエリア
     render_graph_area_module(danger_v, sel_dirs, design_params, now_jst)
     
-    # 凡例とクレジット表記
+    # クレジット表示
     render_footer_info(danger_v)
     
-    # --- [追加] フッター：免責事項の表示 ---
+    # --- [追加] APIリンクの表示 ---
+    lat, lon = st.session_state.lat, st.session_state.lon
+    w_url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&hourly=temperature_2m,windspeed_10m,winddirection_10m,precipitation&timezone=auto"
+    m_url = f"https://marine-api.open-meteo.com/v1/marine?latitude={lat}&longitude={lon}&hourly=sea_level_height_msl&timezone=auto"
+
+    st.markdown(
+        f"""
+        <div style="text-align: right; font-size: 0.8rem; color: gray; margin-top: -10px;">
+            <a href="{w_url}" target="_blank" style="color: gray; text-decoration: none;">[ {lang_dict.get("LINK_WEATHER", "上記気象データ")} ]</a> 
+            &nbsp;&nbsp;
+            <a href="{m_url}" target="_blank" style="color: gray; text-decoration: none;">[ {lang_dict.get("LINK_MARINE", "上記海上気象データ")} ]</a>
+        </div>
+        """, 
+        unsafe_allow_html=True
+    )
+    
+    # --- フッター：免責事項の表示 ---
     st.markdown("---")
     st.caption(lang_dict["DISCLAIMER"])
     
@@ -2412,3 +2420,4 @@ def main():
         
 if __name__ == "__main__":
     main()
+    
