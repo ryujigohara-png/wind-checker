@@ -430,27 +430,21 @@ def fetch_weather_data(lat, lon, days):
 def get_tide_level(times, lat, lon):
     """
     Open-Meteo Marine APIを使用して潮位データを取得します。
-    リクエスト直前の変数の中身と、最終的なURLを両方表示して、座標の消失箇所を特定します。
+    戻り値を (data, res_lat, res_lon) の3つに整理しました。
     """
     import requests
     import pandas as pd
     import numpy as np
-    import streamlit as st
 
     if times is None or len(times) == 0:
-        return None, False, lat, lon
+        return None, lat, lon
 
     def request_api(t_lat, t_lon):
         url = "https://marine-api.open-meteo.com/v1/marine"
-
-        # 小数点以下4桁に丸める（APIの推奨精度に合わせる）
+        # API推奨精度への丸め
         t_lat = round(float(t_lat), 4)
         t_lon = round(float(t_lon), 4)
         
-        # --- 【検証】URLを組み立てる直前の変数の値を表示 ---
-        # st.write(f"DEBUG 1 - 内部関数の引数: t_lat='{t_lat}', t_lon='{t_lon}'")
-        # ----------------------------------------------
-
         params = {
             "latitude": t_lat,
             "longitude": t_lon,
@@ -458,12 +452,6 @@ def get_tide_level(times, lat, lon):
             "timezone": "auto",
             "cell_selection": "sea"
         }
-        
-        # --- 【検証】最終的に生成されたURLを表示 ---
-        # prep = requests.Request('GET', url, params=params).prepare()
-        # st.write(f"DEBUG 2 - 生成されたURL: {prep.url}")
-        # st.write(f"marine-api URL: {prep.url}")
-        # ---------------------------------------
 
         try:
             resp = requests.get(url, params=params, timeout=5)
@@ -473,16 +461,17 @@ def get_tide_level(times, lat, lon):
             pass
         return None
 
-    # サブルーチンが受け取った直後の値も念のため表示
-    # st.write(f"DEBUG 0 - サブルーチン受取値: lat='{lat}', lon='{lon}'")
-
     # 1. リクエスト実行
     data = request_api(lat, lon)
     
     if not data or "hourly" not in data:
-        return None, False, lat, lon
+        return None, lat, lon
 
-    # 2. データ抽出（今日一番最初の確実なロジック）
+    # APIが実際に使用した地点の座標を取得
+    res_lat = data.get("latitude", lat)
+    res_lon = data.get("longitude", lon)
+
+    # 2. データ抽出
     df_api = pd.DataFrame({
         "time": pd.to_datetime(data["hourly"]["time"]),
         "h": data["hourly"]["sea_level_height_msl"]
@@ -502,7 +491,8 @@ def get_tide_level(times, lat, lon):
         else:
             levels.append(np.nan)
     
-    return (levels if found_any else None), False, lat, lon
+    # 戻り値を3つに整理（is_nearbyを廃止）
+    return (levels if found_any else None), res_lat, res_lon
       
 # ==========================================================================================
 # 5. 天気コードからテキストと色を取得するサブルーチン（多言語対応版）
@@ -845,25 +835,24 @@ def render_temp_line_chart(ax, df):
 # ======================================================================================
 # 11. 潮位曲線グラフを描画するサブルーチン
 # ======================================================================================
-def render_tide_curve_chart(ax, df, lat, lon): # 引数に lat, lon を追加
+def render_tide_curve_chart(ax, df, lat, lon):
     """
     サブルーチン4(get_tide_level)を呼び出してデータを取得し、グラフを描画します。
+    is_nearbyフラグを廃止し、計算された距離(dist_km)のみに基づいて注釈を表示します。
     """
     import numpy as np
     import streamlit as st
-    import pandas as pd # 欠落防止のため追加
+    import pandas as pd
     from matplotlib.transforms import ScaledTranslation
 
     translations = get_language_dict()
     lang_dict = translations[st.session_state.lang]
-
-    # df.attrs からではなく、引数で受け取った lat, lon をそのまま使用します
     label_fs = CONFIG.get("LABEL_SIZE", 10)
 
-    # サブルーチン4を呼び出し（ここで確実に数値を渡します）
-    tide_levels, is_nearby, res_lat, res_lon = get_tide_level(df['time'], lat, lon)
+    # サブルーチン4を呼び出し（戻り値の数に合わせて受け取り側も修正）
+    tide_levels, res_lat, res_lon = get_tide_level(df['time'], lat, lon)
 
-    # データなし処理（既存メッセージ維持）
+    # データなし処理
     if tide_levels is None:
         ax.clear()
         ax.set_axis_off()
@@ -871,7 +860,7 @@ def render_tide_curve_chart(ax, df, lat, lon): # 引数に lat, lon を追加
         ax.text(0.0, 0.5, no_data_msg, transform=ax.transAxes, color="gray", fontsize=label_fs, ha='left', va='center')
         return
 
-    # 描画処理（既存のデザイン設定を維持）
+    # 描画処理
     df['tide_cm'] = [v * 100 if v is not None else np.nan for v in tide_levels]
     ax.plot(df['time'], df['tide_cm'], color="#1f77b4", linewidth=2, marker='o', markersize=3, markevery=3)
     ax.set_ylabel(lang_dict.get("潮位 (cm)", "Tide (cm)"), fontsize=label_fs)
@@ -884,10 +873,16 @@ def render_tide_curve_chart(ax, df, lat, lon): # 引数に lat, lon を追加
             ax.text(dt, 1.05, f"{val:.0f}", ha='center', va='bottom', color="#1f77b4", 
                     fontsize=label_fs, transform=ax.get_xaxis_transform())
 
-    # 方位・距離メッセージ
-    dist_km = round(np.sqrt(((res_lat - lat) * 111)**2 + ((res_lon - lon) * 111 * np.cos(np.radians(lat)))**2), 1)
-    if is_nearby and dist_km > 0.5:
-        angle = np.rad2deg(np.arctan2((res_lon - lon) * np.cos(np.radians(lat)), (res_lat - lat)))
+    # --- 方位・距離メッセージの判定ロジック ---
+    # 距離の近似計算 (km)
+    dx = (res_lon - lon) * 111 * np.cos(np.radians(lat))
+    dy = (res_lat - lat) * 111
+    dist_km = round(np.sqrt(dx**2 + dy**2), 1)
+
+    # is_nearbyフラグに依らず、物理的な距離の乖離(0.5km以上)がある場合に表示
+    if dist_km >= 0.5:
+        # 方位角の計算
+        angle = np.rad2deg(np.arctan2(dx, dy))
         base_dirs = lang_dict.get("DIRECTIONS_8", ["北", "北東", "東", "南東", "南", "南西", "西", "北西"])
         directions_9 = base_dirs + [base_dirs[0]]
         res_dir = directions_9[int((angle + 22.5) % 360 // 45)]
