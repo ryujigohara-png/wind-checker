@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# 正規版　更新 2026.1.18 1410 多言語化 ☆登録　コンプリート版
+# 正規版　更新 2026.1.20 2245 APIリンク コンプリート版
 """
 ⛵ Pin_Weather! 機能仕様書（2026.01.18 改訂版）
 
@@ -105,6 +105,7 @@ CONFIG = {
     "DEFAULT_DIRS": ["南","南南西","南西","西南西","西","西北西","北西","北北西"],
 "LOCATION_MASTER": {
         "高須沖(鹿児島県)": (31.337, 130.795), 
+        "ユクサ沖(鹿児島県)": (31.373, 130.777), 
         "住吉浜沖(大分県)": (33.408, 131.674),
         "逗子海岸沖(神奈川県)": (35.286, 139.546),
         "津久井浜沖(神奈川県)": (35.194, 139.670),
@@ -216,13 +217,15 @@ def get_language_dict():
             "LEGEND_DANGER_LINE": "[赤点線: 危険風速ライン {v}m/s]",
             "LEGEND_NOTE": "※青・橙は、詳細設定で選択した色付風向のみ表示",
             "DISCLAIMER": "※本データは予測値であり、実際の天候と異なる場合があります。航海や活動の際は、必ず最新の気象情報を確認し、自己責任でご利用ください。",
+            "LINK_WEATHER": "天気予報APIデータ",
+            "LINK_MARINE": "海洋気象APIデータ",
             "WEEKS": ["月", "火", "水", "木", "金", "土", "日"],
             "WEATHER_TEXT": {"晴": "晴", "霧": "霧", "雨": "雨", "雪": "雪", "雷": "雷", "？": "？"},
             "ALL_DIRECTIONS": ["北", "北北東", "北東", "東北東", "東", "東南東", "南東", "南南東", "南", "南南西", "南西", "西南西", "西", "西北西", "北西", "北北西"],
             "DIRECTIONS_8": ["北", "北東", "東", "南東", "南", "南西", "西", "北西"],
             "NORTH":"北",
             "LOCATIONS": {
-                "高須沖(鹿児島県)": "高須沖(鹿児島県)", "住吉浜沖(大分県)": "住吉浜沖(大分県)",
+                "高須沖(鹿児島県)": "高須沖(鹿児島県)", "ユクサ沖(鹿児島県)": "ユクサ沖(鹿児島県)", "住吉浜沖(大分県)": "住吉浜沖(大分県)",
                 "逗子海岸沖(神奈川県)": "逗子海岸沖(神奈川県)", "津久井浜沖(神奈川県)": "津久井浜沖(神奈川県)",
                 "御前崎沖(静岡県)": "御前崎沖(静岡県)", "本栖湖中央(山梨県)": "本栖湖中央(山梨県)",
                 "浜名湖村櫛沖(静岡県)": "浜名湖村櫛沖(静岡県)", "甲子園浜沖(兵庫県)": "甲子園浜沖(兵庫県)",
@@ -312,13 +315,15 @@ def get_language_dict():
             "LEGEND_DANGER_LINE": "[Red Dash: Danger Line {v}m/s]",
             "LEGEND_NOTE": "*Blue/Orange bars are shown only for directions selected in Advanced Settings.",
             "DISCLAIMER": "*Data are forecasts. Check official reports and use at your own risk.",
+            "LINK_WEATHER": "Weather Forecast API Data",
+            "LINK_MARINE": "Marine Weather API Data",
             "WEEKS": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
             "WEATHER_TEXT": {"晴": "Sunny", "霧": "Fog", "雨": "Rain", "雪": "Snow", "雷": "T-Storm", "？": "?"},
             "ALL_DIRECTIONS": ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"],
             "DIRECTIONS_8": ["N", "NE", "E", "SE", "S", "SW", "W", "NW"],
             "NORTH":"N",
             "LOCATIONS": {
-                "高須沖(鹿児島県)": "Takasu-oki (Kagoshima)", "住吉浜沖(大分県)": "Sumiyoshihama-oki (Oita)",
+                "高須沖(鹿児島県)": "Takasu-oki (Kagoshima)", "ユクサ沖(鹿児島県)": "YUKUSA-oki (Kagoshima)", "住吉浜沖(大分県)": "Sumiyoshihama-oki (Oita)",
                 "逗子海岸沖(神奈川県)": "Zushi Beach (Kanagawa)", "津久井浜沖(神奈川県)": "Tsukuiahama-oki (Kanagawa)",
                 "御前崎沖(静岡県)": "Omaezaki-oki (Shizuoka)", "本栖湖中央(山梨県)": "Lake Motosu (Yamanashi)",
                 "浜名湖村櫛沖(静岡県)": "Lake Hamana Murakushi (Shizuoka)", "甲子園浜沖(兵庫県)": "Koshienhama-oki (Hyogo)",
@@ -421,110 +426,74 @@ def fetch_weather_data(lat, lon, days):
         return None
 
 # ======================================================================================
-# 4. 潮位レベルを計算（既存仕様を厳守し、戻り値のみ拡張したバージョン）
+# 4. 潮位データを取得するサブルーチン
 # ======================================================================================
 def get_tide_level(times, lat, lon):
     """
     Open-Meteo Marine APIを使用して潮位データを取得します。
-    
-    【変更点】
-    1. ValueError防止のため if not times を if times is None or len(times) == 0 に変更。
-    2. 戻り値を、データ(levels)と近傍フラグ(is_nearby)のタプルに変更。
-    
-    【厳守事項】
-    時刻の参照（times[0], times[len(times)-1], t_naive の作成）は、
-    以前正常に動作していたコードの記述をそのまま使用し、一切変更しません。
+    戻り値を (data, res_lat, res_lon) の3つに整理しました。
     """
     import requests
     import pandas as pd
     import numpy as np
-    import time
 
-    # 空判定の修正（Pandasの仕様によるValueErrorを物理的に回避）
     if times is None or len(times) == 0:
-        return [], False
+        return None, lat, lon
 
-    # 型変換と NaN チェック
-    try:
-        f_lat = float(lat)
-        f_lon = float(lon)
-        if np.isnan(f_lat) or np.isnan(f_lon):
-            return "NOT_SEA", False
-    except:
-        return "NOT_SEA", False
-
-    # 【時刻参照：変更禁止】以前の記述をそのまま再現
-    start_date = times[0].strftime('%Y-%m-%d')
-    end_date = times[len(times) - 1].strftime('%Y-%m-%d')
-
-    # 探索ステップの設定
-    steps = [0.0, 0.05, 0.1, 0.2]
-    search_offsets = []
-    for s in steps:
-        if s == 0.0:
-            search_offsets.append((0.0, 0.0))
-        else:
-            search_offsets.extend([(s, 0), (-s, 0), (0, s), (0, -s)])
-
-    res_json = None
-    is_nearby = False
-
-    # APIリクエスト実行
-    for i, (d_lat, d_lon) in enumerate(search_offsets):
-        target_lat = round(f_lat + d_lat, 4)
-        target_lon = round(f_lon + d_lon, 4)
-        
+    def request_api(t_lat, t_lon):
         url = "https://marine-api.open-meteo.com/v1/marine"
+        # API推奨精度への丸め
+        t_lat = round(float(t_lat), 4)
+        t_lon = round(float(t_lon), 4)
+        
         params = {
-            "latitude": target_lat,
-            "longitude": target_lon,
+            "latitude": t_lat,
+            "longitude": t_lon,
             "hourly": "sea_level_height_msl",
-            "start_date": start_date,
-            "end_date": end_date,
-            "timezone": "auto"
+            "timezone": "auto",
+            "cell_selection": "sea"
         }
 
         try:
-            response = requests.get(url, params=params, timeout=5)
-            if response.status_code == 200:
-                data = response.json()
-                t_list = data.get("hourly", {}).get("sea_level_height_msl", [])
-                if t_list and any(v is not None for v in t_list[:24]):
-                    # --- 修正箇所：データが見つかった時点で res_json を確定させる ---
-                    res_json = data
-                    # 0番目なら False（指定地点）、それ以外なら True（近傍地点）
-                    is_nearby = True if i > 0 else False
-                    break
+            resp = requests.get(url, params=params, timeout=5)
+            if resp.status_code == 200:
+                return resp.json()
         except:
-            continue
-        time.sleep(0.02)
+            pass
+        return None
 
-    # ここで res_json があれば、i が 0 であっても確実にデータ処理へ進む
-    if not res_json:
-        return "NOT_SEA", False
+    # 1. リクエスト実行
+    data = request_api(lat, lon)
+    
+    if not data or "hourly" not in data:
+        return None, lat, lon
 
-    # データマッピング
-    try:
-        df_api = pd.DataFrame({
-            "time": pd.to_datetime(res_json["hourly"]["time"]),
-            "tide_height": res_json["hourly"]["sea_level_height_msl"]
-        })
-        df_api["time"] = df_api["time"].dt.tz_localize(None)
+    # APIが実際に使用した地点の座標を取得
+    res_lat = data.get("latitude", lat)
+    res_lon = data.get("longitude", lon)
 
-        levels = []
-        for t in times:
-            # 【時刻参照：変更禁止】以前の記述をそのまま再現
-            t_naive = t.replace(tzinfo=None) if hasattr(t, 'tzinfo') and t.tzinfo is not None else t
-            match_row = df_api[df_api["time"] == t_naive]
-            if not match_row.empty:
-                val = match_row.iloc[0]["tide_height"]
-                levels.append(val if val is not None else np.nan)
-            else:
-                levels.append(np.nan)
-        
-        return levels, is_nearby
-    except:
-        return "NOT_SEA", False
+    # 2. データ抽出
+    df_api = pd.DataFrame({
+        "time": pd.to_datetime(data["hourly"]["time"]),
+        "h": data["hourly"]["sea_level_height_msl"]
+    })
+    df_api["time"] = df_api["time"].dt.tz_localize(None)
+
+    levels = []
+    found_any = False
+    for t in times:
+        t_naive = t.replace(tzinfo=None)
+        match = df_api[df_api["time"] == t_naive]
+        if not match.empty:
+            val = match.iloc[0]["h"]
+            levels.append(val)
+            if val is not None:
+                found_any = True
+        else:
+            levels.append(np.nan)
+    
+    # 戻り値を3つに整理（is_nearbyを廃止）
+    return (levels if found_any else None), res_lat, res_lon
       
 # ==========================================================================================
 # 5. 天気コードからテキストと色を取得するサブルーチン（多言語対応版）
@@ -867,118 +836,63 @@ def render_temp_line_chart(ax, df):
 # ======================================================================================
 # 11. 潮位曲線グラフを描画するサブルーチン
 # ======================================================================================
-def render_tide_curve_chart(ax, df):
+def render_tide_curve_chart(ax, df, lat, lon):
     """
-    Open-Meteo Marine APIから潮位を取得。表示および注釈を多言語化。
-    30km圏内で最初に見つかった「海洋データ」を採用し、その方位と距離を辞書に基づいて表示する。
+    サブルーチン4(get_tide_level)を呼び出してデータを取得し、グラフを描画します。
+    is_nearbyフラグを廃止し、計算された距離(dist_km)のみに基づいて注釈を表示します。
     """
-    import requests
-    import pandas as pd
     import numpy as np
-    import time
-    import random
     import streamlit as st
+    import pandas as pd
     from matplotlib.transforms import ScaledTranslation
 
-    # 辞書の取得
     translations = get_language_dict()
     lang_dict = translations[st.session_state.lang]
-
-    lat = df.attrs.get('lat', 35.0)
-    lon = df.attrs.get('lon', 135.0)
-    start_str = df['time'].iloc[0].strftime('%Y-%m-%d')
-    end_str = df['time'].iloc[-1].strftime('%Y-%m-%d')
     label_fs = CONFIG.get("LABEL_SIZE", 10)
 
-    tide_levels = None
-    info_text = ""
-    
-    # --- 探索座標リストの作成 ---
-    steps = [0.0, 0.05, 0.1, 0.15, 0.2, 0.25]
-    search_points = []
-
-    for s in steps:
-        if s == 0:
-            search_points.append((0, 0))
-        else:
-            ring = [(s, 0), (s, s), (0, s), (-s, s), (-s, 0), (-s, -s), (0, -s), (s, -s)]
-            start_idx = random.randint(0, 7)
-            rotated_ring = ring[start_idx:] + ring[:start_idx]
-            search_points.extend(rotated_ring)
-
-    # 探索実行
-    found = False
-    for d_lat, d_lon in search_points:
-        target_lat = lat + d_lat
-        target_lon = lon + d_lon
-        
-        url = "https://marine-api.open-meteo.com/v1/marine"
-        params = {
-            "latitude": target_lat, "longitude": target_lon,
-            "hourly": "sea_level_height_msl", "start_date": start_str, "end_date": end_str, "timezone": "auto"
-        }
-        
-        try:
-            response = requests.get(url, params=params, timeout=5)
-            if response.status_code == 200:
-                data = response.json()
-                api_h = data.get("hourly", {}).get("sea_level_height_msl", [])
-
-                if api_h and any(v is not None for v in api_h):
-                    dist_km = round(np.sqrt((d_lat * 111)**2 + (d_lon * 111 * np.cos(np.radians(lat)))**2), 1)
-
-                    if dist_km > 0.5:
-                        # 方位の計算
-                        angle = np.rad2deg(np.arctan2(d_lon * np.cos(np.radians(lat)), d_lat))
-                        # 辞書から8方位リストを取得（DIRECTIONS_8）
-                        base_dirs = lang_dict.get("DIRECTIONS_8", ["北", "北東", "東", "南東", "南", "南西", "西", "北西"])
-                        directions_9 = base_dirs + [base_dirs[0]]
-                        res_dir = directions_9[int((angle + 22.5) % 360 // 45)]
-                        
-                        # 【修正点】辞書の OCEAN_INFO を使用してメッセージを組み立て
-                        msg_tmpl = lang_dict.get("OCEAN_INFO", "※指定地点の最寄り（{res_dir}約{dist_km}km）の海洋データを表示しています。")
-                        info_text = msg_tmpl.format(res_dir=res_dir, dist_km=dist_km)
-                    
-                    df_api = pd.DataFrame({"api_t": pd.to_datetime(data["hourly"]["time"]), "h": api_h})
-                    df_api["api_t"] = df_api["api_t"].dt.tz_localize(None)
-                    tide_levels = [df_api[df_api["api_t"] == t.replace(tzinfo=None)].iloc[0]["h"] 
-                                   if not df_api[df_api["api_t"] == t.replace(tzinfo=None)].empty else np.nan 
-                                   for t in df['time']]
-                    found = True
-                    break
-        except:
-            continue
-        time.sleep(0.01)
+    # サブルーチン4を呼び出し（戻り値の数に合わせて受け取り側も修正）
+    tide_levels, res_lat, res_lon = get_tide_level(df['time'], lat, lon)
 
     # データなし処理
-    if not found or tide_levels is None:
+    if tide_levels is None:
         ax.clear()
         ax.set_axis_off()
-        # 【修正点】辞書の OCEAN_NONE を使用
-        no_data_msg = lang_dict.get("OCEAN_NONE", "※指定地点の近傍(30km圏内)に有効な海洋データがないため表示されません")
+        no_data_msg = lang_dict.get("OCEAN_NONE", "※指定地点の近傍に有効な海洋データがないため表示されません")
         ax.text(0.0, 0.5, no_data_msg, transform=ax.transAxes, color="gray", fontsize=label_fs, ha='left', va='center')
         return
 
     # 描画処理
     df['tide_cm'] = [v * 100 if v is not None else np.nan for v in tide_levels]
     ax.plot(df['time'], df['tide_cm'], color="#1f77b4", linewidth=2, marker='o', markersize=3, markevery=3)
-    
-    # 軸ラベルの多言語化
     ax.set_ylabel(lang_dict.get("潮位 (cm)", "Tide (cm)"), fontsize=label_fs)
     ax.grid(True, axis='y', linestyle='--', alpha=0.5)
 
-    # 数値ラベル
+    # 数値ラベル（3時間おき）
     for i in range(0, len(df), 3):
         dt, val = df['time'].iloc[i], df['tide_cm'].iloc[i]
         if not pd.isna(val):
             ax.text(dt, 1.05, f"{val:.0f}", ha='center', va='bottom', color="#1f77b4", 
                     fontsize=label_fs, transform=ax.get_xaxis_transform())
 
-    # メッセージ表示
-    if info_text:
-        offset = ScaledTranslation(0, - (label_fs * 3.5) / 72, ax.figure.dpi_scale_trans)
-        trans = ax.transAxes + offset
-        ax.text(0.0, 0.0, info_text, transform=trans, color="#d62728", 
+    # --- 方位・距離メッセージの判定ロジック ---
+    # 距離の近似計算 (km)
+    dx = (res_lon - lon) * 111 * np.cos(np.radians(lat))
+    dy = (res_lat - lat) * 111
+    dist_km = round(np.sqrt(dx**2 + dy**2), 1)
+
+    # is_nearbyフラグに依らず、物理的な距離の乖離(0.5km以上)がある場合に表示
+    if dist_km >= 0.5:
+        # 方位角の計算
+        angle = np.rad2deg(np.arctan2(dx, dy))
+        base_dirs = lang_dict.get("DIRECTIONS_8", ["北", "北東", "東", "南東", "南", "南西", "西", "北西"])
+        directions_9 = base_dirs + [base_dirs[0]]
+        res_dir = directions_9[int((angle + 22.5) % 360 // 45)]
+        
+        msg_tmpl = lang_dict.get("OCEAN_INFO", "※指定地点の最寄り（{res_dir}約{dist_km}km）の海洋データを表示しています。")
+        info_text = msg_tmpl.format(res_dir=res_dir, dist_km=dist_km)
+        
+        offset_trans = ScaledTranslation(0, - (label_fs * 3.5) / 72, ax.figure.dpi_scale_trans)
+        ax.text(0.0, 0.0, info_text, transform=ax.transAxes + offset_trans, color="#d62728", 
                 fontsize=label_fs - 1, ha='left', va='top')
       
 # ======================================================================================
@@ -1045,7 +959,7 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
         idx += 1
     if "tide" in active_plots:
         # 戻り値を受け取らない元の形を維持
-        render_tide_curve_chart(axes[idx], df)
+        render_tide_curve_chart(axes[idx], df, lat, lon)
         idx += 1
 
     for ax in axes:
@@ -2436,16 +2350,13 @@ def main():
     # --- 0. アプリ初期化 (最優先で実行) ---
     initialize_app()
 
-    # --- [追加] 言語設定の初期化とキャッシュ利用 ---
     if 'lang' not in st.session_state:
         st.session_state.lang = "ja"
     
-    # 辞書取得 (キャッシュにより高速実行)
     translations = get_language_dict()
     lang_dict = translations[st.session_state.lang]
 
     # --- 1. 状態の初期化 ---
-    # 1. URLパラメータから開発者モードの状態を判定
     if "mode" in st.query_params and st.query_params["mode"] == "dev":
         st.session_state.is_dev_mode = True
     else:
@@ -2458,37 +2369,44 @@ def main():
     if 'needs_graph_update' not in st.session_state:
         st.session_state.needs_graph_update = True
 
-    # LocalStorageからの復元
     sync_all_settings()
-    
-    # スタイルとフォントの設定
     render_custom_css()
     setup_font(st.session_state.get("base_font_size", CONFIG["GRAPH_FONT_SIZE"]))
     
-    # サイドバーのコントロール
     danger_v, sel_dirs, design_params = show_sidebar_controls()
     
-    # --- タイトルエリアの修正 (画像ロゴのみを表示) ---
     icon_path = "pin_weather_02.png"
     if os.path.exists(icon_path):
         st.image(icon_path, width=800) 
     else:
-        # リテラルを辞書参照に変更
         st.title(lang_dict["⛵Pin_Weather!"])            
        
-    # 時間設定
     now_jst = datetime.now(timezone(timedelta(hours=9)))
 
     # --- 2. 各モジュールの描画 ---
     render_compact_control_panel(st.session_state.last_basho)
-
-    # グラフエリア
     render_graph_area_module(danger_v, sel_dirs, design_params, now_jst)
     
-    # 凡例とクレジット表記
+    # クレジット表示
     render_footer_info(danger_v)
     
-    # --- [追加] フッター：免責事項の表示 ---
+    # --- [追加] APIリンクの表示 ---
+    lat, lon = st.session_state.lat, st.session_state.lon
+    w_url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&hourly=temperature_2m,windspeed_10m,winddirection_10m,precipitation&timezone=auto"
+    m_url = f"https://marine-api.open-meteo.com/v1/marine?latitude={lat}&longitude={lon}&hourly=sea_level_height_msl&timezone=auto"
+
+    st.markdown(
+        f"""
+        <div style="text-align: right; font-size: 0.8rem; color: gray; margin-top: -10px;">
+            <a href="{w_url}" target="_blank" style="color: gray; text-decoration: none;">[ {lang_dict.get("LINK_WEATHER", "上記気象データ")} ]</a> 
+            &nbsp;&nbsp;
+            <a href="{m_url}" target="_blank" style="color: gray; text-decoration: none;">[ {lang_dict.get("LINK_MARINE", "上記海上気象データ")} ]</a>
+        </div>
+        """, 
+        unsafe_allow_html=True
+    )
+    
+    # --- フッター：免責事項の表示 ---
     st.markdown("---")
     st.caption(lang_dict["DISCLAIMER"])
     
@@ -2498,3 +2416,4 @@ def main():
         
 if __name__ == "__main__":
     main()
+    
