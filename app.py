@@ -1454,11 +1454,20 @@ def show_language_dialog():
 def calculate_graph_height(base_height, ratios, show_wind, show_temp, show_wave, show_ocean_temp, show_tide):
     """
     各グラフの表示比率と基準縦幅から、最終的なグラフの合計高さを計算する。
-    波高(show_wave)と海面水温(show_ocean_temp)を計算対象に追加しました。
+    要素数が不足している（古い設定データなどの）場合のエラートラップを実装。
     """
+    # エラートラップ：ratiosの要素数が5に満たない場合、デフォルト値で補完または置換する
+    # デフォルト比率 [4, 1.2, 0.8, 0.8, 0.8]
+    current_ratios = list(ratios)
+    if len(current_ratios) < 5:
+        default_ratios = [4, 1.2, 0.8, 0.8, 0.8]
+        # 既存の要素がある分だけ上書きし、足りない分をデフォルトで埋める
+        for i in range(len(current_ratios), 5):
+            current_ratios.append(default_ratios[i])
+    
     # 1. 基本となる比率の合計（風向・風速 + 気温）
-    # ratios = [wind, temp, wave, ocean_temp, tide] の順を想定
-    base_ratio_total = ratios[0] + ratios[1]
+    # current_ratios = [wind, temp, wave, ocean_temp, tide] の順
+    base_ratio_total = current_ratios[0] + current_ratios[1]
     
     # 2. 1単位あたりのピクセル高さ
     fixed_unit_h = base_height / base_ratio_total 
@@ -1469,15 +1478,15 @@ def calculate_graph_height(base_height, ratios, show_wind, show_temp, show_wave,
     # 4. 各項目の表示可否に応じた高さの積み上げ
     auto_height = icon_margin
     if show_wind:
-        auto_height += ratios[0] * fixed_unit_h
+        auto_height += current_ratios[0] * fixed_unit_h
     if show_temp:
-        auto_height += ratios[1] * fixed_unit_h
+        auto_height += current_ratios[1] * fixed_unit_h
     if show_wave:
-        auto_height += ratios[2] * fixed_unit_h
+        auto_height += current_ratios[2] * fixed_unit_h
     if show_ocean_temp:
-        auto_height += ratios[3] * fixed_unit_h
+        auto_height += current_ratios[3] * fixed_unit_h
     if show_tide:
-        auto_height += ratios[4] * fixed_unit_h
+        auto_height += current_ratios[4] * fixed_unit_h
         
     return auto_height
 
