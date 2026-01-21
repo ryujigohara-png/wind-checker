@@ -1101,8 +1101,8 @@ def show_settings_dialog():
         d_show_wind = st.toggle(lang_dict["風向・風速グラフ表示"], value=st.session_state.get("show_wind", CONFIG["SHOW_WIND"]))
         d_show_temp = st.toggle(lang_dict["気温グラフ表示"], value=st.session_state.get("show_temp", CONFIG["SHOW_TEMP"]))
         d_show_tide = st.toggle(lang_dict["潮位グラフ表示"], value=st.session_state.get("show_tide", CONFIG["SHOW_TIDE"]))
-        d_show_tide = st.toggle(lang_dict["波高グラフ表示"], value=st.session_state.get("show_tide", CONFIG["SHOW_TIDE"]))
-        d_show_tide = st.toggle(lang_dict["海面水温グラフ表示"], value=st.session_state.get("show_tide", CONFIG["SHOW_TIDE"]))
+        d_show_wave = st.toggle(lang_dict["波高グラフ表示"], value=st.session_state.get("show_wave", CONFIG["SHOW_WAVE"]))
+        d_show_ocean_temp = st.toggle(lang_dict["海面水温グラフ表示"], value=st.session_state.get("show_ocean_temp", CONFIG["SHOW_OCEAN_TEMP"]))
         d_show_w_text = st.toggle(lang_dict["天気文字表示"], value=st.session_state.get("show_w_text", CONFIG["SHOW_W_TEXT"]))
         d_show_dir_name = st.toggle(lang_dict["風向名表示"], value=st.session_state.get("show_dir_name", CONFIG["SHOW_DIR_NAME"]))
         
