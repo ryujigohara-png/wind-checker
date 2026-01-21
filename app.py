@@ -426,12 +426,12 @@ def fetch_weather_data(lat, lon, days):
         return None
 
 # ======================================================================================
-# 4. 潮位データを取得するサブルーチン
+# 4. 海洋データを取得するサブルーチン
 # ======================================================================================
-def get_tide_level(times, lat, lon):
+def get_marine_data(times, lat, lon):
     """
-    Open-Meteo Marine APIを使用して潮位データを取得します。
-    戻り値を (data, res_lat, res_lon) の3つに整理しました。
+    Open-Meteo Marine APIを使用して海洋データ（潮位、波高、海面水温）を取得します。
+    戻り値は (data_dict, res_lat, res_lon) の3つです。
     """
     import requests
     import pandas as pd
@@ -449,7 +449,7 @@ def get_tide_level(times, lat, lon):
         params = {
             "latitude": t_lat,
             "longitude": t_lon,
-            "hourly": "sea_level_height_msl",
+            "hourly": "sea_level_height_msl,wave_height,sea_surface_temperature",
             "timezone": "auto",
             "cell_selection": "sea"
         }
@@ -475,25 +475,46 @@ def get_tide_level(times, lat, lon):
     # 2. データ抽出
     df_api = pd.DataFrame({
         "time": pd.to_datetime(data["hourly"]["time"]),
-        "h": data["hourly"]["sea_level_height_msl"]
+        "tide": data["hourly"]["sea_level_height_msl"],
+        "wave": data["hourly"]["wave_height"],
+        "temp": data["hourly"]["sea_surface_temperature"]
     })
     df_api["time"] = df_api["time"].dt.tz_localize(None)
 
     levels = []
+    waves = []
+    temps = []
     found_any = False
+
     for t in times:
         t_naive = t.replace(tzinfo=None)
         match = df_api[df_api["time"] == t_naive]
         if not match.empty:
-            val = match.iloc[0]["h"]
-            levels.append(val)
-            if val is not None:
+            row = match.iloc[0]
+            v_tide = row["tide"]
+            v_wave = row["wave"]
+            v_temp = row["temp"]
+            
+            levels.append(v_tide)
+            waves.append(v_wave)
+            temps.append(v_temp)
+            
+            if v_tide is not None or v_wave is not None or v_temp is not None:
                 found_any = True
         else:
             levels.append(np.nan)
+            waves.append(np.nan)
+            temps.append(np.nan)
     
-    # 戻り値を3つに整理（is_nearbyを廃止）
-    return (levels if found_any else None), res_lat, res_lon
+    # データを辞書にまとめる
+    res_dict = {
+        "tide": levels,
+        "wave": waves,
+        "temp": temps
+    } if found_any else None
+
+    # 戻り値を3つに整理
+    return res_dict, res_lat, res_lon
       
 # ==========================================================================================
 # 5. 天気コードからテキストと色を取得するサブルーチン（多言語対応版）
@@ -838,7 +859,7 @@ def render_temp_line_chart(ax, df):
 # ======================================================================================
 def render_tide_curve_chart(ax, df, lat, lon):
     """
-    サブルーチン4(get_tide_level)を呼び出してデータを取得し、グラフを描画します。
+    サブルーチン4(get_marine_data)を呼び出してデータを取得し、グラフを描画します。
     is_nearbyフラグを廃止し、計算された距離(dist_km)のみに基づいて注釈を表示します。
     """
     import numpy as np
@@ -850,16 +871,20 @@ def render_tide_curve_chart(ax, df, lat, lon):
     lang_dict = translations[st.session_state.lang]
     label_fs = CONFIG.get("LABEL_SIZE", 10)
 
-    # サブルーチン4を呼び出し（戻り値の数に合わせて受け取り側も修正）
-    tide_levels, res_lat, res_lon = get_tide_level(df['time'], lat, lon)
+    # サブルーチン4を呼び出し
+    # 戻り値が辞書(marine_data)になったため、受け取り側の変数名を整理
+    marine_data, res_lat, res_lon = get_marine_data(df['time'], lat, lon)
 
-    # データなし処理
-    if tide_levels is None:
+    # データなし処理（辞書自体がNone、または辞書内にtideデータがない場合）
+    if marine_data is None or "tide" not in marine_data:
         ax.clear()
         ax.set_axis_off()
         no_data_msg = lang_dict.get("OCEAN_NONE", "※指定地点の近傍に有効な海洋データがないため表示されません")
         ax.text(0.0, 0.5, no_data_msg, transform=ax.transAxes, color="gray", fontsize=label_fs, ha='left', va='center')
         return
+
+    # 辞書から潮位リストを取り出す
+    tide_levels = marine_data["tide"]
 
     # 描画処理
     df['tide_cm'] = [v * 100 if v is not None else np.nan for v in tide_levels]
@@ -894,7 +919,7 @@ def render_tide_curve_chart(ax, df, lat, lon):
         offset_trans = ScaledTranslation(0, - (label_fs * 3.5) / 72, ax.figure.dpi_scale_trans)
         ax.text(0.0, 0.0, info_text, transform=ax.transAxes + offset_trans, color="#d62728", 
                 fontsize=label_fs - 1, ha='left', va='top')
-      
+        
 # ======================================================================================
 # 12. 高解像度グラフ画像を生成するサブルーチン
 # ======================================================================================
