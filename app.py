@@ -66,8 +66,8 @@ CONFIG = {
     "SHOW_WIND": True,                  # 風向・風速グラフ表示
     "SHOW_TEMP": True,                  # 気温グラフ表示
     "SHOW_TIDE": False,                 # 潮位グラフ表示
-    "SHOW_WAVE", True,                  # 波高
-    "SHOW_OCEAN_TEMP", True,            # 海面水温
+    "SHOW_WAVE": True,                  # 波高
+    "SHOW_OCEAN_TEMP": True,            # 海面水温
     "SHOW_W_TEXT": False,               # 天気文字表示
     "SHOW_DIR_NAME": False,             # 風向名表示
     "GRAPH_WIDTH": 15,                  # グラフ横幅(inch)
