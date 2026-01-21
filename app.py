@@ -997,11 +997,11 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
         idx += 1
     if "wave" in active_plots:
         # 今後作成する波高描画サブルーチン
-        # render_wave_height_chart(axes[idx], df, r_lat, r_lon, marine_results)
+        render_wave_height_chart(axes[idx], df, r_lat, r_lon, marine_results)
         idx += 1
     if "ocean_temp" in active_plots:
         # 今後作成する水温描画サブルーチン
-        # render_ocean_temp_chart(axes[idx], df, r_lat, r_lon, marine_results)
+        render_ocean_temp_chart(axes[idx], df, r_lat, r_lon, marine_results)
         idx += 1
     if "tide" in active_plots:
         # 取得済みデータを渡す形に修正
@@ -1022,9 +1022,119 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
     plt.close(fig) 
     
     return base64.b64encode(buf.getvalue()).decode(), ratio_info, start_idx, df
-    
+
 # ======================================================================================
-# 13. お天気アイコンのHTMLを生成するサブルーチン
+# 13. 波高グラフを描画するサブルーチン
+# ======================================================================================
+def render_wave_height_chart(ax, df, lat, lon, marine_results, res_lat, res_lon):
+    """
+    サブルーチン12から渡された海洋データ(marine_results)を使用して、波高グラフを描画します。
+    """
+    import numpy as np
+    import streamlit as st
+    import pandas as pd
+    from matplotlib.transforms import ScaledTranslation
+
+    translations = get_language_dict()
+    lang_dict = translations[st.session_state.lang]
+    label_fs = CONFIG.get("LABEL_SIZE", 10)
+
+    # データなし処理
+    if marine_results is None or "wave" not in marine_results:
+        ax.clear()
+        ax.set_axis_off()
+        no_data_msg = lang_dict.get("WAVE_NONE", "※指定地点の近傍に有効な波高データがないため表示されません")
+        ax.text(0.0, 0.5, no_data_msg, transform=ax.transAxes, color="gray", fontsize=label_fs, ha='left', va='center')
+        return
+
+    # データをdfに格納
+    df['wave_m'] = [v if v is not None else np.nan for v in marine_results["wave"]]
+    
+    # 描画処理 (波をイメージした緑系の色 #2ca02c を使用)
+    ax.plot(df['time'], df['wave_m'], color="#2ca02c", linewidth=2, marker='o', markersize=3, markevery=3)
+    ax.set_ylabel(lang_dict.get("波高 (m)", "Wave (m)"), fontsize=label_fs)
+    ax.grid(True, axis='y', linestyle='--', alpha=0.5)
+
+    # 数値ラベル（3時間おき）
+    for i in range(0, len(df), 3):
+        dt, val = df['time'].iloc[i], df['wave_m'].iloc[i]
+        if not pd.isna(val):
+            ax.text(dt, 1.05, f"{val:.1f}", ha='center', va='bottom', color="#2ca02c", 
+                    fontsize=label_fs, transform=ax.get_xaxis_transform())
+
+    # 距離・方位注釈 (潮位と同様のロジック)
+    dx = (res_lon - lon) * 111 * np.cos(np.radians(lat))
+    dy = (res_lat - lat) * 111
+    dist_km = round(np.sqrt(dx**2 + dy**2), 1)
+
+    if dist_km >= 0.5:
+        angle = np.rad2deg(np.arctan2(dx, dy))
+        base_dirs = lang_dict.get("DIRECTIONS_8", ["北", "北東", "東", "南東", "南", "南西", "西", "北西"])
+        directions_9 = base_dirs + [base_dirs[0]]
+        res_dir = directions_9[int((angle + 22.5) % 360 // 45)]
+        msg_tmpl = lang_dict.get("OCEAN_INFO", "※指定地点の最寄り（{res_dir}約{dist_km}km）の海洋データを表示しています。")
+        info_text = msg_tmpl.format(res_dir=res_dir, dist_km=dist_km)
+        offset_trans = ScaledTranslation(0, - (label_fs * 3.5) / 72, ax.figure.dpi_scale_trans)
+        ax.text(0.0, 0.0, info_text, transform=ax.transAxes + offset_trans, color="#d62728", 
+                fontsize=label_fs - 1, ha='left', va='top')
+        
+# ======================================================================================
+# 14. 海面水温グラフを描画するサブルーチン
+# ======================================================================================
+def render_ocean_temp_chart(ax, df, lat, lon, marine_results, res_lat, res_lon):
+    """
+    サブルーチン12から渡された海洋データ(marine_results)を使用して、海面水温グラフを描画します。
+    """
+    import numpy as np
+    import streamlit as st
+    import pandas as pd
+    from matplotlib.transforms import ScaledTranslation
+
+    translations = get_language_dict()
+    lang_dict = translations[st.session_state.lang]
+    label_fs = CONFIG.get("LABEL_SIZE", 10)
+
+    # データなし処理
+    if marine_results is None or "temp" not in marine_results:
+        ax.clear()
+        ax.set_axis_off()
+        no_data_msg = lang_dict.get("OTEMP_NONE", "※指定地点の近傍に有効な水温データがないため表示されません")
+        ax.text(0.0, 0.5, no_data_msg, transform=ax.transAxes, color="gray", fontsize=label_fs, ha='left', va='center')
+        return
+
+    # データをdfに格納
+    df['ocean_temp'] = [v if v is not None else np.nan for v in marine_results["temp"]]
+    
+    # 描画処理 (温かみのあるオレンジ系の色 #ff7f0e を使用)
+    ax.plot(df['time'], df['ocean_temp'], color="#ff7f0e", linewidth=2, marker='o', markersize=3, markevery=3)
+    ax.set_ylabel(lang_dict.get("水温 (℃)", "Water (°C)"), fontsize=label_fs)
+    ax.grid(True, axis='y', linestyle='--', alpha=0.5)
+
+    # 数値ラベル（3時間おき）
+    for i in range(0, len(df), 3):
+        dt, val = df['time'].iloc[i], df['ocean_temp'].iloc[i]
+        if not pd.isna(val):
+            ax.text(dt, 1.05, f"{val:.1f}", ha='center', va='bottom', color="#ff7f0e", 
+                    fontsize=label_fs, transform=ax.get_xaxis_transform())
+
+    # 距離・方位注釈
+    dx = (res_lon - lon) * 111 * np.cos(np.radians(lat))
+    dy = (res_lat - lat) * 111
+    dist_km = round(np.sqrt(dx**2 + dy**2), 1)
+
+    if dist_km >= 0.5:
+        angle = np.rad2deg(np.arctan2(dx, dy))
+        base_dirs = lang_dict.get("DIRECTIONS_8", ["北", "北東", "東", "南東", "南", "南西", "西", "北西"])
+        directions_9 = base_dirs + [base_dirs[0]]
+        res_dir = directions_9[int((angle + 22.5) % 360 // 45)]
+        msg_tmpl = lang_dict.get("OCEAN_INFO", "※指定地点の最寄り（{res_dir}約{dist_km}km）の海洋データを表示しています。")
+        info_text = msg_tmpl.format(res_dir=res_dir, dist_km=dist_km)
+        offset_trans = ScaledTranslation(0, - (label_fs * 3.5) / 72, ax.figure.dpi_scale_trans)
+        ax.text(0.0, 0.0, info_text, transform=ax.transAxes + offset_trans, color="#d62728", 
+                fontsize=label_fs - 1, ha='left', va='top')
+        
+# ======================================================================================
+# 15. お天気アイコンのHTMLを生成するサブルーチン
 # ======================================================================================
 def generate_weather_icons_html(df, ratio_info, display_width, start_idx, icon_margin=0):
     """
