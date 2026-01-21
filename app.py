@@ -997,11 +997,11 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
         idx += 1
     if "wave" in active_plots:
         # 今後作成する波高描画サブルーチン
-        # render_wave_height_chart(axes[idx], df, r_lat, r_lon, marine_results)
+        render_wave_height_chart(axes[idx], df, lat, lon, marine_results, r_lat, r_lon)
         idx += 1
     if "ocean_temp" in active_plots:
         # 今後作成する水温描画サブルーチン
-        render_ocean_temp_chart(axes[idx], df, r_lat, r_lon, marine_results)
+        render_ocean_temp_chart(axes[idx], df, lat, lon, marine_results, r_lat, r_lon)
         idx += 1
     if "tide" in active_plots:
         # 取得済みデータを渡す形に修正
