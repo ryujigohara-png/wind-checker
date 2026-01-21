@@ -86,7 +86,7 @@ CONFIG = {
     "FAV_NAME_LEN": 12,                 # MySpot編集ダイアログ 地名表示制限（文字）
     "DEFAULT_PRECIP_Y": 1.00,           # 降水量ラベル高さ（グラフ枠を1.0とした相対値）
     "DEFAULT_ICON_MARGIN": 0,           # 天気アイコン下余白(px)
-    "DEFAULT_RATIOS": [4.0, 1.2, 0.8],  # グラフ比率設定
+    "DEFAULT_RATIOS": [4.0, 1.2, 0.8, 0.8, 0.8],  # グラフ比率設定
     # その他既定値
     "SHOW_DEV_MODE": False,                    # 開発者モード初期値
     "STORAGE_KEY": "wind_checker_settings_v2", # ローカルストレージキー
@@ -1152,8 +1152,10 @@ def show_settings_dialog():
             r = st.session_state.get("ratios", CONFIG["DEFAULT_RATIOS"])
             r0 = st.number_input("比率:風向", 0.5, 10.0, float(r[0]), 0.1)
             r1 = st.number_input("比率:気温", 0.5, 5.0, float(r[1]), 0.1)
-            r2 = st.number_input("比率:潮位", 0.5, 5.0, float(r[2]), 0.1)
-            d_ratios = [r0, r1, r2]
+            r2 = st.number_input("比率:波高", 0.5, 10.0, float(r[0]), 0.1)
+            r3 = st.number_input("比率:海面水温", 0.5, 5.0, float(r[1]), 0.1)
+            r4 = st.number_input("比率:潮位", 0.5, 5.0, float(r[2]), 0.1)
+            d_ratios = [r0, r1, r2, r3, r4]
         else:
             d_min_w = st.session_state.get("min_container_width", CONFIG["CONTENA_MIN_W"])
             d_dpi = st.session_state.get("graph_dpi", CONFIG["DPI"])
