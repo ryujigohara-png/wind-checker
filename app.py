@@ -66,8 +66,8 @@ CONFIG = {
     "SHOW_WIND": True,                  # 風向・風速グラフ表示
     "SHOW_TEMP": True,                  # 気温グラフ表示
     "SHOW_TIDE": False,                 # 潮位グラフ表示
-    "SHOW_WAVE": True,                  # 波高
-    "SHOW_OCEAN_TEMP": True,            # 海面水温
+    "SHOW_WAVE": True,                  # 波高グラフ表示
+    "SHOW_OCEAN_TEMP": True,            # 海面水温グラフ表示
     "SHOW_W_TEXT": False,               # 天気文字表示
     "SHOW_DIR_NAME": False,             # 風向名表示
     "GRAPH_WIDTH": 15,                  # グラフ横幅(inch)
@@ -163,6 +163,8 @@ def get_language_dict():
             "風向・風速グラフ表示": "風向・風速グラフ表示",
             "気温グラフ表示": "気温グラフ表示",
             "潮位グラフ表示": "潮位グラフ表示",
+            "波高グラフ表示": "波高グラフ表示",
+            "海面水温グラフ表示": "海面水温グラフ表示",
             "天気文字表示": "天気文字表示",
             "風向名表示": "風向名表示",
             "グラフ枠横幅 (inch)": "グラフ枠横幅 (inch)",
@@ -261,6 +263,8 @@ def get_language_dict():
             "風向・風速グラフ表示": "Show Wind Speed/Dir",
             "気温グラフ表示": "Show Temperature",
             "潮位グラフ表示": "Show Tide Level",
+            "波高グラフ表示": "Show Wave Height",
+            "海面水温グラフ表示": "Show Sea Surface Temperature",
             "天気文字表示": "Show Weather Text",
             "風向名表示": "Show Wind Dir Name",
             "グラフ枠横幅 (inch)": "Graph Width (inch)",
