@@ -66,6 +66,8 @@ CONFIG = {
     "SHOW_WIND": True,                  # 風向・風速グラフ表示
     "SHOW_TEMP": True,                  # 気温グラフ表示
     "SHOW_TIDE": False,                 # 潮位グラフ表示
+    "SHOW_WAVE", True,                  # 波高
+    "SHOW_OCEAN_TEMP", True,            # 海面水温
     "SHOW_W_TEXT": False,               # 天気文字表示
     "SHOW_DIR_NAME": False,             # 風向名表示
     "GRAPH_WIDTH": 15,                  # グラフ横幅(inch)
@@ -857,10 +859,10 @@ def render_temp_line_chart(ax, df):
 # ======================================================================================
 # 11. 潮位曲線グラフを描画するサブルーチン
 # ======================================================================================
-def render_tide_curve_chart(ax, df, lat, lon):
+def render_tide_curve_chart(ax, df, lat, lon, marine_results, res_lat, res_lon):
     """
-    サブルーチン4(get_marine_data)を呼び出してデータを取得し、グラフを描画します。
-    is_nearbyフラグを廃止し、計算された距離(dist_km)のみに基づいて注釈を表示します。
+    サブルーチン12から渡された海洋データ(marine_results)を使用して、潮位グラフを描画します。
+    計算された距離(dist_km)に基づいて注釈を表示します。
     """
     import numpy as np
     import streamlit as st
@@ -871,20 +873,16 @@ def render_tide_curve_chart(ax, df, lat, lon):
     lang_dict = translations[st.session_state.lang]
     label_fs = CONFIG.get("LABEL_SIZE", 10)
 
-    # サブルーチン4を呼び出し
-    # 戻り値が辞書(marine_data)になったため、受け取り側の変数名を整理
-    marine_data, res_lat, res_lon = get_marine_data(df['time'], lat, lon)
-
-    # データなし処理（辞書自体がNone、または辞書内にtideデータがない場合）
-    if marine_data is None or "tide" not in marine_data:
+    # データなし処理（渡されたデータがNone、または辞書内にtideデータがない場合）
+    if marine_results is None or "tide" not in marine_results:
         ax.clear()
         ax.set_axis_off()
         no_data_msg = lang_dict.get("OCEAN_NONE", "※指定地点の近傍に有効な海洋データがないため表示されません")
         ax.text(0.0, 0.5, no_data_msg, transform=ax.transAxes, color="gray", fontsize=label_fs, ha='left', va='center')
         return
 
-    # 辞書から潮位リストを取り出す
-    tide_levels = marine_data["tide"]
+    # 渡された辞書から潮位リストを取り出す
+    tide_levels = marine_results["tide"]
 
     # 描画処理
     df['tide_cm'] = [v * 100 if v is not None else np.nan for v in tide_levels]
@@ -905,7 +903,7 @@ def render_tide_curve_chart(ax, df, lat, lon):
     dy = (res_lat - lat) * 111
     dist_km = round(np.sqrt(dx**2 + dy**2), 1)
 
-    # is_nearbyフラグに依らず、物理的な距離の乖離(0.5km以上)がある場合に表示
+    # 物理的な距離の乖離(0.5km以上)がある場合に表示
     if dist_km >= 0.5:
         # 方位角の計算
         angle = np.rad2deg(np.arctan2(dx, dy))
@@ -958,12 +956,23 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
     active_plots = []
     if design_params.get("show_wind", True): active_plots.append("wind")
     if design_params.get("show_temp", True): active_plots.append("temp")
+    if design_params.get("show_wave", True): active_plots.append("wave")  # 波高判定追加
+    if design_params.get("show_ocean_temp", True): active_plots.append("ocean_temp")  # 水温判定追加
     if design_params.get("show_tide", True): active_plots.append("tide")
     
     if not active_plots: return None, (0, 0), start_idx, df
+
+    # --- 海洋データの事前取得 (案2: 海洋系グラフがいずれかONの時のみ) ---
+    marine_results = None
+    r_lat, r_lon = lat, lon
+    ocean_keys = {"wave", "ocean_temp", "tide"}
+    if any(k in active_plots for k in ocean_keys):
+        marine_results, r_lat, r_lon = get_marine_data(df['time'], lat, lon)
     
     ratios = design_params.get("ratios", CONFIG["DEFAULT_RATIOS"])
-    current_ratios = [ratios[i] for i, p in enumerate(["wind", "temp", "tide"]) if p in active_plots]
+    # 比率計算用のインデックス管理（wind, temp, wave, ocean_temp, tide の順）
+    all_possible = ["wind", "temp", "wave", "ocean_temp", "tide"]
+    current_ratios = [ratios[i] for i, p in enumerate(all_possible) if p in active_plots]
     
     fig_w = design_params.get("width", CONFIG["GRAPH_WIDTH"])
     fig_h = design_params.get("height", CONFIG["GRAPH_HIGHT"])
@@ -982,9 +991,17 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
     if "temp" in active_plots:
         render_temp_line_chart(axes[idx], df)
         idx += 1
+    if "wave" in active_plots:
+        # 今後作成する波高描画サブルーチン
+        # render_wave_height_chart(axes[idx], df, r_lat, r_lon, marine_results)
+        idx += 1
+    if "ocean_temp" in active_plots:
+        # 今後作成する水温描画サブルーチン
+        # render_ocean_temp_chart(axes[idx], df, r_lat, r_lon, marine_results)
+        idx += 1
     if "tide" in active_plots:
-        # 戻り値を受け取らない元の形を維持
-        render_tide_curve_chart(axes[idx], df, lat, lon)
+        # 取得済みデータを渡す形に修正
+        render_tide_curve_chart(axes[idx], df, lat, lon, marine_results, r_lat, r_lon)
         idx += 1
 
     for ax in axes:
@@ -1080,6 +1097,8 @@ def show_settings_dialog():
         d_show_wind = st.toggle(lang_dict["風向・風速グラフ表示"], value=st.session_state.get("show_wind", CONFIG["SHOW_WIND"]))
         d_show_temp = st.toggle(lang_dict["気温グラフ表示"], value=st.session_state.get("show_temp", CONFIG["SHOW_TEMP"]))
         d_show_tide = st.toggle(lang_dict["潮位グラフ表示"], value=st.session_state.get("show_tide", CONFIG["SHOW_TIDE"]))
+        d_show_tide = st.toggle(lang_dict["波高グラフ表示"], value=st.session_state.get("show_tide", CONFIG["SHOW_TIDE"]))
+        d_show_tide = st.toggle(lang_dict["海面水温グラフ表示"], value=st.session_state.get("show_tide", CONFIG["SHOW_TIDE"]))
         d_show_w_text = st.toggle(lang_dict["天気文字表示"], value=st.session_state.get("show_w_text", CONFIG["SHOW_W_TEXT"]))
         d_show_dir_name = st.toggle(lang_dict["風向名表示"], value=st.session_state.get("show_dir_name", CONFIG["SHOW_DIR_NAME"]))
         
@@ -1154,6 +1173,7 @@ def show_settings_dialog():
         if st.button(lang_dict["設定をすべて初期値に戻す"], key="reset_all_settings", use_container_width=True):
             st.session_state.update({
                 "show_wind": CONFIG["SHOW_WIND"], "show_temp": CONFIG["SHOW_TEMP"], "show_tide": CONFIG["SHOW_TIDE"],
+                "show_wave": CONFIG["SHOW_WAVE"], "show_ocean_temp": CONFIG["SHOW_OCEAN_TEMP"],
                 "width": CONFIG["GRAPH_WIDTH"], "base_height": CONFIG["GRAPH_HIGHT"], "base_font_size": CONFIG["GRAPH_FONT_SIZE"],
                 "label_font_size": CONFIG["LABEL_SIZE"], "danger_v": CONFIG["DEFAULT_DANGER_V"], "sel_dirs": list(CONFIG["DEFAULT_DIRS"]),
                 "min_container_width": CONFIG["CONTENA_MIN_W"], "graph_dpi": CONFIG["DPI"], "show_w_text": CONFIG["SHOW_W_TEXT"],
@@ -1172,6 +1192,7 @@ def show_settings_dialog():
             if st.button(lang_dict["設定を適用して更新"], key="apply_all_settings", type="primary", use_container_width=True):
                 st.session_state.update({
                     "show_wind": d_show_wind, "show_temp": d_show_temp, "show_tide": d_show_tide,
+                    "show_wave": d_show_wave, "show_ocean_temp": d_show_ocean_temp,
                     "width": d_width, "base_height": d_base_h, "base_font_size": d_base_f,
                     "label_font_size": d_label_f, "danger_v": d_danger_v, "sel_dirs": new_sel_dirs,
                     "min_container_width": d_min_w, "graph_dpi": d_dpi, "show_w_text": d_show_w_text,
@@ -1224,7 +1245,9 @@ def show_sidebar_controls():
         st.session_state.get("ratios", CONFIG["DEFAULT_RATIOS"]),
         st.session_state.get("show_wind", True),
         st.session_state.get("show_temp", True),
-        st.session_state.get("show_tide", False)
+        st.session_state.get("show_tide", False),
+        st.session_state.get("show_wave", True),
+        st.session_state.get("show_ocean_temp", True)
     )
 
     design_params = {
@@ -1237,6 +1260,8 @@ def show_sidebar_controls():
         "show_wind": st.session_state.get("show_wind", CONFIG["SHOW_WIND"]),
         "show_temp": st.session_state.get("show_temp", CONFIG["SHOW_TEMP"]),
         "show_tide": st.session_state.get("show_tide", CONFIG["SHOW_TIDE"]),
+        "show_wave": st.session_state.get("show_wave", CONFIG["SHOW_WAVE"]),
+        "show_ocean_temp": st.session_state.get("show_ocean_temp", CONFIG["SHOW_OCEAN_TEMP"]),
         "show_w_text": st.session_state.get("show_w_text", CONFIG["SHOW_W_TEXT"]),
         "show_dir_name": st.session_state.get("show_dir_name", CONFIG["SHOW_DIR_NAME"]),
         "ratios": st.session_state.get("ratios", CONFIG["DEFAULT_RATIOS"]),
@@ -1504,6 +1529,8 @@ def save_settings_to_browser():
         "show_wind": st.session_state.show_wind,
         "show_temp": st.session_state.show_temp,
         "show_tide": st.session_state.show_tide,
+        "show_wave": st.session_state.show_wjave,
+        "show_ocean_temp": st.session_state.show_ocean_temp,
         "show_w_text": st.session_state.get("show_w_text", CONFIG["SHOW_W_TEXT"]),
         "show_dir_name": st.session_state.get("show_dir_name", CONFIG["SHOW_DIR_NAME"]),
         "width": st.session_state.width,
@@ -1556,6 +1583,8 @@ def sync_all_settings():
         "show_wind": CONFIG["SHOW_WIND"],
         "show_temp": CONFIG["SHOW_TEMP"],
         "show_tide": CONFIG["SHOW_TIDE"],
+        "show_wave": CONFIG["SHOW_WAVE"],
+        "show_ocean_temp": CONFIG["SHOW_OCEAN_TEMP"],
         "show_w_text": CONFIG["SHOW_W_TEXT"],
         "show_dir_name": CONFIG["SHOW_DIR_NAME"],
         "lat": CONFIG["DEFAULT_LAT"],
@@ -1599,6 +1628,8 @@ def sync_all_settings():
             st.session_state.show_wind = data.get("show_wind", CONFIG["SHOW_WIND"])
             st.session_state.show_temp = data.get("show_temp", CONFIG["SHOW_TEMP"])
             st.session_state.show_tide = data.get("show_tide", CONFIG["SHOW_TIDE"])
+            st.session_state.show_wave = data.get("show_wave", CONFIG["SHOW_WAVE"])
+            st.session_state.show_ocean_temp = data.get("show_ocean_temp", CONFIG["SHOW_OCEAN_TEMP"])
             st.session_state.show_w_text = data.get("show_w_text", CONFIG["SHOW_W_TEXT"])
             st.session_state.show_dir_name = data.get("show_dir_name", CONFIG["SHOW_DIR_NAME"])
             st.session_state.width = float(data.get("width", CONFIG["GRAPH_WIDTH"]))
