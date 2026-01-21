@@ -463,7 +463,7 @@ def get_marine_data(times, lat, lon):
             "longitude": t_lon,
             "hourly": "sea_level_height_msl,wave_height,sea_surface_temperature",
             "timezone": "auto",
-            "forecast_days": 8",
+            "forecast_days": "8",
             "cell_selection": "sea"
         }
 
