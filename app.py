@@ -216,6 +216,8 @@ def get_language_dict():
             "風速 (m/s)": "風速 (m/s)",
             "気温 (℃)": "気温 (℃)",
             "潮位 (cm)": "潮位 (cm)",
+            "波高 (m)": "波高 (m)",
+            "海水温 (℃)": "海水温 (℃)",
             "降水量mm　": "降水量mm　",
             "天気": "天気",
             "OCEAN_INFO": "※指定地点の最寄り（{res_dir}約{dist_km}km）の海洋データを表示しています。",
@@ -298,7 +300,7 @@ def get_language_dict():
             "比率:気温": "Ratio: Temp",
             "比率:潮位": "Ratio: Tide",
             "設定をすべて初期値に戻す": "Reset All to Default",
-            "設定を適用して更新": "Apply and Update",
+            "設定を適用して更新": "Apply and Update", 
             "キャンセルして戻る": "Cancel",
             "現在の登録地点 (クリックで削除)": "Current My Spots (Click to delete)",
             "--- 地点の追加 ---": "--- Add New Spot ---",
@@ -316,6 +318,8 @@ def get_language_dict():
             "風速 (m/s)": "Wind Speed (m/s)",
             "気温 (℃)": "Temp (℃)",
             "潮位 (cm)": "Tide (cm)",
+            "波高 (m)": "Wave (m)",
+            "海水温 (℃)": "Water (℃)",
             "降水量mm　": "Precip (mm) ",
             "天気": "Weather",
             "OCEAN_INFO": "*Showing marine data from {res_dir} approx. {dist_km}km away.",
@@ -1101,7 +1105,7 @@ def render_ocean_temp_chart(ax, df, lat, lon, marine_results, res_lat, res_lon, 
     
     # 描画処理 (温かみのあるオレンジ系の色 #ff7f0e を使用)
     ax.plot(df['time'], df['ocean_temp'], color="#ff7f0e", linewidth=2, marker='o', markersize=3, markevery=3)
-    ax.set_ylabel(lang_dict.get("水温 (℃)", "Water (°C)"), fontsize=label_fs)
+    ax.set_ylabel(lang_dict.get("海水温 (℃)", "Water (°C)"), fontsize=label_fs)
     ax.grid(True, axis='y', linestyle='--', alpha=0.5)
 
     # 数値ラベル（3時間おき）
