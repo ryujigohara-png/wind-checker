@@ -863,10 +863,10 @@ def render_temp_line_chart(ax, df):
 # ======================================================================================
 # 11. 潮位曲線グラフを描画するサブルーチン
 # ======================================================================================
-def render_tide_curve_chart(ax, df, lat, lon, marine_results, res_lat, res_lon):
+def render_tide_curve_chart(ax, df, lat, lon, marine_results, res_lat, res_lon, is_bottom=False):
     """
     サブルーチン12から渡された海洋データ(marine_results)を使用して、潮位グラフを描画します。
-    計算された距離(dist_km)に基づいて注釈を表示します。
+    is_bottomがTrueの場合のみ、地点注釈を表示します。
     """
     import numpy as np
     import streamlit as st
@@ -877,16 +877,17 @@ def render_tide_curve_chart(ax, df, lat, lon, marine_results, res_lat, res_lon):
     lang_dict = translations[st.session_state.lang]
     label_fs = CONFIG.get("LABEL_SIZE", 10)
 
-    # データなし処理（渡されたデータがNone、または辞書内にtideデータがない場合）
-    if marine_results is None or "tide" not in marine_results:
+    # サブルーチン4を呼び出し（戻り値の数に合わせて受け取り側も修正）
+    # ※上位（サブルーチン12）で取得済みのデータを使用するように変更
+    tide_levels = marine_results["tide"] if marine_results and "tide" in marine_results else None
+
+    # データなし処理
+    if tide_levels is None:
         ax.clear()
         ax.set_axis_off()
         no_data_msg = lang_dict.get("OCEAN_NONE", "※指定地点の近傍に有効な海洋データがないため表示されません")
         ax.text(0.0, 0.5, no_data_msg, transform=ax.transAxes, color="gray", fontsize=label_fs, ha='left', va='center')
         return
-
-    # 渡された辞書から潮位リストを取り出す
-    tide_levels = marine_results["tide"]
 
     # 描画処理
     df['tide_cm'] = [v * 100 if v is not None else np.nan for v in tide_levels]
@@ -902,25 +903,9 @@ def render_tide_curve_chart(ax, df, lat, lon, marine_results, res_lat, res_lon):
                     fontsize=label_fs, transform=ax.get_xaxis_transform())
 
     # --- 方位・距離メッセージの判定ロジック ---
-    # 距離の近似計算 (km)
-    dx = (res_lon - lon) * 111 * np.cos(np.radians(lat))
-    dy = (res_lat - lat) * 111
-    dist_km = round(np.sqrt(dx**2 + dy**2), 1)
-
-    # 物理的な距離の乖離(0.5km以上)がある場合に表示
-    if dist_km >= 0.5:
-        # 方位角の計算
-        angle = np.rad2deg(np.arctan2(dx, dy))
-        base_dirs = lang_dict.get("DIRECTIONS_8", ["北", "北東", "東", "南東", "南", "南西", "西", "北西"])
-        directions_9 = base_dirs + [base_dirs[0]]
-        res_dir = directions_9[int((angle + 22.5) % 360 // 45)]
-        
-        msg_tmpl = lang_dict.get("OCEAN_INFO", "※指定地点の最寄り（{res_dir}約{dist_km}km）の海洋データを表示しています。")
-        info_text = msg_tmpl.format(res_dir=res_dir, dist_km=dist_km)
-        
-        offset_trans = ScaledTranslation(0, - (label_fs * 3.5) / 72, ax.figure.dpi_scale_trans)
-        ax.text(0.0, 0.0, info_text, transform=ax.transAxes + offset_trans, color="#d62728", 
-                fontsize=label_fs - 1, ha='left', va='top')
+    # サブルーチン15を呼び出して描画。is_bottomがTrueの場合のみ実行。
+    if is_bottom:
+        render_ocean_location_info(ax, lat, lon, res_lat, res_lon, label_fs, lang_dict)
         
 # ======================================================================================
 # 12. 高解像度グラフ画像を生成するサブルーチン
@@ -1026,9 +1011,10 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
 # ======================================================================================
 # 13. 波高グラフを描画するサブルーチン
 # ======================================================================================
-def render_wave_height_chart(ax, df, lat, lon, marine_results, res_lat, res_lon):
+def render_wave_height_chart(ax, df, lat, lon, marine_results, res_lat, res_lon, is_bottom=False):
     """
     サブルーチン12から渡された海洋データ(marine_results)を使用して、波高グラフを描画します。
+    is_bottomがTrueの場合のみ、地点注釈を表示します。
     """
     import numpy as np
     import streamlit as st
@@ -1043,7 +1029,7 @@ def render_wave_height_chart(ax, df, lat, lon, marine_results, res_lat, res_lon)
     if marine_results is None or "wave" not in marine_results:
         ax.clear()
         ax.set_axis_off()
-        no_data_msg = lang_dict.get("WAVE_NONE", "※指定地点の近傍に有効な波高データがないため表示されません")
+        no_data_msg = lang_dict.get("OCEAN_NONE", "※指定地点の近傍に有効な海洋データがないため表示されません")
         ax.text(0.0, 0.5, no_data_msg, transform=ax.transAxes, color="gray", fontsize=label_fs, ha='left', va='center')
         return
 
@@ -1062,28 +1048,17 @@ def render_wave_height_chart(ax, df, lat, lon, marine_results, res_lat, res_lon)
             ax.text(dt, 1.05, f"{val:.1f}", ha='center', va='bottom', color="#2ca02c", 
                     fontsize=label_fs, transform=ax.get_xaxis_transform())
 
-    # 距離・方位注釈 (潮位と同様のロジック)
-    dx = (res_lon - lon) * 111 * np.cos(np.radians(lat))
-    dy = (res_lat - lat) * 111
-    dist_km = round(np.sqrt(dx**2 + dy**2), 1)
-
-    if dist_km >= 0.5:
-        angle = np.rad2deg(np.arctan2(dx, dy))
-        base_dirs = lang_dict.get("DIRECTIONS_8", ["北", "北東", "東", "南東", "南", "南西", "西", "北西"])
-        directions_9 = base_dirs + [base_dirs[0]]
-        res_dir = directions_9[int((angle + 22.5) % 360 // 45)]
-        msg_tmpl = lang_dict.get("OCEAN_INFO", "※指定地点の最寄り（{res_dir}約{dist_km}km）の海洋データを表示しています。")
-        info_text = msg_tmpl.format(res_dir=res_dir, dist_km=dist_km)
-        offset_trans = ScaledTranslation(0, - (label_fs * 3.5) / 72, ax.figure.dpi_scale_trans)
-        ax.text(0.0, 0.0, info_text, transform=ax.transAxes + offset_trans, color="#d62728", 
-                fontsize=label_fs - 1, ha='left', va='top')
+    # --- 方位・距離メッセージの判定ロジック ---
+    if is_bottom:
+        render_ocean_location_info(ax, lat, lon, res_lat, res_lon, label_fs, lang_dict)
         
 # ======================================================================================
 # 14. 海面水温グラフを描画するサブルーチン
 # ======================================================================================
-def render_ocean_temp_chart(ax, df, lat, lon, marine_results, res_lat, res_lon):
+def render_ocean_temp_chart(ax, df, lat, lon, marine_results, res_lat, res_lon, is_bottom=False):
     """
     サブルーチン12から渡された海洋データ(marine_results)を使用して、海面水温グラフを描画します。
+    is_bottomがTrueの場合のみ、地点注釈を表示します。
     """
     import numpy as np
     import streamlit as st
@@ -1098,7 +1073,7 @@ def render_ocean_temp_chart(ax, df, lat, lon, marine_results, res_lat, res_lon):
     if marine_results is None or "temp" not in marine_results:
         ax.clear()
         ax.set_axis_off()
-        no_data_msg = lang_dict.get("OTEMP_NONE", "※指定地点の近傍に有効な水温データがないため表示されません")
+        no_data_msg = lang_dict.get("OCEAN_NONE", "※指定地点の近傍に有効な海洋データがないため表示されません")
         ax.text(0.0, 0.5, no_data_msg, transform=ax.transAxes, color="gray", fontsize=label_fs, ha='left', va='center')
         return
 
@@ -1117,24 +1092,43 @@ def render_ocean_temp_chart(ax, df, lat, lon, marine_results, res_lat, res_lon):
             ax.text(dt, 1.05, f"{val:.1f}", ha='center', va='bottom', color="#ff7f0e", 
                     fontsize=label_fs, transform=ax.get_xaxis_transform())
 
-    # 距離・方位注釈
+    # --- 方位・距離メッセージの判定ロジック ---
+    if is_bottom:
+        render_ocean_location_info(ax, lat, lon, res_lat, res_lon, label_fs, lang_dict)
+        
+# ======================================================================================
+# 15. 海洋データの地点情報を描画するサブルーチン
+# ======================================================================================
+def render_ocean_location_info(ax, lat, lon, res_lat, res_lon, label_fs, lang_dict):
+    """
+    指定地点とAPI取得地点の距離・方位を計算し、グラフ下部に注釈を表示します。
+    """
+    import numpy as np
+    from matplotlib.transforms import ScaledTranslation
+
+    # 距離の近似計算 (km)
     dx = (res_lon - lon) * 111 * np.cos(np.radians(lat))
     dy = (res_lat - lat) * 111
     dist_km = round(np.sqrt(dx**2 + dy**2), 1)
 
+    # 物理的な距離の乖離(0.5km以上)がある場合に表示
     if dist_km >= 0.5:
+        # 方位角の計算
         angle = np.rad2deg(np.arctan2(dx, dy))
         base_dirs = lang_dict.get("DIRECTIONS_8", ["北", "北東", "東", "南東", "南", "南西", "西", "北西"])
         directions_9 = base_dirs + [base_dirs[0]]
         res_dir = directions_9[int((angle + 22.5) % 360 // 45)]
+        
         msg_tmpl = lang_dict.get("OCEAN_INFO", "※指定地点の最寄り（{res_dir}約{dist_km}km）の海洋データを表示しています。")
         info_text = msg_tmpl.format(res_dir=res_dir, dist_km=dist_km)
+        
+        # テキスト位置のオフセット設定
         offset_trans = ScaledTranslation(0, - (label_fs * 3.5) / 72, ax.figure.dpi_scale_trans)
         ax.text(0.0, 0.0, info_text, transform=ax.transAxes + offset_trans, color="#d62728", 
                 fontsize=label_fs - 1, ha='left', va='top')
-        
+
 # ======================================================================================
-# 15. お天気アイコンのHTMLを生成するサブルーチン
+# 16. お天気アイコンのHTMLを生成するサブルーチン
 # ======================================================================================
 def generate_weather_icons_html(df, ratio_info, display_width, start_idx, icon_margin=0):
     """
