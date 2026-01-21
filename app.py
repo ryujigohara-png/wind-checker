@@ -980,6 +980,7 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
     if len(active_plots) == 1: axes = [axes]
     formatter = get_x_axis_formatter()
     
+# --- 描画ループ部分 ---
     idx = 0
     if "wind" in active_plots:
         render_wind_bar_chart(axes[idx], df, danger_v, start_idx, design_params)
@@ -987,17 +988,28 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
     if "temp" in active_plots:
         render_temp_line_chart(axes[idx], df)
         idx += 1
-    if "wave" in active_plots:
-        # 今後作成する波高描画サブルーチン
-        render_wave_height_chart(axes[idx], df, lat, lon, marine_results, r_lat, r_lon)
+
+    # 海洋系グラフの最下部判定ロジック
+    # active_plots の中で、より下位に表示される項目が ON でない場合に True となる
+    has_wave = "wave" in active_plots
+    has_otemp = "ocean_temp" in active_plots
+    has_tide = "tide" in active_plots
+
+    if has_wave:
+        # 下に「水温」も「潮位」も表示されないなら、波高がボトム
+        is_bot = (not has_otemp and not has_tide)
+        render_wave_height_chart(axes[idx], df, lat, lon, marine_results, r_lat, r_lon, is_bottom=is_bot)
         idx += 1
-    if "ocean_temp" in active_plots:
-        # 今後作成する水温描画サブルーチン
-        render_ocean_temp_chart(axes[idx], df, lat, lon, marine_results, r_lat, r_lon)
+        
+    if has_otemp:
+        # 下に「潮位」が表示されないなら、水温がボトム
+        is_bot = (not has_tide)
+        render_ocean_temp_chart(axes[idx], df, lat, lon, marine_results, r_lat, r_lon, is_bottom=is_bot)
         idx += 1
-    if "tide" in active_plots:
-        # 取得済みデータを渡す形に修正
-        render_tide_curve_chart(axes[idx], df, lat, lon, marine_results, r_lat, r_lon)
+        
+    if has_tide:
+        # 潮位は海洋系の中で常に一番下なので、常にボトム判定
+        render_tide_curve_chart(axes[idx], df, lat, lon, marine_results, r_lat, r_lon, is_bottom=True)
         idx += 1
 
     for ax in axes:
