@@ -1529,7 +1529,7 @@ def save_settings_to_browser():
         "show_wind": st.session_state.show_wind,
         "show_temp": st.session_state.show_temp,
         "show_tide": st.session_state.show_tide,
-        "show_wave": st.session_state.show_wjave,
+        "show_wave": st.session_state.show_wave,
         "show_ocean_temp": st.session_state.show_ocean_temp,
         "show_w_text": st.session_state.get("show_w_text", CONFIG["SHOW_W_TEXT"]),
         "show_dir_name": st.session_state.get("show_dir_name", CONFIG["SHOW_DIR_NAME"]),
