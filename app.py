@@ -1253,7 +1253,6 @@ def show_settings_dialog():
         for i, d in enumerate(ALL_DIRECTIONS):
             with cols[i % 2]:
                 # 表示ラベルだけを、辞書の ALL_DIRECTIONS の同じ位置から取得して切り替える
-                # 辞書の中身が ["N", "NNE"...] ならそれが表示される
                 display_label = lang_dict["ALL_DIRECTIONS"][i]
                 
                 # チェックの判定と保存(new_sel_dirs)には、元の日本語「d」をそのまま使う
@@ -1261,7 +1260,6 @@ def show_settings_dialog():
                     new_sel_dirs.append(d)
         
         # --- 4. 開発者用調整 ---
-        # (以下、変更なし)
         is_dev_url = st.query_params.get("mode") == "dev"
         if is_dev_url:
             st.markdown("---")
@@ -1283,9 +1281,9 @@ def show_settings_dialog():
             r = st.session_state.get("ratios", CONFIG["DEFAULT_RATIOS"])
             r0 = st.number_input("比率:風向", 0.5, 10.0, float(r[0]), 0.1)
             r1 = st.number_input("比率:気温", 0.5, 5.0, float(r[1]), 0.1)
-            r2 = st.number_input("比率:波高", 0.5, 10.0, float(r[0]), 0.1)
-            r3 = st.number_input("比率:海面水温", 0.5, 5.0, float(r[1]), 0.1)
-            r4 = st.number_input("比率:潮位", 0.5, 5.0, float(r[2]), 0.1)
+            r2 = st.number_input("比率:波高", 0.5, 10.0, float(r[2]), 0.1)
+            r3 = st.number_input("比率:海面水温", 0.5, 5.0, float(r[3]), 0.1)
+            r4 = st.number_input("比率:潮位", 0.5, 5.0, float(r[4]), 0.1)
             d_ratios = [r0, r1, r2, r3, r4]
         else:
             d_min_w = st.session_state.get("min_container_width", CONFIG["CONTENA_MIN_W"])
@@ -1315,9 +1313,8 @@ def show_settings_dialog():
                 "fav_btn_width": CONFIG.get("FAV_BTN_WIDTH", 30), "fav_name_len": CONFIG.get("FAV_NAME_LEN", 12),
                 "precip_y": CONFIG["DEFAULT_PRECIP_Y"], "icon_margin": CONFIG["DEFAULT_ICON_MARGIN"], "ratios": CONFIG["DEFAULT_RATIOS"]
             })
-            save_settings_to_browser()
+            save_settings_to_browser(force_reload=True) # JS側でリロードさせる
             st.cache_data.clear()
-            st.rerun()
         
         # --- 6. 実行・キャンセルボタン ---
         c_exec, c_cancel = st.columns(2)
@@ -1336,23 +1333,17 @@ def show_settings_dialog():
                 })
                 
                 # --- デバッグ表示用コード ---
-                test_storage_write
                 st.write("### Debug: Save Data Check")
                 debug_data = {
                     "show_wave": d_show_wave,
                     "ratios": d_ratios,
-                    "ratios_types": [type(v) for v in d_ratios] # 各要素の型を確認
+                    "ratios_types": [str(type(v)) for v in d_ratios]
                 }
                 st.json(debug_data) 
                 # -------------------------
                 
-                save_settings_to_browser()
+                save_settings_to_browser(force_reload=True) # JS側でリロードさせる
                 st.cache_data.clear()
-                
-                # 【重要】一旦 st.rerun() をコメントアウトして、画面上の変化を確認できるようにします
-                # これで保存関数が動いた形跡（トースト通知など）が消えずに残ります
-                st.success("Python側の処理が完了しました。コンソールを確認してください。")
-                # st.rerun()
         
         with c_cancel:
             if st.button(lang_dict["キャンセルして戻る"], key="cancel_all_settings", use_container_width=True):
@@ -1360,7 +1351,7 @@ def show_settings_dialog():
                 
     # ダイアログの実行
     settings_dialog_content()
-
+    
 # ======================================================================================
 # 20.xx 確認ステップ1：JavaScriptの実行権限テスト用
 # ======================================================================================
@@ -1702,11 +1693,10 @@ def fetch_location_name(lat, lon):
 # ======================================================================================
 # 82. ブラウザへの保存を実行するサブルーチン
 # ======================================================================================
-def save_settings_to_browser():
+def save_settings_to_browser(force_reload=False):
     """
     st.session_state から最新の設定を収集し、localStorage へ保存します。
-    iframe (components.html) を使わず、streamlit_js_eval でメインウィンドウから直接実行します。
-    実行の有無をブラウザコンソールで確認するためのログ出力を組み込んでいます。
+    force_reload=True の場合、保存完了後に JS 側でページをリロードし、読み込みとの衝突を防ぎます。
     """
     import json
     import streamlit as st
@@ -1745,14 +1735,17 @@ def save_settings_to_browser():
     json_data = json.dumps(save_data, ensure_ascii=False)
     safe_json = json_data.replace('"', '\\"')
     
-    # JavaScript命令の構築（コンソールログを付与）
+    # リロード命令の有無を判定
+    reload_cmd = "window.location.reload();" if force_reload else ""
+    
+    # JavaScript命令の構築
     js_cmd = f"""
-        console.log("--- SAVE_PROCESS_START ---");
         try {{
             localStorage.setItem('{CONFIG['STORAGE_KEY']}', '{safe_json}');
-            console.log("--- SAVE_PROCESS_SUCCESS --- Key: {CONFIG['STORAGE_KEY']}");
+            console.log("--- SAVE_PROCESS_SUCCESS ---");
+            {reload_cmd}
         }} catch (e) {{
-            console.error("--- SAVE_PROCESS_FAILED --- Error:", e);
+            console.error("--- SAVE_PROCESS_FAILED ---", e);
         }}
     """
     
