@@ -1211,16 +1211,15 @@ def generate_weather_icons_html(df, ratio_info, display_width, start_idx, icon_m
 # ======================================================================================
 def show_settings_dialog():
     """
-    開発者モード時のみ、お気に入り管理ダイアログの「ボタン幅」と「文字数制限」を
-    調整するためのスライダーを表示する機能を追加した完全版。
+    保存処理の直後に微小な待機時間を入れ、JSの実行完了を待ってから再読み込みする安全版。
     """
     import streamlit as st
+    import time
 
     # 辞書の取得
     translations = get_language_dict()
     lang_dict = translations[st.session_state.lang]
 
-    # ダイアログのタイトルを辞書から取得
     @st.dialog(lang_dict.get("グラフ表示設定の詳細", "Graph Settings"), dismissible=False)
     def settings_dialog_content():
         # --- 1. 表示設定（トグル） ---
@@ -1243,19 +1242,14 @@ def show_settings_dialog():
         st.markdown("---")
         d_danger_v = st.number_input(lang_dict["危険風速ライン(m/s)"], value=float(st.session_state.get("danger_v", CONFIG["DEFAULT_DANGER_V"])), step=1.0)
         
-        # --- 3. 色付風向選択（2列チェックボックス） ---
+        # --- 3. 色付風向選択 ---
         st.subheader(lang_dict["色付風向選択"])
         current_sel = st.session_state.get("sel_dirs", list(CONFIG["DEFAULT_DIRS"]))
         new_sel_dirs = []
         cols = st.columns(2)
-        
-        # 元の ALL_DIRECTIONS リストをそのまま使用し、内部の値「d」はいじらない
         for i, d in enumerate(ALL_DIRECTIONS):
             with cols[i % 2]:
-                # 表示ラベルだけを、辞書の ALL_DIRECTIONS の同じ位置から取得して切り替える
                 display_label = lang_dict["ALL_DIRECTIONS"][i]
-                
-                # チェックの判定と保存(new_sel_dirs)には、元の日本語「d」をそのまま使う
                 if st.checkbox(display_label, value=(d in current_sel), key=f"dlg_dir_{d}"):
                     new_sel_dirs.append(d)
         
@@ -1313,8 +1307,10 @@ def show_settings_dialog():
                 "fav_btn_width": CONFIG.get("FAV_BTN_WIDTH", 30), "fav_name_len": CONFIG.get("FAV_NAME_LEN", 12),
                 "precip_y": CONFIG["DEFAULT_PRECIP_Y"], "icon_margin": CONFIG["DEFAULT_ICON_MARGIN"], "ratios": CONFIG["DEFAULT_RATIOS"]
             })
-            save_settings_to_browser(force_reload=True) # JS側でリロードさせる
+            save_settings_to_browser()
             st.cache_data.clear()
+            time.sleep(0.1) # JS実行のための微小な待ち時間
+            st.rerun()
         
         # --- 6. 実行・キャンセルボタン ---
         c_exec, c_cancel = st.columns(2)
@@ -1332,18 +1328,10 @@ def show_settings_dialog():
                     "precip_y": d_precip_y, "icon_margin": d_icon_margin, "ratios": d_ratios
                 })
                 
-                # --- デバッグ表示用コード ---
-                st.write("### Debug: Save Data Check")
-                debug_data = {
-                    "show_wave": d_show_wave,
-                    "ratios": d_ratios,
-                    "ratios_types": [str(type(v)) for v in d_ratios]
-                }
-                st.json(debug_data) 
-                # -------------------------
-                
-                save_settings_to_browser(force_reload=True) # JS側でリロードさせる
+                save_settings_to_browser()
                 st.cache_data.clear()
+                time.sleep(0.1) # ここが重要：JSのsetItem完了を待つ
+                st.rerun() # ダイアログを閉じて設定を反映
         
         with c_cancel:
             if st.button(lang_dict["キャンセルして戻る"], key="cancel_all_settings", use_container_width=True):
@@ -1352,23 +1340,6 @@ def show_settings_dialog():
     # ダイアログの実行
     settings_dialog_content()
     
-# ======================================================================================
-# 20.xx 確認ステップ1：JavaScriptの実行権限テスト用
-# ======================================================================================
-def test_storage_write():
-    import streamlit.components.v1 as components
-    # シンプルな値を保存してみるテスト
-    components.html(
-        """<script>
-        try {
-            localStorage.setItem("test_write_key", "success");
-            console.log("Write success");
-        } catch (e) {
-            console.error("Write failed: ", e);
-        }
-        </script>""",
-        height=0
-    )    
 # ======================================================================================
 # 21. サイドバー、パラメータ設定（言語設定ダイアログ呼び出し版）
 # ======================================================================================
@@ -1693,10 +1664,10 @@ def fetch_location_name(lat, lon):
 # ======================================================================================
 # 82. ブラウザへの保存を実行するサブルーチン
 # ======================================================================================
-def save_settings_to_browser(force_reload=False):
+def save_settings_to_browser():
     """
     st.session_state から最新の設定を収集し、localStorage へ保存します。
-    force_reload=True の場合、保存完了後に JS 側でページをリロードし、読み込みとの衝突を防ぎます。
+    無限ループを避けるため JS 側でのリロードは行わず、Python 側で制御します。
     """
     import json
     import streamlit as st
@@ -1735,23 +1706,19 @@ def save_settings_to_browser(force_reload=False):
     json_data = json.dumps(save_data, ensure_ascii=False)
     safe_json = json_data.replace('"', '\\"')
     
-    # リロード命令の有無を判定
-    reload_cmd = "window.location.reload();" if force_reload else ""
-    
-    # JavaScript命令の構築
+    # JavaScript命令の構築（リロード命令を削除し、純粋に保存のみ行う）
     js_cmd = f"""
         try {{
             localStorage.setItem('{CONFIG['STORAGE_KEY']}', '{safe_json}');
             console.log("--- SAVE_PROCESS_SUCCESS ---");
-            {reload_cmd}
         }} catch (e) {{
             console.error("--- SAVE_PROCESS_FAILED ---", e);
         }}
     """
     
-    # 実行。keyは実行のたびに確実に再評価されるよう、タイムスタンプを付与します。
+    # 実行。実行のたびに新しいキーを発行して確実に JS を動かす
     import time
-    dynamic_key = f"save_trigger_{int(time.time())}"
+    dynamic_key = f"save_exec_{int(time.time() * 1000)}"
     streamlit_js_eval(js_expressions=js_cmd, key=dynamic_key)
 
 # ==========================================================================================
