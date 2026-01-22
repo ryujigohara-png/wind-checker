@@ -1336,6 +1336,7 @@ def show_settings_dialog():
                 })
                 
                 # --- デバッグ表示用コード ---
+                test_storage_write
                 st.write("### Debug: Save Data Check")
                 debug_data = {
                     "show_wave": d_show_wave,
@@ -1355,6 +1356,23 @@ def show_settings_dialog():
     # ダイアログの実行
     settings_dialog_content()
 
+# ======================================================================================
+# 20.xx 確認ステップ1：JavaScriptの実行権限テスト用
+# ======================================================================================
+def test_storage_write():
+    import streamlit.components.v1 as components
+    # シンプルな値を保存してみるテスト
+    components.html(
+        """<script>
+        try {
+            localStorage.setItem("test_write_key", "success");
+            console.log("Write success");
+        } catch (e) {
+            console.error("Write failed: ", e);
+        }
+        </script>""",
+        height=0
+    )    
 # ======================================================================================
 # 21. サイドバー、パラメータ設定（言語設定ダイアログ呼び出し版）
 # ======================================================================================
