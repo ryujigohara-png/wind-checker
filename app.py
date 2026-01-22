@@ -1348,7 +1348,12 @@ def show_settings_dialog():
                 
                 save_settings_to_browser()
                 st.cache_data.clear()
-                st.rerun()
+                
+                # 【重要】一旦 st.rerun() をコメントアウトして、画面上の変化を確認できるようにします
+                # これで保存関数が動いた形跡（トースト通知など）が消えずに残ります
+                st.success("Python側の処理が完了しました。コンソールを確認してください。")
+                # st.rerun()
+        
         with c_cancel:
             if st.button(lang_dict["キャンセルして戻る"], key="cancel_all_settings", use_container_width=True):
                 st.rerun()
