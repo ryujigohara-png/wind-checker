@@ -956,20 +956,26 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
     active_plots = []
     if design_params.get("show_wind", True): active_plots.append("wind")
     if design_params.get("show_temp", True): active_plots.append("temp")
-    if design_params.get("show_wave", True): active_plots.append("wave")  # 波高判定追加
-    if design_params.get("show_ocean_temp", True): active_plots.append("ocean_temp")  # 水温判定追加
+    if design_params.get("show_wave", True): active_plots.append("wave")
+    if design_params.get("show_ocean_temp", True): active_plots.append("ocean_temp")
     if design_params.get("show_tide", True): active_plots.append("tide")
     
     if not active_plots: return None, (0, 0), start_idx, df
 
-    # --- 海洋データの事前取得 (案2: 海洋系グラフがいずれかONの時のみ) ---
+    # --- 海洋データの事前取得 ---
     marine_results = None
     r_lat, r_lon = lat, lon
     ocean_keys = {"wave", "ocean_temp", "tide"}
     if any(k in active_plots for k in ocean_keys):
         marine_results, r_lat, r_lon = get_marine_data(df['time'], lat, lon)
     
-    ratios = design_params.get("ratios", CONFIG["DEFAULT_RATIOS"])
+    # --- エラートラップ：比率データの補完 ---
+    ratios = list(design_params.get("ratios", CONFIG["DEFAULT_RATIOS"]))
+    if len(ratios) < 5:
+        default_ratios = [4, 1.2, 0.8, 0.8, 0.8]
+        for i in range(len(ratios), 5):
+            ratios.append(default_ratios[i])
+
     # 比率計算用のインデックス管理（wind, temp, wave, ocean_temp, tide の順）
     all_possible = ["wind", "temp", "wave", "ocean_temp", "tide"]
     current_ratios = [ratios[i] for i, p in enumerate(all_possible) if p in active_plots]
@@ -984,7 +990,7 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
     if len(active_plots) == 1: axes = [axes]
     formatter = get_x_axis_formatter()
     
-# --- 描画ループ部分 ---
+    # --- 描画ループ部分 ---
     idx = 0
     if "wind" in active_plots:
         render_wind_bar_chart(axes[idx], df, danger_v, start_idx, design_params)
@@ -993,26 +999,20 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
         render_temp_line_chart(axes[idx], df)
         idx += 1
 
-    # 海洋系グラフの最下部判定ロジック
-    # active_plots の中で、より下位に表示される項目が ON でない場合に True となる
+    # 海洋系グラフの最下部判定と呼び出し
     has_wave = "wave" in active_plots
     has_otemp = "ocean_temp" in active_plots
     has_tide = "tide" in active_plots
 
     if has_wave:
-        # 下に「水温」も「潮位」も表示されないなら、波高がボトム
         is_bot = (not has_otemp and not has_tide)
         render_wave_height_chart(axes[idx], df, lat, lon, marine_results, r_lat, r_lon, is_bottom=is_bot)
         idx += 1
-        
     if has_otemp:
-        # 下に「潮位」が表示されないなら、水温がボトム
         is_bot = (not has_tide)
         render_ocean_temp_chart(axes[idx], df, lat, lon, marine_results, r_lat, r_lon, is_bottom=is_bot)
         idx += 1
-        
     if has_tide:
-        # 潮位は海洋系の中で常に一番下なので、常にボトム判定
         render_tide_curve_chart(axes[idx], df, lat, lon, marine_results, r_lat, r_lon, is_bottom=True)
         idx += 1
 
