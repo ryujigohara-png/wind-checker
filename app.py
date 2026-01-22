@@ -1698,6 +1698,10 @@ def fetch_location_name(lat, lon):
 # 82. ブラウザへの保存を実行するサブルーチン
 # ==========================================================================================
 def save_settings_to_browser():
+    """
+    st.session_state から最新の設定を収集し、localStorage へ保存します。
+    iframe (components.html) を使わず、実績のある streamlit_js_eval で直接実行します。
+    """
     save_data = {
         "lat": st.session_state.lat,
         "lon": st.session_state.lon,
@@ -1719,20 +1723,23 @@ def save_settings_to_browser():
         "label_pad": st.session_state.get("label_pad", CONFIG["LABEL_PAD"]),
         "hspace": st.session_state.get("hspace", CONFIG["HSPACE"]),
         "ratios": st.session_state.get("ratios", CONFIG["DEFAULT_RATIOS"]),
-        # 【重要】お気に入りリストを保存対象に含める
         "user_locations": st.session_state.get("user_locations", []),
         "map_lat": st.session_state.get("map_lat", st.session_state.lat),
         "map_lon": st.session_state.get("map_lon", st.session_state.lon),
         "temp_label": st.session_state.get("temp_label", None),
-        # --- 今回追加：言語設定の保存 ---
         "lang": st.session_state.get("lang", "ja")
     }
+    
+    # JSON化（辞書から文字列へ）
     json_data = json.dumps(save_data, ensure_ascii=False)
-    # クォートのエスケープ処理を追加してJSエラーを防止
-    escaped_json = json_data.replace("'", "\\'")
-    components.html(
-        f"""<script>localStorage.setItem("{CONFIG['STORAGE_KEY']}", '{escaped_json}');</script>""",
-        height=0,    )
+    
+    # 【修正箇所】components.html を廃止し、サブルーチン90で実績のある streamlit_js_eval を使用
+    # 文字列内のダブルクォートをエスケープしてJSに渡す
+    safe_json = json_data.replace('"', '\\"')
+    js_cmd = f"localStorage.setItem('{CONFIG['STORAGE_KEY']}', '{safe_json}')"
+    
+    # 直接実行（読み込み時と同じ経路なので確実性が高い）
+    streamlit_js_eval(js_expressions=js_cmd, key="save_trigger_v3")
 
 # ==========================================================================================
 # 83. ステート更新・保存・再描画を一本化するサブルーチン (新規追加)
