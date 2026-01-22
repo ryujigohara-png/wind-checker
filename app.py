@@ -1334,6 +1334,17 @@ def show_settings_dialog():
                     "fav_btn_width": d_fav_w, "fav_name_len": d_fav_len,
                     "precip_y": d_precip_y, "icon_margin": d_icon_margin, "ratios": d_ratios
                 })
+                
+                # --- デバッグ表示用コード ---
+                st.write("### Debug: Save Data Check")
+                debug_data = {
+                    "show_wave": d_show_wave,
+                    "ratios": d_ratios,
+                    "ratios_types": [type(v) for v in d_ratios] # 各要素の型を確認
+                }
+                st.json(debug_data) 
+                # -------------------------
+                
                 save_settings_to_browser()
                 st.cache_data.clear()
                 st.rerun()
