@@ -972,7 +972,7 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
     # --- エラートラップ：比率データの補完 ---
     ratios = list(design_params.get("ratios", CONFIG["DEFAULT_RATIOS"]))
     if len(ratios) < 5:
-        default_ratios = [4, 1.2, 0.8, 0.8, 0.8]
+        default_ratios = CONFIG["DEFAULT_RATIOS"]
         for i in range(len(ratios), 5):
             ratios.append(default_ratios[i])
 
@@ -1694,14 +1694,20 @@ def fetch_location_name(lat, lon):
     except:
         return default_name
 
-# ==========================================================================================
+# ======================================================================================
 # 82. ブラウザへの保存を実行するサブルーチン
-# ==========================================================================================
+# ======================================================================================
 def save_settings_to_browser():
     """
     st.session_state から最新の設定を収集し、localStorage へ保存します。
-    iframe (components.html) を使わず、実績のある streamlit_js_eval で直接実行します。
+    iframe (components.html) を使わず、streamlit_js_eval でメインウィンドウから直接実行します。
+    実行の有無をブラウザコンソールで確認するためのログ出力を組み込んでいます。
     """
+    import json
+    import streamlit as st
+    from streamlit_js_eval import streamlit_js_eval
+
+    # 保存用データのパッキング
     save_data = {
         "lat": st.session_state.lat,
         "lon": st.session_state.lon,
@@ -1730,16 +1736,25 @@ def save_settings_to_browser():
         "lang": st.session_state.get("lang", "ja")
     }
     
-    # JSON化（辞書から文字列へ）
+    # JSON化とエスケープ
     json_data = json.dumps(save_data, ensure_ascii=False)
-    
-    # 【修正箇所】components.html を廃止し、サブルーチン90で実績のある streamlit_js_eval を使用
-    # 文字列内のダブルクォートをエスケープしてJSに渡す
     safe_json = json_data.replace('"', '\\"')
-    js_cmd = f"localStorage.setItem('{CONFIG['STORAGE_KEY']}', '{safe_json}')"
     
-    # 直接実行（読み込み時と同じ経路なので確実性が高い）
-    streamlit_js_eval(js_expressions=js_cmd, key="save_trigger_v3")
+    # JavaScript命令の構築（コンソールログを付与）
+    js_cmd = f"""
+        console.log("--- SAVE_PROCESS_START ---");
+        try {{
+            localStorage.setItem('{CONFIG['STORAGE_KEY']}', '{safe_json}');
+            console.log("--- SAVE_PROCESS_SUCCESS --- Key: {CONFIG['STORAGE_KEY']}");
+        }} catch (e) {{
+            console.error("--- SAVE_PROCESS_FAILED --- Error:", e);
+        }}
+    """
+    
+    # 実行。keyは実行のたびに確実に再評価されるよう、タイムスタンプを付与します。
+    import time
+    dynamic_key = f"save_trigger_{int(time.time())}"
+    streamlit_js_eval(js_expressions=js_cmd, key=dynamic_key)
 
 # ==========================================================================================
 # 83. ステート更新・保存・再描画を一本化するサブルーチン (新規追加)
