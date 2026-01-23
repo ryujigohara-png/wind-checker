@@ -1212,6 +1212,7 @@ def generate_weather_icons_html(df, ratio_info, display_width, start_idx, icon_m
 def show_settings_dialog():
     """
     保存処理の直後に微小な待機時間を入れ、JSの実行完了を待ってから再読み込みする安全版。
+    要素数が不足している古い設定データが読み込まれた場合のIndexErrorを回避する修正済み。
     """
     import streamlit as st
     import time
@@ -1272,12 +1273,16 @@ def show_settings_dialog():
             d_precip_y = st.slider("降水量ラベル高さ", 0.0, 2.0, float(st.session_state.get("precip_y", CONFIG["DEFAULT_PRECIP_Y"])), 0.05)
             d_icon_margin = st.slider("天気アイコン下余白", 0, 100, int(st.session_state.get("icon_margin", CONFIG["DEFAULT_ICON_MARGIN"])), 5)
             st.subheader("グラフ縦比率設定")
+            
+            # --- 修正箇所: 要素数が足りない場合にデフォルト値を補填 ---
             r = st.session_state.get("ratios", CONFIG["DEFAULT_RATIOS"])
-            r0 = st.number_input("比率:風向", 0.5, 10.0, float(r[0]), 0.1)
-            r1 = st.number_input("比率:気温", 0.5, 5.0, float(r[1]), 0.1)
-            r2 = st.number_input("比率:波高", 0.5, 10.0, float(r[2]), 0.1)
-            r3 = st.number_input("比率:海面水温", 0.5, 5.0, float(r[3]), 0.1)
-            r4 = st.number_input("比率:潮位", 0.5, 5.0, float(r[4]), 0.1)
+            d_r = CONFIG["DEFAULT_RATIOS"]
+            
+            r0 = st.number_input("比率:風向", 0.5, 10.0, float(r[0] if len(r) > 0 else d_r[0]), 0.1)
+            r1 = st.number_input("比率:気温", 0.5, 5.0, float(r[1] if len(r) > 1 else d_r[1]), 0.1)
+            r2 = st.number_input("比率:波高", 0.5, 10.0, float(r[2] if len(r) > 2 else d_r[2]), 0.1)
+            r3 = st.number_input("比率:海面水温", 0.5, 5.0, float(r[3] if len(r) > 3 else d_r[3]), 0.1)
+            r4 = st.number_input("比率:潮位", 0.5, 5.0, float(r[4] if len(r) > 4 else d_r[4]), 0.1)
             d_ratios = [r0, r1, r2, r3, r4]
         else:
             d_min_w = st.session_state.get("min_container_width", CONFIG["CONTENA_MIN_W"])
