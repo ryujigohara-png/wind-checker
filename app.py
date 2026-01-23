@@ -92,7 +92,7 @@ CONFIG = {
     "FAV_NAME_LEN": 12,                 # MySpot編集ダイアログ 地名表示制限（文字）
     "DEFAULT_PRECIP_Y": 1.00,           # 降水量ラベル高さ（グラフ枠を1.0とした相対値）
     "DEFAULT_ICON_MARGIN": 0,           # 天気アイコン下余白(px)
-    "DEFAULT_RATIOS": [4.0, 1.2, 0.8, 0.8, 0.8],  # グラフ比率設定
+    "DEFAULT_RATIOS": [4.0, 0.8, 0.8, 0.8, 0.8],  # グラフ比率設定
     # その他既定値
     "SHOW_DEV_MODE": False,                    # 開発者モード初期値
     "STORAGE_KEY": "wind_checker_settings_v2", # ローカルストレージキー
@@ -1454,30 +1454,37 @@ def show_language_dialog():
 # ======================================================================================
 def calculate_graph_height(base_height, ratios, show_wind, show_temp, show_wave, show_ocean_temp, show_tide):
     """
-    各グラフの表示比率と基準縦幅から、最終的なグラフの合計高さを計算する。
-    要素数が不足している（古い設定データなどの）場合のエラートラップを実装。
+    全グラフが表示されている状態の比率合計を基準として、各グラフのサイズを固定します。
+    正規版ユーザーの古い設定データ（要素不足）に備えた補填ロジックを実装済み。
     """
-    # エラートラップ：ratiosの要素数が5に満たない場合、デフォルト値で補完または置換する
-    # デフォルト比率 [4, 1.2, 0.8, 0.8, 0.8]
+    import streamlit as st
+
+    # --- 1. エラートラップ：比率データの補完 ---
+    # ローカルストレージからの古いデータ（要素不足）に備え、必ず5要素に拡張します
     current_ratios = list(ratios)
     if len(current_ratios) < 5:
-        default_ratios = [4, 1.2, 0.8, 0.8, 0.8]
-        # 既存の要素がある分だけ上書きし、足りない分をデフォルトで埋める
+        default_ratios = CONFIG["DEFAULT_RATIOS"]
+        # 既存の要素がある分だけ保持し、足りない分（海面水温・潮位など）をデフォルトで埋める
         for i in range(len(current_ratios), 5):
             current_ratios.append(default_ratios[i])
     
-    # 1. 基本となる比率の合計（風向・風速 + 気温）
-    # current_ratios = [wind, temp, wave, ocean_temp, tide] の順
-    base_ratio_total = current_ratios[0] + current_ratios[1]
+    # --- 2. スケールの固定計算（A案） ---
+    # 表示・非表示に関わらず、全項目の比率合計を「分母」として固定します
+    # これにより、特定のグラフを消しても残ったグラフの見た目のサイズが変わりません
+    full_ratio_total = sum(current_ratios)
     
-    # 2. 1単位あたりのピクセル高さ
-    fixed_unit_h = base_height / base_ratio_total 
+    # 1単位（比率1.0あたり）の高さ（inch）を算出
+    # 全表示を前提とした base_height（CONFIG["GRAPH_HIGHT"]等）を全比率で割る
+    fixed_unit_h = base_height / full_ratio_total 
     
-    # 3. アイコン表示用のマージン（風向きが表示されている時のみ）
+    # --- 3. アイコン表示用のマージン ---
+    # 風向き(wind)が表示されている時のみ、アイコン用のスペース（0.45inch）を確保
     icon_margin = 0.45 if show_wind else 0.0
     
-    # 4. 各項目の表示可否に応じた高さの積み上げ
+    # --- 4. 現在表示されている項目の高さを積み上げる ---
+    # current_ratios の並び: [0:風, 1:温, 2:波, 3:海温, 4:潮]
     auto_height = icon_margin
+    
     if show_wind:
         auto_height += current_ratios[0] * fixed_unit_h
     if show_temp:
