@@ -2360,41 +2360,42 @@ def render_header_info(current_basho_name):
         st.rerun()
         
 # ======================================================================================
-# 95. 【main機能分離】⑤グラフ描画エリアモジュール (確定版)
+# 95. 【main機能分離】⑤グラフ描画エリアモジュール
 # ======================================================================================
 def render_graph_area_module(danger_v, sel_dirs, design_params, now_jst):
     import streamlit as st
-    import streamlit.components.v1 as components
+    translations = get_language_dict()
+    lang_dict = translations[st.session_state.lang]
 
-    # 12番をそのまま呼び出し（戻り値の形式に合わせて受け取ってください）
     res = generate_high_res_graph(
         st.session_state.lat, st.session_state.lon, danger_v, tuple(sel_dirs), design_params, now_jst
     )
-    if not res: return
+    if not res or res[0] is None: return
     left_b64, right_b64, ratio_info, start_idx, df_graph = res
     
     dpi = design_params.get("graph_dpi", 200)
     fig_h_px = int(design_params.get("height", 6.0) * dpi)
-    total_w = int(design_params.get("width", CONFIG["GRAPH_WIDTH"]) * dpi)
+    total_w = int(design_params.get("width", 15.0) * dpi)
     
-    # 12番の仕様に基づく分割計算
-    split_ratio = 0.10
-    w_left_px = int(total_w * split_ratio)
-    w_right_px = int(total_w * (1.0 - split_ratio))
-    
-    # アイコンHTML（サブルーチン16）を生成
-    header_h, body_h = generate_weather_icons_html(df_graph, ratio_info, w_right_px, start_idx)
+    # 窓の幅（数字が見える必要最小限の幅。ここを調整して×の余白を消します）
+    # この値を小さくするほど、赤×の余白が削り取られます。
+    view_width = 70 
 
-    # 全体を一つのHTMLとして構成
-    html_code = f'''
-    <div style="display: flex; position: relative; width: 100%; height: {fig_h_px + 50}px; overflow: hidden; background: white; font-family: sans-serif;">
-        <div style="position: absolute; left: 0; top: 0; width: {w_left_px}px; z-index: 10; background: white; border-right: 1px solid #eee;">
-            {header_h}
-            <img src="data:image/png;base64,{left_b64}" style="width: 100%; height: {fig_h_px}px; display: block; object-fit: contain; object-position: left;">
+    header_h, body_h = generate_weather_icons_html(df_graph, ratio_info, (total_w * 0.9), start_idx)
+
+    # 構造：
+    # 1. 左側のdivに overflow:hidden をかけ、画像を「左寄せ」で置く。
+    # 2. 窓の幅(view_width)を狭くすることで、画像右側の余白(赤×)を物理的に遮断する。
+    full_content = f'''
+    <div style="display: flex; gap: 0px; width: 100%; background: white; border: 1px solid #ddd; overflow: hidden;">
+        <div style="width: {view_width}px; min-width: {view_width}px; flex-shrink: 0; overflow: hidden; background: white; border-right: 1px solid #eee; z-index: 10;">
+            <div style="width: {view_width}px; overflow: hidden;">{header_h}</div>
+            <img src="data:image/png;base64,{left_b64}" 
+                 style="width: {int(total_w * 0.12)}px; height: {fig_h_px}px; max-width: none; display: block; object-fit: contain; object-position: left;">
         </div>
-        
-        <div style="width: 100%; overflow-x: auto; margin-left: {w_left_px - 45}px; padding-left: 0px;">
-            <div style="width: {w_right_px}px; position: relative;">
+
+        <div style="flex-grow: 1; overflow-x: auto; overflow-y: hidden; background: white;">
+            <div style="width: {int(total_w * 0.9)}px; position: relative;">
                 {body_h}
                 <img src="data:image/png;base64,{right_b64}" style="width: 100%; height: {fig_h_px}px; display: block;">
             </div>
@@ -2402,8 +2403,7 @@ def render_graph_area_module(danger_v, sel_dirs, design_params, now_jst):
     </div>
     '''
     
-    # st.markdown ではなく、コンポーネントとして出力することでコード露出を100%防ぎます
-    components.html(html_code, height=fig_h_px + 60, scrolling=False)
+    st.markdown(full_content, unsafe_allow_html=True)
 
 # ======================================================================================
 # 96. 【レイアウト修正版】操作コントロールパネル（多言語対応版）
