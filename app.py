@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# 正規版　更新 2026.1.24 0930 グラフサイズ固定　コンプリート版
+# 正規版　更新 2026.1.25 0055 Y軸固定　コンプリート版
 """
 Pin_Weather! 機能仕様書 2026改訂版
 提供された最新のソースコード（2026.1.22 0100 波高、海面水温 コンプリート版）に基づき、波高および海面水温グラフの追加を反映した最新の機能仕様書を作成しました。
@@ -90,6 +90,8 @@ CONFIG = {
     "DIAL_V_GAP": 0,                    # 地図ダイアログ縦余白（V-Gap）
     "FAV_BTN_WIDTH": 30,                # MySpot編集ダイアログ ボタン幅(%)
     "FAV_NAME_LEN": 12,                 # MySpot編集ダイアログ 地名表示制限（文字）
+    "LEFT_VIEW_W": 116,                  # 左軸窓の幅 (px)
+    "LEFT_SHIFT": -185,                  # 左軸画像のズレ (px)
     "DEFAULT_PRECIP_Y": 1.05,           # 降水量ラベル高さ（グラフ枠を1.0とした相対値）
     "DEFAULT_ICON_MARGIN": 0,           # 天気アイコン下余白(px)
     "DEFAULT_RATIOS": [4.0, 0.8, 0.8, 0.8, 0.8],  # グラフ比率設定
@@ -319,7 +321,7 @@ def get_language_dict():
             "気温 (℃)": "Temp (℃)",
             "潮位 (cm)": "Tide (cm)",
             "波高 (m)": "Wave (m)",
-            "海水温 (℃)": "Water (℃)",
+            "海水温 (℃)": "Sea Surf.(℃)",
             "降水量mm　": "Precip (mm) ",
             "天気": "Weather",
             "OCEAN_INFO": "*Showing marine data from {res_dir} approx. {dist_km}km away.",
@@ -917,10 +919,8 @@ def render_tide_curve_chart(ax, df, lat, lon, marine_results, res_lat, res_lon, 
         render_ocean_location_info(ax, lat, lon, res_lat, res_lon, label_fs, lang_dict)
         
 # ======================================================================================
-# 12. 高解像度グラフ画像を生成するサブルーチン
+# 12. 高解像度グラフ画像を生成し、左右に分割するサブルーチン
 # ======================================================================================
-# 多言語化対応のため show_spinner=False に設定。
-# 呼び出し側の render_graph_area_module にて辞書に基づいたスピナーを表示します。
 @st.cache_data(show_spinner=False, ttl=600)
 def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_params, now_jst):
     import pandas as pd
@@ -928,16 +928,16 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
     import base64
     from datetime import timedelta
     import matplotlib.pyplot as plt
+    from PIL import Image
 
     # 1. データ取得
     df_raw = fetch_weather_data(lat, lon, 9)
-    if df_raw is None: return None, (0, 0), 0, None
+    if df_raw is None: return None, None, (0, 0), 0, None
     
     # 2. ブラウザと現地の時差から、現地の現在時刻を計算
     browser_offset = now_jst.utcoffset()
     browser_offset_s = browser_offset.total_seconds() if browser_offset else 0
     local_offset_s = df_raw.attrs.get('local_offset_seconds', 0)
-    
     now_local = now_jst.replace(tzinfo=None) - timedelta(seconds=browser_offset_s) + timedelta(seconds=local_offset_s)
     
     # 3. 描画開始の設定
@@ -948,7 +948,6 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
     df = df_raw[df_raw['time'] >= padding_start_time].copy().reset_index(drop=True)
     df = df.head(195)
     start_idx = 3
-    
     df = process_wind_data(df, list(selected_dirs_tuple))
     
     active_plots = []
@@ -957,24 +956,14 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
     if design_params.get("show_wave", True): active_plots.append("wave")
     if design_params.get("show_ocean_temp", True): active_plots.append("ocean_temp")
     if design_params.get("show_tide", True): active_plots.append("tide")
-    
-    if not active_plots: return None, (0, 0), start_idx, df
+    if not active_plots: return None, None, (0, 0), start_idx, df
 
-    # --- 海洋データの事前取得 ---
     marine_results = None
     r_lat, r_lon = lat, lon
-    ocean_keys = {"wave", "ocean_temp", "tide"}
-    if any(k in active_plots for k in ocean_keys):
+    if any(k in active_plots for k in {"wave", "ocean_temp", "tide"}):
         marine_results, r_lat, r_lon = get_marine_data(df['time'], lat, lon)
     
-    # --- エラートラップ：比率データの補完 ---
     ratios = list(design_params.get("ratios", CONFIG["DEFAULT_RATIOS"]))
-    if len(ratios) < 5:
-        default_ratios = CONFIG["DEFAULT_RATIOS"]
-        for i in range(len(ratios), 5):
-            ratios.append(default_ratios[i])
-
-    # 比率計算用のインデックス管理（wind, temp, wave, ocean_temp, tide の順）
     all_possible = ["wind", "temp", "wave", "ocean_temp", "tide"]
     current_ratios = [ratios[i] for i, p in enumerate(all_possible) if p in active_plots]
     
@@ -982,13 +971,14 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
     fig_h = design_params.get("height", CONFIG["GRAPH_HIGHT"])
     dpi_value = design_params.get("graph_dpi", CONFIG.get("DPI", 200))
     
+    # 分割位置の設定（Y軸部分を10%確保）
+    split_ratio = 0.10 
+
     fig, axes = plt.subplots(len(active_plots), 1, figsize=(fig_w, fig_h), dpi=dpi_value, 
                              gridspec_kw={'height_ratios': current_ratios})
-    
     if len(active_plots) == 1: axes = [axes]
     formatter = get_x_axis_formatter()
     
-    # --- 描画ループ部分 ---
     idx = 0
     if "wind" in active_plots:
         render_wind_bar_chart(axes[idx], df, danger_v, start_idx, design_params)
@@ -997,18 +987,12 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
         render_temp_line_chart(axes[idx], df)
         idx += 1
 
-    # 海洋系グラフの最下部判定と呼び出し
-    has_wave = "wave" in active_plots
-    has_otemp = "ocean_temp" in active_plots
-    has_tide = "tide" in active_plots
-
+    has_wave, has_otemp, has_tide = "wave" in active_plots, "ocean_temp" in active_plots, "tide" in active_plots
     if has_wave:
-        is_bot = (not has_otemp and not has_tide)
-        render_wave_height_chart(axes[idx], df, lat, lon, marine_results, r_lat, r_lon, is_bottom=is_bot)
+        render_wave_height_chart(axes[idx], df, lat, lon, marine_results, r_lat, r_lon, is_bottom=(not has_otemp and not has_tide))
         idx += 1
     if has_otemp:
-        is_bot = (not has_tide)
-        render_ocean_temp_chart(axes[idx], df, lat, lon, marine_results, r_lat, r_lon, is_bottom=is_bot)
+        render_ocean_temp_chart(axes[idx], df, lat, lon, marine_results, r_lat, r_lon, is_bottom=(not has_tide))
         idx += 1
     if has_tide:
         render_tide_curve_chart(axes[idx], df, lat, lon, marine_results, r_lat, r_lon, is_bottom=True)
@@ -1017,17 +1001,33 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
     for ax in axes:
         apply_common_axis_settings(ax, df, formatter, now_jst, design_params)
 
-    plt.subplots_adjust(left=0.05, right=0.95, top=0.95, bottom=0.15,
-                        hspace=design_params.get("hspace", CONFIG["HSPACE"]))
+    # 余白を厳密に固定
+    plt.subplots_adjust(left=split_ratio, right=0.98, top=0.95, bottom=0.15, hspace=design_params.get("hspace", CONFIG["HSPACE"]))
 
+    # 座標情報の計算
     pos = axes[0].get_position() 
-    ratio_info = (pos.x0, pos.width / (len(df) - 1))
+    # 右側エリアにおける開始位置(x=0)からの比率を計算
+    new_hour_w = pos.width / (len(df) - 1) / (1.0 - split_ratio)
+    new_ratio_info = (0.0, new_hour_w) # leftをsplit_ratioに合わせたので、データ開始は右側画像の左端(0.0)になる
     
     buf = io.BytesIO()
     fig.savefig(buf, format="png", bbox_inches=None, pad_inches=0, dpi=dpi_value)
     plt.close(fig) 
     
-    return base64.b64encode(buf.getvalue()).decode(), ratio_info, start_idx, df
+    buf.seek(0)
+    full_img = Image.open(buf)
+    img_w, img_h = full_img.size
+    split_px = int(img_w * split_ratio)
+    
+    left_part = full_img.crop((0, 0, split_px, img_h))
+    right_part = full_img.crop((split_px, 0, img_w, img_h))
+    
+    def img_to_b64(img):
+        b = io.BytesIO()
+        img.save(b, format="PNG")
+        return base64.b64encode(b.getvalue()).decode()
+
+    return img_to_b64(left_part), img_to_b64(right_part), new_ratio_info, start_idx, df
 
 # ======================================================================================
 # 13. 波高グラフを描画するサブルーチン
@@ -1153,58 +1153,35 @@ def render_ocean_location_info(ax, lat, lon, res_lat, res_lon, label_fs, lang_di
 # ======================================================================================
 # 16. お天気アイコンのHTMLを生成するサブルーチン
 # ======================================================================================
-def generate_weather_icons_html(df, ratio_info, display_width, start_idx, icon_margin=0):
-    """
-    12番で生成されたdfと物理座標情報を元に、正確な位置へ天気アイコンを配置する。
-    見出し「天気」を言語設定に基づいて多言語化します。
-    """
+def generate_weather_icons_html(df, ratio_info, display_width, start_idx):
     import pandas as pd
     import streamlit as st
 
-    # 辞書の取得
     translations = get_language_dict()
     lang_dict = translations[st.session_state.lang]
 
     start_x, hour_w = ratio_info
-    icon_html = ""
-    
     l_size_pt = st.session_state.get("label_font_size", CONFIG.get("LABEL_SIZE", 7))
-    # グラフ内のフォントサイズ(pt)をpx相当に変換
     header_fs_px = l_size_pt * 2.5
   
-    # --- 「天気」見出しの配置（多言語化） ---
-    # 辞書から「天気」または「Weather」を取得
     weather_label = lang_dict.get("天気", "Weather")
-    
-    label_pos_x = (start_x * display_width) - 16
-    icon_html += f'''
-        <div style="position: absolute; left: {label_pos_x}px; top: 15px; 
-                    transform: translateX(-105%); font-size: {header_fs_px}px; 
-                    font-family: 'Noto Sans JP', sans-serif; color: #333; z-index: 5;
-                    white-space: nowrap;">
-          {weather_label}
-        </div>'''
+    # 見出しHTML（左固定側用）
+    header_html = f'<div style="font-size:{header_fs_px}px; font-family:sans-serif; height:35px; line-height:35px; text-align:right; padding-right:5px; color:#333;">{weather_label}</div>'
 
-    # 指定された開始位置から3時間おきにアイコンを配置
+    # アイコンHTML（右スクロール側用）
+    icons_inner = ""
     for i in range(int(start_idx), len(df), 3):
         row = df.iloc[i]
         icon = row.get('weather_icon')
         if not icon or pd.isna(icon): continue
         
-        # 物理位置計算：start_x（0行目の位置）＋ i時間分の幅
+        # 物理位置計算
         pos_left_px = (start_x + (i * hour_w)) * display_width
-        
-        icon_html += f'''
-            <div style="position: absolute; left: {pos_left_px}px; top: 10px; 
-                        transform: translateX(-50%); width: 80px; text-align: center; 
-                        font-size: 32px; line-height: 1;
-                        z-index: 5;">
-                {icon}
-            </div>'''
+        icons_inner += f'<div style="position:absolute; left:{pos_left_px}px; top:0px; transform:translateX(-50%); width:60px; text-align:center; font-size:32px; line-height:35px; z-index:5;">{icon}</div>'
     
-    # 最終的なHTMLコンテナ
-    return f'<div style="position: relative; width: {display_width}px; height: 35px; margin-bottom: {icon_margin}px; overflow: visible;">{icon_html}</div>'
+    body_html = f'<div style="position:relative; width:{display_width}px; height:35px; overflow:visible;">{icons_inner}</div>'
     
+    return header_html, body_html
 
 # ======================================================================================
 # 20. サイドバーからグラフ表示設定を詳細ダイアログで一括変更するサブルーチン
@@ -1233,14 +1210,14 @@ def show_settings_dialog():
         d_show_w_text = st.toggle(lang_dict["天気文字表示"], value=st.session_state.get("show_w_text", CONFIG["SHOW_W_TEXT"]))
         d_show_dir_name = st.toggle(lang_dict["風向名表示"], value=st.session_state.get("show_dir_name", CONFIG["SHOW_DIR_NAME"]))
         
-        # --- 2. サイズ・文字（スライダー） ---
+        # --- 2. サイズ・文字 ---
         w_cfg, h_cfg, f_cfg = CONFIG["SLIDER_WIDTH"], CONFIG["SLIDER_HEIGHT"], CONFIG["SLIDER_FONT"]
-        d_width = st.slider(lang_dict["グラフ枠横幅 (inch)"], w_cfg["min"], w_cfg["max"], float(st.session_state.get("width", CONFIG["GRAPH_WIDTH"])), step=w_cfg["step"])
-        d_base_h = st.slider(lang_dict["グラフ枠縦幅 (inch)"], h_cfg["min"], h_cfg["max"], float(st.session_state.get("base_height", CONFIG["GRAPH_HIGHT"])), step=h_cfg["step"])
-        d_base_f = st.slider(lang_dict["グラフ内文字サイズ"], f_cfg["min"], f_cfg["max"], int(st.session_state.get("base_font_size", CONFIG["GRAPH_FONT_SIZE"])))
-        d_label_f = st.slider(lang_dict["軸ラベル文字サイズ"], f_cfg["min"], f_cfg["max"], int(st.session_state.get("label_font_size", CONFIG["LABEL_SIZE"])))
-        d_hspace = st.slider("グラフ間余白", -0.2, 1.5, float(st.session_state.get("hspace", CONFIG["HSPACE"])), 0.05)
-        
+        d_width = st.number_input(lang_dict["グラフ枠横幅 (inch)"], float(w_cfg["min"]), float(w_cfg["max"]), float(st.session_state.get("width", CONFIG["GRAPH_WIDTH"])), float(w_cfg["step"]))
+        d_base_h = st.number_input(lang_dict["グラフ枠縦幅 (inch)"], float(h_cfg["min"]), float(h_cfg["max"]), float(st.session_state.get("base_height", CONFIG["GRAPH_HIGHT"])), float(h_cfg["step"]))
+        d_base_f = st.number_input(lang_dict["グラフ内文字サイズ"], int(f_cfg["min"]), int(f_cfg["max"]), int(st.session_state.get("base_font_size", CONFIG["GRAPH_FONT_SIZE"])))
+        d_label_f = st.number_input(lang_dict["軸ラベル文字サイズ"], int(f_cfg["min"]), int(f_cfg["max"]), int(st.session_state.get("label_font_size", CONFIG["LABEL_SIZE"])))
+        d_hspace = st.number_input("グラフ間余白", -0.2, 1.5, float(st.session_state.get("hspace", CONFIG["HSPACE"])), 0.05)
+       
         st.markdown("---")
         d_danger_v = st.number_input(lang_dict["危険風速ライン(m/s)"], value=float(st.session_state.get("danger_v", CONFIG["DEFAULT_DANGER_V"])), step=1.0)
         
@@ -1263,21 +1240,27 @@ def show_settings_dialog():
             d_min_w = st.slider("コンテナ最小幅 (px)", 500, 5000, int(st.session_state.get("min_container_width", CONFIG["CONTENA_MIN_W"])), 100)
             d_dpi = st.radio("解像度 (DPI)", [200, 300], index=0 if st.session_state.get("graph_dpi", 200) == 200 else 1, horizontal=True)
             d_label_pad = st.slider("ラベル距離", -5, 10, int(st.session_state.get("label_pad", CONFIG["LABEL_PAD"])))
+            
+            st.subheader("左軸（Y軸）余白追い出し調整")
+            d_left_view_w = st.slider("左軸窓の幅 (px)", 30, 200, int(st.session_state.get("left_view_w", CONFIG.get("LEFT_VIEW_W", 116))))
+            d_left_shift = st.slider("左軸画像のズレ (px)", -300, -0, int(st.session_state.get("left_shift", CONFIG.get("LEFT_SHIFT", -185))))
+            
             st.subheader("地図ダイアログ調整")
             d_dial_h = st.slider("地図ダイアログ横余白 (H-Gap)", 0, 20, int(st.session_state.get("dial_h_gap", CONFIG["DIAL_H_GAP"])))
             d_dial_v = st.slider("地図ダイアログ縦余白 (V-Gap)", 0, 20, int(st.session_state.get("dial_v_gap", CONFIG["DIAL_V_GAP"])))
+            
             st.subheader("MySpot編集ダイアログ調整")
             d_fav_w = st.slider("ボタン幅 (%)", 10, 45, int(st.session_state.get("fav_btn_width", CONFIG.get("FAV_BTN_WIDTH", 30))), 1)
             d_fav_len = st.slider("地名表示制限 (文字)", 5, 25, int(st.session_state.get("fav_name_len", CONFIG.get("FAV_NAME_LEN", 12))), 1)
+                       
             st.subheader("降水量・アイコン位置調整")
             d_precip_y = st.slider("降水量ラベル高さ", 0.0, 2.0, float(st.session_state.get("precip_y", CONFIG["DEFAULT_PRECIP_Y"])), 0.05)
             d_icon_margin = st.slider("天気アイコン下余白", 0, 100, int(st.session_state.get("icon_margin", CONFIG["DEFAULT_ICON_MARGIN"])), 5)
-            st.subheader("グラフ縦比率設定")
             
             # --- 修正箇所: 要素数が足りない場合にデフォルト値を補填 ---
+            st.subheader("グラフ縦比率設定")
             r = st.session_state.get("ratios", CONFIG["DEFAULT_RATIOS"])
             d_r = CONFIG["DEFAULT_RATIOS"]
-            
             r0 = st.number_input("比率:風向", 0.5, 10.0, float(r[0] if len(r) > 0 else d_r[0]), 0.1)
             r1 = st.number_input("比率:気温", 0.5, 5.0, float(r[1] if len(r) > 1 else d_r[1]), 0.1)
             r2 = st.number_input("比率:波高", 0.5, 10.0, float(r[2] if len(r) > 2 else d_r[2]), 0.1)
@@ -1288,6 +1271,8 @@ def show_settings_dialog():
             d_min_w = st.session_state.get("min_container_width", CONFIG["CONTENA_MIN_W"])
             d_dpi = st.session_state.get("graph_dpi", CONFIG["DPI"])
             d_label_pad = st.session_state.get("label_pad", CONFIG["LABEL_PAD"])
+            d_left_view_w = st.session_state.get("left_view_w", CONFIG.get("LEFT_VIEW_W", 116))
+            d_left_shift = st.session_state.get("left_shift", CONFIG.get("LEFT_SHIFT", -185))
             d_dial_h = st.session_state.get("dial_h_gap", CONFIG["DIAL_H_GAP"])
             d_dial_v = st.session_state.get("dial_v_gap", CONFIG["DIAL_V_GAP"])
             d_fav_w = st.session_state.get("fav_btn_width", CONFIG.get("FAV_BTN_WIDTH", 30))
@@ -1306,6 +1291,7 @@ def show_settings_dialog():
                 "width": CONFIG["GRAPH_WIDTH"], "base_height": CONFIG["GRAPH_HIGHT"], "base_font_size": CONFIG["GRAPH_FONT_SIZE"],
                 "label_font_size": CONFIG["LABEL_SIZE"], "danger_v": CONFIG["DEFAULT_DANGER_V"], "sel_dirs": list(CONFIG["DEFAULT_DIRS"]),
                 "min_container_width": CONFIG["CONTENA_MIN_W"], "graph_dpi": CONFIG["DPI"], "show_w_text": CONFIG["SHOW_W_TEXT"],
+                "left_view_w": CONFIG["LEFT_VIEW_W"], "left_shift": CONFIG["LEFT_SHIFT"],
                 "show_dir_name": CONFIG["SHOW_DIR_NAME"], "hspace": CONFIG["HSPACE"], "label_pad": CONFIG["LABEL_PAD"],
                 "dial_h_gap": CONFIG["DIAL_H_GAP"], "dial_v_gap": CONFIG["DIAL_V_GAP"],
                 "fav_btn_width": CONFIG.get("FAV_BTN_WIDTH", 30), "fav_name_len": CONFIG.get("FAV_NAME_LEN", 12),
@@ -1325,7 +1311,8 @@ def show_settings_dialog():
                     "show_wave": d_show_wave, "show_ocean_temp": d_show_ocean_temp,
                     "width": d_width, "base_height": d_base_h, "base_font_size": d_base_f,
                     "label_font_size": d_label_f, "danger_v": d_danger_v, "sel_dirs": new_sel_dirs,
-                    "min_container_width": d_min_w, "graph_dpi": d_dpi, "show_w_text": d_show_w_text,
+                    "min_container_width": d_min_w, "graph_dpi": d_dpi,
+                    "left_view_w": d_left_view_w, "left_shift": d_left_shift, "show_w_text": d_show_w_text,
                     "show_dir_name": d_show_dir_name, "hspace": d_hspace, "label_pad": d_label_pad,
                     "dial_h_gap": d_dial_h, "dial_v_gap": d_dial_v,
                     "fav_btn_width": d_fav_w, "fav_name_len": d_fav_len,
@@ -2353,57 +2340,54 @@ def render_header_info(current_basho_name):
 # 95. 【main機能分離】⑤グラフ描画エリアモジュール
 # ======================================================================================
 def render_graph_area_module(danger_v, sel_dirs, design_params, now_jst):
-    """
-    グラフ描画エリアを管理するモジュール。
-    """
     import streamlit as st
-        
-    # 辞書の取得
     translations = get_language_dict()
     lang_dict = translations[st.session_state.lang]
 
     # --- 1. グラフ生成（辞書に基づいたスピナーを表示） ---
     msg_gen = lang_dict.get("MSG_GEN_GRAPH", "グラフを生成中...")
-    
     with st.spinner(msg_gen):
-        img_b64, ratio_info, start_idx, df_from_graph = generate_high_res_graph(
-            st.session_state.lat, 
-            st.session_state.lon, 
-            danger_v, 
-            tuple(sel_dirs), 
-            design_params, 
-            now_jst
+        # サブルーチン12を呼び出し
+        res = generate_high_res_graph(
+            st.session_state.lat, st.session_state.lon, danger_v, tuple(sel_dirs), design_params, now_jst
         )
     
-    # --- 2. アイコン・グラフ描画 ---
-    if img_b64:
-        # 正規版のロジックに基づき、表示幅を計算
-        dpi = design_params.get("graph_dpi", CONFIG.get("DPI", 200))
-        display_width = int(design_params.get("width", CONFIG["GRAPH_WIDTH"]) * dpi)
-        min_w = design_params.get("min_container_width", 800)
-        icon_margin = design_params.get("icon_margin", 0)
-        
-        # アイコンHTML生成（内部で「天気」ラベルが多言語化される）
-        icons_html = generate_weather_icons_html(
-            df_from_graph, 
-            ratio_info, 
-            display_width, 
-            start_idx, 
-            icon_margin
-        )
-        
-        # グラフ本体のHTML（正規版通り width を指定して縮小を防ぐ）
-        graph_html = f'<img src="data:image/png;base64,{img_b64}" style="width: {display_width}px; display: block;">'
-        
-        # スクロールコンテナ内に描画
-        st.markdown(
-            f'<div class="scroll-container">'
-            f'<div style="width: {display_width}px; min-width: {min_w}px;">'
-            f'{icons_html}{graph_html}'
-            f'</div></div>', 
-            unsafe_allow_html=True
-        )
+    if not res or res[0] is None: return
+    left_b64, right_b64, ratio_info, start_idx, df_graph = res
+    
+    # --- 2. パラメータ取得（CONFIGおよびsession_stateから） ---
+    dpi = design_params.get("graph_dpi", CONFIG.get("DPI", 200))
+    fig_h_px = int(design_params.get("height", CONFIG["GRAPH_HIGHT"]) * dpi)
+    total_w = int(design_params.get("width", CONFIG["GRAPH_WIDTH"]) * dpi)
+    
+    # ユーザーが特定した最適値 (116px, -185px) を使用
+    v_width = st.session_state.get("left_view_w", CONFIG.get("LEFT_VIEW_W", 116))
+    v_shift = st.session_state.get("left_shift", CONFIG.get("LEFT_SHIFT", -185))
+    
+    # 12番の生成画像の本来の幅（10%分）
+    orig_left_w = int(total_w * 0.10)
+    w_right_px = int(total_w * 0.90)
+    
+    # --- 3. アイコン・ラベルHTMLの取得 ---
+    header_h, body_h = generate_weather_icons_html(df_graph, ratio_info, w_right_px, start_idx)
 
+    # --- 4. HTML構築（確実にレンダリング） ---
+    html_str = (
+        f'<div style="display:flex; width:100%; background:white; border:1px solid #ddd; overflow:hidden;">'
+        f'  <div style="width:{v_width}px; min-width:{v_width}px; flex-shrink:0; overflow:hidden; border-right:1px solid #eee; z-index:10; background:white;">'
+        f'    <div style="width:{v_width}px; overflow:hidden;">{header_h}</div>'
+        f'    <img src="data:image/png;base64,{left_b64}" style="width:{orig_left_w}px; height:{fig_h_px}px; max-width:none; margin-left:{v_shift}px; display:block;">'
+        f'  </div>'
+        f'  <div style="flex-grow:1; overflow-x:auto; background:white;">'
+        f'    <div style="width:{w_right_px}px; position:relative;">'
+        f'      {body_h}'
+        f'      <img src="data:image/png;base64,{right_b64}" style="width:100%; height:{fig_h_px}px; display:block;">'
+        f'    </div>'
+        f'  </div>'
+        f'</div>'
+    )
+
+    st.markdown(html_str, unsafe_allow_html=True)
 # ======================================================================================
 # 96. 【レイアウト修正版】操作コントロールパネル（多言語対応版）
 # ======================================================================================
