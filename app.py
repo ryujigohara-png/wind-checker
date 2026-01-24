@@ -2368,8 +2368,6 @@ def render_graph_area_module(danger_v, sel_dirs, design_params, now_jst):
     lang_dict = translations[st.session_state.lang]
 
     with st.spinner(lang_dict.get("MSG_GEN_GRAPH", "グラフを生成中...")):
-        # 12の戻り値を受け取る（※12を未修正の場合は戻り値の数に注意してください）
-        # ここでは以前提示した「分割版」の戻り値形式に合わせています
         res = generate_high_res_graph(
             st.session_state.lat, st.session_state.lon, danger_v, tuple(sel_dirs), design_params, now_jst
         )
@@ -2377,33 +2375,33 @@ def render_graph_area_module(danger_v, sel_dirs, design_params, now_jst):
         left_b64, right_b64, ratio_info, start_idx, df_graph = res
     
     dpi = design_params.get("graph_dpi", CONFIG.get("DPI", 200))
+    # グラフの論理上の高さ（インチ × DPI）を取得
+    # これを指定することで、左側画像が縮小されるのを防ぎます
+    fig_h_px = int(design_params.get("height", CONFIG["GRAPH_HIGHT"]) * dpi)
     total_w = int(design_params.get("width", CONFIG["GRAPH_WIDTH"]) * dpi)
     
-    # 分割比率の定義（12をいじらない場合でも、表示上の切り分けとして定義）
     split_ratio = 0.10
     w_left_pct = "10%"
     w_right_px = int(total_w * (1.0 - split_ratio))
     
     header_h, body_h = generate_weather_icons_html(df_graph, ratio_info, w_right_px, start_idx)
 
-    # 【重要】すべての要素を一つの巨大なHTML文字列として結合します
-    # これによりStreamlitが勝手にコードとして解釈するのを防ぎます
+    # 左側画像の高さを px で明示的に固定し、右側と一致させます
     full_content = f'''
     <div style="display: flex; width: 100%; background: white; border: 1px solid #ddd; font-family: sans-serif;">
-        <div style="width: {w_left_pct}; min-width: 70px; flex-shrink: 0; z-index: 10; background: white; border-right: 1px solid #eee;">
+        <div style="width: {w_left_pct}; min-width: 75px; flex-shrink: 0; z-index: 10; background: white; border-right: 1px solid #eee;">
             {header_h}
-            <img src="data:image/png;base64,{left_b64}" style="width: 100%; display: block;">
+            <img src="data:image/png;base64,{left_b64}" style="width: 100%; height: {fig_h_px}px; display: block; object-fit: fill;">
         </div>
         <div style="flex-grow: 1; overflow-x: auto; overflow-y: hidden; background: white;">
             <div style="width: {w_right_px}px; position: relative;">
                 {body_h}
-                <img src="data:image/png;base64,{right_b64}" style="width: {w_right_px}px; display: block;">
+                <img src="data:image/png;base64,{right_b64}" style="width: {w_right_px}px; height: {fig_h_px}px; display: block;">
             </div>
         </div>
     </div>
     '''
     
-    # 最後に一気に流し込む
     st.markdown(full_content, unsafe_allow_html=True)
 
 # ======================================================================================
