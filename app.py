@@ -2367,6 +2367,7 @@ def render_graph_area_module(danger_v, sel_dirs, design_params, now_jst):
     translations = get_language_dict()
     lang_dict = translations[st.session_state.lang]
 
+    # 12番のサブルーチンを、一切の変更なしで呼び出し
     with st.spinner(lang_dict.get("MSG_GEN_GRAPH", "グラフを生成中...")):
         res = generate_high_res_graph(
             st.session_state.lat, st.session_state.lon, danger_v, tuple(sel_dirs), design_params, now_jst
@@ -2378,30 +2379,35 @@ def render_graph_area_module(danger_v, sel_dirs, design_params, now_jst):
     fig_h_px = int(design_params.get("height", CONFIG["GRAPH_HIGHT"]) * dpi)
     total_w = int(design_params.get("width", CONFIG["GRAPH_WIDTH"]) * dpi)
     
-    # 12で設定した split_ratio (0.10) に基づく本来の幅
+    # 12番の仕様に基づく分割比率
     split_ratio = 0.10
-    full_left_w = int(total_w * split_ratio)
+    w_left_px = int(total_w * split_ratio)
     w_right_px = int(total_w * (1.0 - split_ratio))
     
-    # 【調整ポイント】
-    # 数字が見えるギリギリまで右側を左に引き寄せる量（px）
-    # 数字が消える場合は、この値を小さく（例: -30px）してください
-    pull_left = -45 
-
+    # アイコンHTML生成
     header_h, body_h = generate_weather_icons_html(df_graph, ratio_info, w_right_px, start_idx)
 
+    # 修正ポイント：
+    # 左右を並べるのではなく、1つの親要素の中で「重ね合わせ」ます。
+    # 左側の目盛りエリアを position: sticky で左端に固定し、その下を右側がくぐり抜ける構造です。
     full_content = f'''
-    <div style="display: flex; gap: 0px; width: 100%; background: white; border: 1px solid #ddd; font-family: sans-serif; overflow: hidden;">
-        <div style="width: {full_left_w}px; min-width: {full_left_w}px; flex-shrink: 0; z-index: 10; background: white;">
-            {header_h}
-            <img src="data:image/png;base64,{left_b64}" 
-                 style="width: 100%; height: {fig_h_px}px; display: block; object-fit: contain; object-position: left;">
-        </div>
-        <div style="flex-grow: 1; overflow-x: auto; overflow-y: hidden; background: white; margin-left: {pull_left}px; border-left: 1px solid #eee; z-index: 5;">
-            <div style="width: {w_right_px}px; position: relative;">
-                {body_h}
-                <img src="data:image/png;base64,{right_b64}" style="width: {w_right_px}px; height: {fig_h_px}px; display: block;">
+    <div style="position: relative; width: 100%; background: white; border: 1px solid #ddd; overflow: hidden; font-family: sans-serif;">
+        <div style="display: flex; width: 100%; overflow-x: auto; overflow-y: hidden;">
+            
+            <div style="position: -webkit-sticky; position: sticky; left: 0; z-index: 100; background: white; flex-shrink: 0; width: {w_left_px}px; margin-right: -{w_left_px}px;">
+                <div style="width: {w_left_px}px; border-right: 1px solid #eee;">
+                    {header_h}
+                    <img src="data:image/png;base64,{left_b64}" style="width: 100%; height: {fig_h_px}px; display: block;">
+                </div>
             </div>
+
+            <div style="flex-grow: 1; z-index: 10;">
+                <div style="width: {w_right_px}px; position: relative; margin-left: {w_left_px - 45}px;">
+                    {body_h}
+                    <img src="data:image/png;base64,{right_b64}" style="width: 100%; height: {fig_h_px}px; display: block;">
+                </div>
+            </div>
+
         </div>
     </div>
     '''
