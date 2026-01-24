@@ -80,17 +80,17 @@ CONFIG = {
     "GRAPH_HIGHT": 3.0,                 # グラフ縦幅(inch)
     "GRAPH_FONT_SIZE": 10,              # グラフ内文字サイズ
     "LABEL_SIZE": 7,                    # 軸ラベル文字サイズ
+    "HSPACE": 1.25,                     # グラフ間余白
     "DEFAULT_DANGER_V": 10.0,           # 危険風速
     #開発者詳細設定
     "CONTENA_MIN_W": 2500,              # コンテナ最小幅(px)
     "DPI": 200,                         # 解像度 (DPI)
-    "HSPACE": 0.75,                     # グラフ間余白
     "LABEL_PAD": 0,                     # ラベル距離
     "DIAL_H_GAP": 0,                    # 地図ダイアログ横余白 (H-Gap)
     "DIAL_V_GAP": 0,                    # 地図ダイアログ縦余白（V-Gap）
     "FAV_BTN_WIDTH": 30,                # MySpot編集ダイアログ ボタン幅(%)
     "FAV_NAME_LEN": 12,                 # MySpot編集ダイアログ 地名表示制限（文字）
-    "DEFAULT_PRECIP_Y": 1.25,           # 降水量ラベル高さ（グラフ枠を1.0とした相対値）
+    "DEFAULT_PRECIP_Y": 1.05,           # 降水量ラベル高さ（グラフ枠を1.0とした相対値）
     "DEFAULT_ICON_MARGIN": 0,           # 天気アイコン下余白(px)
     "DEFAULT_RATIOS": [4.0, 0.8, 0.8, 0.8, 0.8],  # グラフ比率設定
     # その他既定値
@@ -220,7 +220,7 @@ def get_language_dict():
             "海水温 (℃)": "海水温 (℃)",
             "降水量mm　": "降水量mm　",
             "天気": "天気",
-            "OCEAN_INFO": "※指定地点の最寄り（{res_dir}約{dist_km}km）の海洋データを表示しています。",
+            "OCEAN_INFO": "※海洋データは、指定地点の最寄り（{res_dir}約{dist_km}km）のデータを表示しています。",
             "OCEAN_NONE": "※指定地点の近傍(30km圏内)に有効な海洋データがないため表示されません",
             "LEGEND_TITLE": "📊 凡例:",
             "LEGEND_BLUE": "3-5m/s (青)",
@@ -1262,7 +1262,6 @@ def show_settings_dialog():
             st.subheader("開発用詳細設定")
             d_min_w = st.slider("コンテナ最小幅 (px)", 500, 5000, int(st.session_state.get("min_container_width", CONFIG["CONTENA_MIN_W"])), 100)
             d_dpi = st.radio("解像度 (DPI)", [200, 300], index=0 if st.session_state.get("graph_dpi", 200) == 200 else 1, horizontal=True)
-        #    d_hspace = st.slider("グラフ間余白", -0.2, 1.5, float(st.session_state.get("hspace", CONFIG["HSPACE"])), 0.05)
             d_label_pad = st.slider("ラベル距離", -5, 10, int(st.session_state.get("label_pad", CONFIG["LABEL_PAD"])))
             st.subheader("地図ダイアログ調整")
             d_dial_h = st.slider("地図ダイアログ横余白 (H-Gap)", 0, 20, int(st.session_state.get("dial_h_gap", CONFIG["DIAL_H_GAP"])))
@@ -1288,7 +1287,6 @@ def show_settings_dialog():
         else:
             d_min_w = st.session_state.get("min_container_width", CONFIG["CONTENA_MIN_W"])
             d_dpi = st.session_state.get("graph_dpi", CONFIG["DPI"])
-            # d_hspace = st.session_state.get("hspace", CONFIG["HSPACE"])
             d_label_pad = st.session_state.get("label_pad", CONFIG["LABEL_PAD"])
             d_dial_h = st.session_state.get("dial_h_gap", CONFIG["DIAL_H_GAP"])
             d_dial_v = st.session_state.get("dial_v_gap", CONFIG["DIAL_V_GAP"])
@@ -2648,15 +2646,13 @@ def main():
     st.markdown("---")
     st.caption(lang_dict["DISCLAIMER"])
 
-    # ベータ版表示の判定（URLにbetaが含まれる、または開発モードがONの場合）
-    is_beta = "-beta-" in st.context.headers.get("host", "").lower() or st.session_state.get("is_dev_mode", False)
-    if is_beta:
-        # 右寄せで薄く表示し、全体のデザインを邪魔しないように配置
+    # URLのホスト名に "-beta-" が含まれているか判定
+    host_name = st.context.headers.get("host", "").lower()
+    if "-beta-" in host_name:        # 右寄せで薄く表示し、全体のデザインを邪魔しないように配置
         st.markdown(
-            f'<div style="text-align: right; color: gray; font-size: 0.8em;">- Beta Version -</div>', 
+            f'<div style="text-align: left; color: gray; font-size: 0.8em;">- Beta Version -</div>', 
             unsafe_allow_html=True
         )
-    
     
     if st.session_state.get("is_dev_mode"):
         st.divider()
