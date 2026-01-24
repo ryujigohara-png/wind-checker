@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# 正規版　更新 2026.1.24 0845 波高、海面水温、比率補完　コンプリート版
+# 正規版　更新 2026.1.24 0930 グラフサイズ固定　コンプリート版
 """
 Pin_Weather! 機能仕様書 2026改訂版
 提供された最新のソースコード（2026.1.22 0100 波高、海面水温 コンプリート版）に基づき、波高および海面水温グラフの追加を反映した最新の機能仕様書を作成しました。
@@ -77,8 +77,8 @@ CONFIG = {
     "SHOW_W_TEXT": False,               # 天気文字表示
     "SHOW_DIR_NAME": False,             # 風向名表示
     "GRAPH_WIDTH": 15,                  # グラフ横幅(inch)
-    "GRAPH_HIGHT": 2.5,                 # グラフ縦幅(inch)
-    "GRAPH_FONT_SIZE": 11,              # グラフ内文字サイズ
+    "GRAPH_HIGHT": 3.0,                 # グラフ縦幅(inch)
+    "GRAPH_FONT_SIZE": 10,              # グラフ内文字サイズ
     "LABEL_SIZE": 7,                    # 軸ラベル文字サイズ
     "DEFAULT_DANGER_V": 10.0,           # 危険風速
     #開発者詳細設定
@@ -90,7 +90,7 @@ CONFIG = {
     "DIAL_V_GAP": 0,                    # 地図ダイアログ縦余白（V-Gap）
     "FAV_BTN_WIDTH": 30,                # MySpot編集ダイアログ ボタン幅(%)
     "FAV_NAME_LEN": 12,                 # MySpot編集ダイアログ 地名表示制限（文字）
-    "DEFAULT_PRECIP_Y": 1.00,           # 降水量ラベル高さ（グラフ枠を1.0とした相対値）
+    "DEFAULT_PRECIP_Y": 1.25,           # 降水量ラベル高さ（グラフ枠を1.0とした相対値）
     "DEFAULT_ICON_MARGIN": 0,           # 天気アイコン下余白(px)
     "DEFAULT_RATIOS": [4.0, 0.8, 0.8, 0.8, 0.8],  # グラフ比率設定
     # その他既定値
