@@ -2647,6 +2647,16 @@ def main():
     # --- フッター：免責事項の表示 ---
     st.markdown("---")
     st.caption(lang_dict["DISCLAIMER"])
+
+    # ベータ版表示の判定（URLにbetaが含まれる、または開発モードがONの場合）
+    is_beta = "-beta-" in st.context.headers.get("host", "").lower() or st.session_state.get("is_dev_mode", False)
+    if is_beta:
+        # 右寄せで薄く表示し、全体のデザインを邪魔しないように配置
+        st.markdown(
+            f'<div style="text-align: right; color: gray; font-size: 0.8em;">- Beta Version -</div>', 
+            unsafe_allow_html=True
+        )
+    
     
     if st.session_state.get("is_dev_mode"):
         st.divider()
