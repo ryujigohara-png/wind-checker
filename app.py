@@ -2378,33 +2378,34 @@ def render_graph_area_module(danger_v, sel_dirs, design_params, now_jst):
     fig_h_px = int(design_params.get("height", CONFIG["GRAPH_HIGHT"]) * dpi)
     total_w = int(design_params.get("width", CONFIG["GRAPH_WIDTH"]) * dpi)
     
-    # 比率の微調整
+    # 左側の表示幅を 70px 程度に固定し、画像の中の無駄な空白を「はみ出させて隠す」設定にします
+    fixed_left_w = 75 
     split_ratio = 0.10
-    w_left_px = int(total_w * split_ratio)
     w_right_px = int(total_w * (1.0 - split_ratio))
     
     header_h, body_h = generate_weather_icons_html(df_graph, ratio_info, w_right_px, start_idx)
 
     # 修正ポイント：
-    # 1. flexの gap: 0 でセル間の隙間を排除
-    # 2. 左側エリアの margin-right をマイナスにして画像を右へ引き寄せる
-    # 3. 境界線の border-right を 1px solid #ddd にして自然な繋ぎ目に
+    # 1. 左側エリアに overflow: hidden をかけ、画像の中の空白部分を枠外に追い出す
+    # 2. 画像の width を 100% ではなく、本来の計算幅（total_w * 0.1）に固定する
+    # 3. 天気見出しの横幅も固定してズレを防ぐ
     full_content = f'''
-    <div style="display: flex; gap: 0px; width: 100%; background: white; border: 1px solid #ddd; font-family: sans-serif; overflow: hidden;">
-        <div style="width: {w_left_px}px; min-width: {w_left_px}px; flex-shrink: 0; z-index: 10; background: white; margin-right: -2px;">
-            {header_h}
-            <img src="data:image/png;base64,{left_b64}" style="width: 100%; height: {fig_h_px}px; display: block; object-fit: contain; object-position: right;">
+    <div style="display: flex; gap: 0px; width: 100%; background: white; border: 1px solid #ddd; font-family: sans-serif;">
+        <div style="width: {fixed_left_w}px; min-width: {fixed_left_w}px; flex-shrink: 0; z-index: 10; background: white; overflow: hidden; border-right: 1px solid #eee;">
+            <div style="width: {fixed_left_w}px;">{header_h}</div>
+            <img src="data:image/png;base64,{left_b64}" 
+                 style="width: {int(total_w * split_ratio)}px; height: {fig_h_px}px; display: block; max-width: none; margin-left: 0px;">
         </div>
-        <div style="flex-grow: 1; overflow-x: auto; overflow-y: hidden; background: white; border-left: 1px solid #eee;">
+        <div style="flex-grow: 1; overflow-x: auto; overflow-y: hidden; background: white;">
             <div style="width: {w_right_px}px; position: relative;">
                 {body_h}
-                <img src="data:image/png;base64,{right_b64}" style="width: {w_right_px}px; height: {fig_h_px}px; display: block; object-fit: contain; object-position: left;">
+                <img src="data:image/png;base64,{right_b64}" style="width: {w_right_px}px; height: {fig_h_px}px; display: block;">
             </div>
         </div>
     </div>
     '''
     
-    st.markdown(full_content, unsafe_allow_html=True)
+    st.markdown(full_html := full_content, unsafe_allow_html=True)
 
 # ======================================================================================
 # 96. 【レイアウト修正版】操作コントロールパネル（多言語対応版）
