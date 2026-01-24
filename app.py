@@ -1381,7 +1381,8 @@ def show_sidebar_controls():
         st.session_state.get("show_temp", True),
         st.session_state.get("show_wave", True),
         st.session_state.get("show_ocean_temp", True),
-        st.session_state.get("show_tide", False)
+        st.session_state.get("show_tide", False),
+        hspace=st.session_state.get("hspace", 1.0) # ここを追加
     )
 
     design_params = {
@@ -1452,38 +1453,43 @@ def show_language_dialog():
 # ======================================================================================
 # 22. グラフの表示高さを一括計算するサブルーチン
 # ======================================================================================
-def calculate_graph_height(base_height, ratios, show_wind, show_temp, show_wave, show_ocean_temp, show_tide):
+def calculate_graph_height(base_height, ratios, show_wind, show_temp, show_wave, show_ocean_temp, show_tide, hspace=1.0):
     """
     全グラフが表示されている状態の比率合計を基準として、各グラフのサイズを固定します。
-    正規版ユーザーの古い設定データ（要素不足）に備えた補填ロジックを実装済み。
+    グラフ間の余白（hspace）による高さの増加分を計算に含め、文字の重なりを防ぎます。
     """
     import streamlit as st
 
     # --- 1. エラートラップ：比率データの補完 ---
-    # ローカルストレージからの古いデータ（要素不足）に備え、必ず5要素に拡張します
     current_ratios = list(ratios)
     if len(current_ratios) < 5:
         default_ratios = CONFIG["DEFAULT_RATIOS"]
-        # 既存の要素がある分だけ保持し、足りない分（海面水温・潮位など）をデフォルトで埋める
         for i in range(len(current_ratios), 5):
             current_ratios.append(default_ratios[i])
     
-    # --- 2. スケールの固定計算（A案） ---
-    # 表示・非表示に関わらず、全項目の比率合計を「分母」として固定します
-    # これにより、特定のグラフを消しても残ったグラフの見た目のサイズが変わりません
+    # --- 2. スケールの固定計算 ---
     full_ratio_total = sum(current_ratios)
-    
-    # 1単位（比率1.0あたり）の高さ（inch）を算出
-    # 全表示を前提とした base_height（CONFIG["GRAPH_HIGHT"]等）を全比率で割る
+    # 1単位あたりの高さ(inch)
     fixed_unit_h = base_height / full_ratio_total 
     
-    # --- 3. アイコン表示用のマージン ---
-    # 風向き(wind)が表示されている時のみ、アイコン用のスペース（0.45inch）を確保
+    # --- 3. アイコンおよび余白の計算 ---
+    # 風向き表示時のマージン
     icon_margin = 0.45 if show_wind else 0.0
     
+    # 表示されるグラフの数をカウント
+    active_plots_count = sum([show_wind, show_temp, show_wave, show_ocean_temp, show_tide])
+    
+    # グラフ間の数（グラフが N 個なら間は N-1）
+    num_gaps = max(0, active_plots_count - 1)
+    
+    # グラフ間余白（hspace）による高さの加算
+    # matplotlibの hspace は「平均的な子プロットの高さ」に対する比率なので、
+    # 物理的な高さ(inch)に換算して加算します。
+    # 重なりを防ぐため、基準となる 1ユニットの高さをベースに計算。
+    gap_margin = num_gaps * (hspace * 0.15) # 0.15は文字重なりを防ぐための調整係数
+    
     # --- 4. 現在表示されている項目の高さを積み上げる ---
-    # current_ratios の並び: [0:風, 1:温, 2:波, 3:海温, 4:潮]
-    auto_height = icon_margin
+    auto_height = icon_margin + gap_margin
     
     if show_wind:
         auto_height += current_ratios[0] * fixed_unit_h
