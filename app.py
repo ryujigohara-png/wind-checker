@@ -321,7 +321,7 @@ def get_language_dict():
             "気温 (℃)": "Temp (℃)",
             "潮位 (cm)": "Tide (cm)",
             "波高 (m)": "Wave (m)",
-            "海水温 (℃)": "Water (℃)",
+            "海水温 (℃)": "Sea Surf.(℃)",
             "降水量mm　": "Precip (mm) ",
             "天気": "Weather",
             "OCEAN_INFO": "*Showing marine data from {res_dir} approx. {dist_km}km away.",
@@ -1277,8 +1277,8 @@ def show_settings_dialog():
             d_label_pad = st.slider("ラベル距離", -5, 10, int(st.session_state.get("label_pad", CONFIG["LABEL_PAD"])))
             
             st.subheader("左軸（Y軸）余白追い出し調整")
-            d_left_view_w = st.slider("左軸窓の幅 (px)", 30, 200, int(st.session_state.get("left_view_w", CONFIG.get("LEFT_VIEW_W", 65))))
-            d_left_shift = st.slider("左軸画像のズレ (px)", -300, -0, int(st.session_state.get("left_shift", CONFIG.get("LEFT_SHIFT", -35))))
+            d_left_view_w = st.slider("左軸窓の幅 (px)", 30, 200, int(st.session_state.get("left_view_w", CONFIG.get("LEFT_VIEW_W", 116))))
+            d_left_shift = st.slider("左軸画像のズレ (px)", -300, -0, int(st.session_state.get("left_shift", CONFIG.get("LEFT_SHIFT", -185))))
             
             st.subheader("地図ダイアログ調整")
             d_dial_h = st.slider("地図ダイアログ横余白 (H-Gap)", 0, 20, int(st.session_state.get("dial_h_gap", CONFIG["DIAL_H_GAP"])))
@@ -1306,8 +1306,8 @@ def show_settings_dialog():
             d_min_w = st.session_state.get("min_container_width", CONFIG["CONTENA_MIN_W"])
             d_dpi = st.session_state.get("graph_dpi", CONFIG["DPI"])
             d_label_pad = st.session_state.get("label_pad", CONFIG["LABEL_PAD"])
-            d_left_view_w = st.session_state.get("left_view_w", CONFIG.get("LEFT_VIEW_W", 65))
-            d_left_shift = st.session_state.get("left_shift", CONFIG.get("LEFT_SHIFT", -35))
+            d_left_view_w = st.session_state.get("left_view_w", CONFIG.get("LEFT_VIEW_W", 116))
+            d_left_shift = st.session_state.get("left_shift", CONFIG.get("LEFT_SHIFT", -185))
             d_dial_h = st.session_state.get("dial_h_gap", CONFIG["DIAL_H_GAP"])
             d_dial_v = st.session_state.get("dial_v_gap", CONFIG["DIAL_V_GAP"])
             d_fav_w = st.session_state.get("fav_btn_width", CONFIG.get("FAV_BTN_WIDTH", 30))
@@ -2379,28 +2379,34 @@ def render_graph_area_module(danger_v, sel_dirs, design_params, now_jst):
     translations = get_language_dict()
     lang_dict = translations[st.session_state.lang]
 
-    # サブルーチン12は絶対にそのまま使う
-    res = generate_high_res_graph(
-        st.session_state.lat, st.session_state.lon, danger_v, tuple(sel_dirs), design_params, now_jst
-    )
+    # --- 1. グラフ生成（辞書に基づいたスピナーを表示） ---
+    msg_gen = lang_dict.get("MSG_GEN_GRAPH", "グラフを生成中...")
+    with st.spinner(msg_gen):
+        # サブルーチン12を呼び出し
+        res = generate_high_res_graph(
+            st.session_state.lat, st.session_state.lon, danger_v, tuple(sel_dirs), design_params, now_jst
+        )
+    
     if not res or res[0] is None: return
     left_b64, right_b64, ratio_info, start_idx, df_graph = res
     
+    # --- 2. パラメータ取得（CONFIGおよびsession_stateから） ---
     dpi = design_params.get("graph_dpi", CONFIG.get("DPI", 200))
     fig_h_px = int(design_params.get("height", CONFIG["GRAPH_HIGHT"]) * dpi)
     total_w = int(design_params.get("width", CONFIG["GRAPH_WIDTH"]) * dpi)
     
-    # 【仕様遵守】CONFIGおよびsession_stateから値を取得
-    v_width = st.session_state.get("left_view_w", CONFIG.get("LEFT_VIEW_W", 65))
-    v_shift = st.session_state.get("left_shift", CONFIG.get("LEFT_SHIFT", -35))
+    # ユーザーが特定した最適値 (116px, -185px) を使用
+    v_width = st.session_state.get("left_view_w", CONFIG.get("LEFT_VIEW_W", 116))
+    v_shift = st.session_state.get("left_shift", CONFIG.get("LEFT_SHIFT", -185))
     
     # 12番の生成画像の本来の幅（10%分）
     orig_left_w = int(total_w * 0.10)
     w_right_px = int(total_w * 0.90)
     
+    # --- 3. アイコン・ラベルHTMLの取得 ---
     header_h, body_h = generate_weather_icons_html(df_graph, ratio_info, w_right_px, start_idx)
 
-    # HTML構築：一切の余計なクラスや複雑なネストを避け、確実にレンダリングさせます
+    # --- 4. HTML構築（確実にレンダリング） ---
     html_str = (
         f'<div style="display:flex; width:100%; background:white; border:1px solid #ddd; overflow:hidden;">'
         f'  <div style="width:{v_width}px; min-width:{v_width}px; flex-shrink:0; overflow:hidden; border-right:1px solid #eee; z-index:10; background:white;">'
@@ -2417,7 +2423,6 @@ def render_graph_area_module(danger_v, sel_dirs, design_params, now_jst):
     )
 
     st.markdown(html_str, unsafe_allow_html=True)
-
 # ======================================================================================
 # 96. 【レイアウト修正版】操作コントロールパネル（多言語対応版）
 # ======================================================================================
