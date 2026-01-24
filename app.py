@@ -2650,7 +2650,7 @@ def main():
     host_name = st.context.headers.get("host", "").lower()
     if "-beta-" in host_name:        # 右寄せで薄く表示し、全体のデザインを邪魔しないように配置
         st.markdown(
-            f'<div style="text-align: right; color: gray; font-size: 0.8em;">- Beta Version -</div>', 
+            f'<div style="text-align: left; color: gray; font-size: 0.8em;">- Beta Version -</div>', 
             unsafe_allow_html=True
         )
     
