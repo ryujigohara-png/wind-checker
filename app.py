@@ -836,14 +836,14 @@ def render_temp_line_chart(ax, df):
     translations = get_language_dict()
     lang_dict = translations[st.session_state.lang]
 
+    # フォントサイズは軸ラベルのサイズを取得
+    label_fs = CONFIG["LABEL_SIZE"]
+
     # メインの折れ線描画
     ax.plot(df['time'], df['temperature_2m'], color=CONFIG["TEMP_COLOR"], linewidth=2, marker='o', markersize=3, markevery=3)
     
     # Y軸ラベルの多言語化（例: "気温 (℃)" -> "Temp. (°C)"）
-    ax.set_ylabel(lang_dict.get('気温 (℃)', 'Temp. (°C)'), fontsize=CONFIG["LABEL_SIZE"])
-    
-    # フォントサイズは軸ラベルのサイズを取得
-    label_fs = CONFIG["LABEL_SIZE"]
+    ax.set_ylabel(lang_dict.get('気温 (℃)', 'Temp. (°C)'), fontsize=label_fs)
     
     # y軸の範囲設定
     t_max = df['temperature_2m'].max()
@@ -870,7 +870,7 @@ def render_temp_line_chart(ax, df):
                 transform=ax.get_xaxis_transform(),
                 clip_on=False
             )
-
+            
 # ======================================================================================
 # 11. 潮位曲線グラフを描画するサブルーチン
 # ======================================================================================
