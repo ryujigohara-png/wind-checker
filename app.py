@@ -1277,8 +1277,8 @@ def show_settings_dialog():
             d_label_pad = st.slider("ラベル距離", -5, 10, int(st.session_state.get("label_pad", CONFIG["LABEL_PAD"])))
             
             st.subheader("左軸（Y軸）余白追い出し調整")
-            d_left_view_w = st.slider("左軸窓の幅 (px)", 30, 150, int(st.session_state.get("left_view_w", CONFIG.get("LEFT_VIEW_W", 65))))
-            d_left_shift = st.slider("左軸画像のズレ (px)", -200, -0, int(st.session_state.get("left_shift", CONFIG.get("LEFT_SHIFT", -35))))
+            d_left_view_w = st.slider("左軸窓の幅 (px)", 30, 200, int(st.session_state.get("left_view_w", CONFIG.get("LEFT_VIEW_W", 65))))
+            d_left_shift = st.slider("左軸画像のズレ (px)", -300, -0, int(st.session_state.get("left_shift", CONFIG.get("LEFT_SHIFT", -35))))
             
             st.subheader("地図ダイアログ調整")
             d_dial_h = st.slider("地図ダイアログ横余白 (H-Gap)", 0, 20, int(st.session_state.get("dial_h_gap", CONFIG["DIAL_H_GAP"])))
