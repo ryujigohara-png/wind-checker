@@ -90,6 +90,8 @@ CONFIG = {
     "DIAL_V_GAP": 0,                    # 地図ダイアログ縦余白（V-Gap）
     "FAV_BTN_WIDTH": 30,                # MySpot編集ダイアログ ボタン幅(%)
     "FAV_NAME_LEN": 12,                 # MySpot編集ダイアログ 地名表示制限（文字）
+    "LEFT_VIEW_W": 65,                  # 左軸窓の幅 (px)
+    "LEFT_SHIFT": -35,                  # 左軸画像のズレ (px)
     "DEFAULT_PRECIP_Y": 1.05,           # 降水量ラベル高さ（グラフ枠を1.0とした相対値）
     "DEFAULT_ICON_MARGIN": 0,           # 天気アイコン下余白(px)
     "DEFAULT_RATIOS": [4.0, 0.8, 0.8, 0.8, 0.8],  # グラフ比率設定
@@ -1273,21 +1275,27 @@ def show_settings_dialog():
             d_min_w = st.slider("コンテナ最小幅 (px)", 500, 5000, int(st.session_state.get("min_container_width", CONFIG["CONTENA_MIN_W"])), 100)
             d_dpi = st.radio("解像度 (DPI)", [200, 300], index=0 if st.session_state.get("graph_dpi", 200) == 200 else 1, horizontal=True)
             d_label_pad = st.slider("ラベル距離", -5, 10, int(st.session_state.get("label_pad", CONFIG["LABEL_PAD"])))
+            
+            st.subheader("左軸（Y軸）余白追い出し調整")
+            d_left_view_w = st.slider("左軸窓の幅 (px)", 30, 150, int(st.session_state.get("left_view_w", CONFIG.get("LEFT_VIEW_W", 65))))
+            d_left_shift = st.slider("左軸画像のズレ (px)", -100, 0, int(st.session_state.get("left_shift", CONFIG.get("LEFT_SHIFT", -35))))
+            
             st.subheader("地図ダイアログ調整")
             d_dial_h = st.slider("地図ダイアログ横余白 (H-Gap)", 0, 20, int(st.session_state.get("dial_h_gap", CONFIG["DIAL_H_GAP"])))
             d_dial_v = st.slider("地図ダイアログ縦余白 (V-Gap)", 0, 20, int(st.session_state.get("dial_v_gap", CONFIG["DIAL_V_GAP"])))
+            
             st.subheader("MySpot編集ダイアログ調整")
             d_fav_w = st.slider("ボタン幅 (%)", 10, 45, int(st.session_state.get("fav_btn_width", CONFIG.get("FAV_BTN_WIDTH", 30))), 1)
             d_fav_len = st.slider("地名表示制限 (文字)", 5, 25, int(st.session_state.get("fav_name_len", CONFIG.get("FAV_NAME_LEN", 12))), 1)
+                       
             st.subheader("降水量・アイコン位置調整")
             d_precip_y = st.slider("降水量ラベル高さ", 0.0, 2.0, float(st.session_state.get("precip_y", CONFIG["DEFAULT_PRECIP_Y"])), 0.05)
             d_icon_margin = st.slider("天気アイコン下余白", 0, 100, int(st.session_state.get("icon_margin", CONFIG["DEFAULT_ICON_MARGIN"])), 5)
-            st.subheader("グラフ縦比率設定")
             
             # --- 修正箇所: 要素数が足りない場合にデフォルト値を補填 ---
+            st.subheader("グラフ縦比率設定")
             r = st.session_state.get("ratios", CONFIG["DEFAULT_RATIOS"])
             d_r = CONFIG["DEFAULT_RATIOS"]
-            
             r0 = st.number_input("比率:風向", 0.5, 10.0, float(r[0] if len(r) > 0 else d_r[0]), 0.1)
             r1 = st.number_input("比率:気温", 0.5, 5.0, float(r[1] if len(r) > 1 else d_r[1]), 0.1)
             r2 = st.number_input("比率:波高", 0.5, 10.0, float(r[2] if len(r) > 2 else d_r[2]), 0.1)
@@ -1298,6 +1306,8 @@ def show_settings_dialog():
             d_min_w = st.session_state.get("min_container_width", CONFIG["CONTENA_MIN_W"])
             d_dpi = st.session_state.get("graph_dpi", CONFIG["DPI"])
             d_label_pad = st.session_state.get("label_pad", CONFIG["LABEL_PAD"])
+            d_left_view_w = st.session_state.get("left_view_w", CONFIG.get("LEFT_VIEW_W", 65))
+            d_left_shift = st.session_state.get("left_shift", CONFIG.get("LEFT_SHIFT", -35))
             d_dial_h = st.session_state.get("dial_h_gap", CONFIG["DIAL_H_GAP"])
             d_dial_v = st.session_state.get("dial_v_gap", CONFIG["DIAL_V_GAP"])
             d_fav_w = st.session_state.get("fav_btn_width", CONFIG.get("FAV_BTN_WIDTH", 30))
@@ -1316,6 +1326,7 @@ def show_settings_dialog():
                 "width": CONFIG["GRAPH_WIDTH"], "base_height": CONFIG["GRAPH_HIGHT"], "base_font_size": CONFIG["GRAPH_FONT_SIZE"],
                 "label_font_size": CONFIG["LABEL_SIZE"], "danger_v": CONFIG["DEFAULT_DANGER_V"], "sel_dirs": list(CONFIG["DEFAULT_DIRS"]),
                 "min_container_width": CONFIG["CONTENA_MIN_W"], "graph_dpi": CONFIG["DPI"], "show_w_text": CONFIG["SHOW_W_TEXT"],
+                "left_view_w": CONFIG["LEFT_VIEW_W"], "left_shift": CONFIG["LEFT_SHIFT"],
                 "show_dir_name": CONFIG["SHOW_DIR_NAME"], "hspace": CONFIG["HSPACE"], "label_pad": CONFIG["LABEL_PAD"],
                 "dial_h_gap": CONFIG["DIAL_H_GAP"], "dial_v_gap": CONFIG["DIAL_V_GAP"],
                 "fav_btn_width": CONFIG.get("FAV_BTN_WIDTH", 30), "fav_name_len": CONFIG.get("FAV_NAME_LEN", 12),
@@ -1335,7 +1346,8 @@ def show_settings_dialog():
                     "show_wave": d_show_wave, "show_ocean_temp": d_show_ocean_temp,
                     "width": d_width, "base_height": d_base_h, "base_font_size": d_base_f,
                     "label_font_size": d_label_f, "danger_v": d_danger_v, "sel_dirs": new_sel_dirs,
-                    "min_container_width": d_min_w, "graph_dpi": d_dpi, "show_w_text": d_show_w_text,
+                    "min_container_width": d_min_w, "graph_dpi": d_dpi,
+                    "left_view_w": d_left_view_w, "left_shift": d_left_shift, "show_w_text": d_show_w_text,
                     "show_dir_name": d_show_dir_name, "hspace": d_hspace, "label_pad": d_label_pad,
                     "dial_h_gap": d_dial_h, "dial_v_gap": d_dial_v,
                     "fav_btn_width": d_fav_w, "fav_name_len": d_fav_len,
@@ -2367,7 +2379,7 @@ def render_graph_area_module(danger_v, sel_dirs, design_params, now_jst):
     translations = get_language_dict()
     lang_dict = translations[st.session_state.lang]
 
-    # サブルーチン12を呼び出し（ここは一切変更しません）
+    # サブルーチン12は絶対にそのまま使う
     res = generate_high_res_graph(
         st.session_state.lat, st.session_state.lon, danger_v, tuple(sel_dirs), design_params, now_jst
     )
@@ -2378,21 +2390,22 @@ def render_graph_area_module(danger_v, sel_dirs, design_params, now_jst):
     fig_h_px = int(design_params.get("height", CONFIG["GRAPH_HIGHT"]) * dpi)
     total_w = int(design_params.get("width", CONFIG["GRAPH_WIDTH"]) * dpi)
     
-    # 窓の幅を固定し、画像の中の空白（赤×）を隠す設定
-    # view_w を 60 に絞り、margin-left で画像を左にズラして余白を追い出します
-    view_w = 60
+    # 【仕様遵守】CONFIGおよびsession_stateから値を取得
+    v_width = st.session_state.get("left_view_w", CONFIG.get("LEFT_VIEW_W", 65))
+    v_shift = st.session_state.get("left_shift", CONFIG.get("LEFT_SHIFT", -35))
+    
+    # 12番の生成画像の本来の幅（10%分）
     orig_left_w = int(total_w * 0.10)
     w_right_px = int(total_w * 0.90)
     
     header_h, body_h = generate_weather_icons_html(df_graph, ratio_info, w_right_px, start_idx)
 
-    # HTMLを組み立て
-    # st.markdownが誤認しないよう、極力シンプルな構造にします
+    # HTML構築：一切の余計なクラスや複雑なネストを避け、確実にレンダリングさせます
     html_str = (
         f'<div style="display:flex; width:100%; background:white; border:1px solid #ddd; overflow:hidden;">'
-        f'  <div style="width:{view_w}px; min-width:{view_w}px; flex-shrink:0; overflow:hidden; border-right:1px solid #eee; z-index:10;">'
-        f'    <div style="width:{view_w}px; overflow:hidden;">{header_h}</div>'
-        f'    <img src="data:image/png;base64,{left_b64}" style="width:{orig_left_w}px; height:{fig_h_px}px; max-width:none; margin-left:-35px; display:block;">'
+        f'  <div style="width:{v_width}px; min-width:{v_width}px; flex-shrink:0; overflow:hidden; border-right:1px solid #eee; z-index:10; background:white;">'
+        f'    <div style="width:{v_width}px; overflow:hidden;">{header_h}</div>'
+        f'    <img src="data:image/png;base64,{left_b64}" style="width:{orig_left_w}px; height:{fig_h_px}px; max-width:none; margin-left:{v_shift}px; display:block;">'
         f'  </div>'
         f'  <div style="flex-grow:1; overflow-x:auto; background:white;">'
         f'    <div style="width:{w_right_px}px; position:relative;">'
@@ -2403,7 +2416,6 @@ def render_graph_area_module(danger_v, sel_dirs, design_params, now_jst):
         f'</div>'
     )
 
-    # 確実にHTMLとしてレンダリングさせる
     st.markdown(html_str, unsafe_allow_html=True)
 
 # ======================================================================================
