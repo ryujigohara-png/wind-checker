@@ -1184,41 +1184,6 @@ def generate_weather_icons_html(df, ratio_info, display_width, start_idx):
     return header_html, body_html
 
 # ======================================================================================
-# 17. 分割されたグラフとアイコンを配置・表示するサブルーチン
-# ======================================================================================
-def render_split_graph_area(left_b64, right_b64, header_html, icons_html, display_width):
-    """
-    分割された画像とHTMLを、CSSを使用して「左固定・右スクロール」で配置する。
-    """
-    import streamlit as st
-
-    # 全体のレイアウト構成
-    # 左側(固定): 8%程度 / 右側(スクロール): 92%程度
-    
-    col_left, col_right = st.columns([8, 92], gap="none")
-
-    with col_left:
-        # 天気の見出しを表示
-        st.components.v1.html(header_html, height=35)
-        # 左側画像（Y軸）を表示
-        st.image(f"data:image/png;base64,{left_b64}", use_container_width=True)
-
-    with col_right:
-        # スクロール可能なコンテナを作成
-        # 天気アイコンと右側画像をセットで中に入れる
-        st.markdown(
-            f'''
-            <div style="overflow-x: auto; overflow-y: hidden; width: 100%;">
-                <div style="width: {display_width}px; position: relative;">
-                    {icons_html}
-                    <img src="data:image/png;base64,{right_b64}" style="width: {display_width}px; display: block;">
-                </div>
-            </div>
-            ''',
-            unsafe_allow_html=True
-        )
-
-# ======================================================================================
 # 20. サイドバーからグラフ表示設定を詳細ダイアログで一括変更するサブルーチン
 # ======================================================================================
 def show_settings_dialog():
