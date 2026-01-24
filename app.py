@@ -836,13 +836,13 @@ def render_temp_line_chart(ax, df):
     translations = get_language_dict()
     lang_dict = translations[st.session_state.lang]
 
-    # フォントサイズは軸ラベルのサイズを取得
-    label_fs = CONFIG["LABEL_SIZE"]
+    # フォントサイズはユーザー設定（label_font_size）を取得
+    label_fs = int(st.session_state.get("label_font_size", CONFIG["LABEL_SIZE"]))
 
     # メインの折れ線描画
     ax.plot(df['time'], df['temperature_2m'], color=CONFIG["TEMP_COLOR"], linewidth=2, marker='o', markersize=3, markevery=3)
     
-    # Y軸ラベルの多言語化（例: "気温 (℃)" -> "Temp. (°C)"）
+    # Y軸ラベルの多言語化
     ax.set_ylabel(lang_dict.get('気温 (℃)', 'Temp. (°C)'), fontsize=label_fs)
     
     # y軸の範囲設定
@@ -858,7 +858,6 @@ def render_temp_line_chart(ax, df):
         
         # 0時、または3の倍数の時刻のみ数値を表示
         if not pd.isna(temp) and (dt.hour % 3 == 0):
-            # transform=ax.get_xaxis_transform() を使用して、枠外へ描画
             ax.text(
                 dt, 
                 1.02, 
@@ -886,10 +885,10 @@ def render_tide_curve_chart(ax, df, lat, lon, marine_results, res_lat, res_lon, 
 
     translations = get_language_dict()
     lang_dict = translations[st.session_state.lang]
-    label_fs = CONFIG.get("LABEL_SIZE", 10)
+    # ユーザー設定（label_font_size）を優先適用
+    label_fs = int(st.session_state.get("label_font_size", CONFIG.get("LABEL_SIZE", 10)))
 
-    # サブルーチン4を呼び出し（戻り値の数に合わせて受け取り側も修正）
-    # ※上位（サブルーチン12）で取得済みのデータを使用するように変更
+    # サブルーチン4を呼び出し
     tide_levels = marine_results["tide"] if marine_results and "tide" in marine_results else None
 
     # データなし処理
@@ -914,7 +913,6 @@ def render_tide_curve_chart(ax, df, lat, lon, marine_results, res_lat, res_lon, 
                     fontsize=label_fs, transform=ax.get_xaxis_transform())
 
     # --- 方位・距離メッセージの判定ロジック ---
-    # サブルーチン15を呼び出して描画。is_bottomがTrueの場合のみ実行。
     if is_bottom:
         render_ocean_location_info(ax, lat, lon, res_lat, res_lon, label_fs, lang_dict)
         
@@ -1046,7 +1044,8 @@ def render_wave_height_chart(ax, df, lat, lon, marine_results, res_lat, res_lon,
 
     translations = get_language_dict()
     lang_dict = translations[st.session_state.lang]
-    label_fs = CONFIG.get("LABEL_SIZE", 10)
+    # ユーザー設定（label_font_size）を優先適用
+    label_fs = int(st.session_state.get("label_font_size", CONFIG.get("LABEL_SIZE", 10)))
 
     # データなし処理
     if marine_results is None or "wave" not in marine_results:
@@ -1059,7 +1058,7 @@ def render_wave_height_chart(ax, df, lat, lon, marine_results, res_lat, res_lon,
     # データをdfに格納
     df['wave_m'] = [v if v is not None else np.nan for v in marine_results["wave"]]
     
-    # 描画処理 (波をイメージした緑系の色 #2ca02c を使用)
+    # 描画処理
     ax.plot(df['time'], df['wave_m'], color="#2ca02c", linewidth=2, marker='o', markersize=3, markevery=3)
     ax.set_ylabel(lang_dict.get("波高 (m)", "Wave (m)"), fontsize=label_fs)
     ax.grid(True, axis='y', linestyle='--', alpha=0.5)
@@ -1090,7 +1089,8 @@ def render_ocean_temp_chart(ax, df, lat, lon, marine_results, res_lat, res_lon, 
 
     translations = get_language_dict()
     lang_dict = translations[st.session_state.lang]
-    label_fs = CONFIG.get("LABEL_SIZE", 10)
+    # ユーザー設定（label_font_size）を優先適用
+    label_fs = int(st.session_state.get("label_font_size", CONFIG.get("LABEL_SIZE", 10)))
 
     # データなし処理
     if marine_results is None or "temp" not in marine_results:
@@ -1103,7 +1103,7 @@ def render_ocean_temp_chart(ax, df, lat, lon, marine_results, res_lat, res_lon, 
     # データをdfに格納
     df['ocean_temp'] = [v if v is not None else np.nan for v in marine_results["temp"]]
     
-    # 描画処理 (温かみのあるオレンジ系の色 #ff7f0e を使用)
+    # 描画処理
     ax.plot(df['time'], df['ocean_temp'], color="#ff7f0e", linewidth=2, marker='o', markersize=3, markevery=3)
     ax.set_ylabel(lang_dict.get("海水温 (℃)", "Water (°C)"), fontsize=label_fs)
     ax.grid(True, axis='y', linestyle='--', alpha=0.5)
