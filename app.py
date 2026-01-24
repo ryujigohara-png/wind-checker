@@ -1239,6 +1239,7 @@ def show_settings_dialog():
         d_base_h = st.slider(lang_dict["グラフ枠縦幅 (inch)"], h_cfg["min"], h_cfg["max"], float(st.session_state.get("base_height", CONFIG["GRAPH_HIGHT"])), step=h_cfg["step"])
         d_base_f = st.slider(lang_dict["グラフ内文字サイズ"], f_cfg["min"], f_cfg["max"], int(st.session_state.get("base_font_size", CONFIG["GRAPH_FONT_SIZE"])))
         d_label_f = st.slider(lang_dict["軸ラベル文字サイズ"], f_cfg["min"], f_cfg["max"], int(st.session_state.get("label_font_size", CONFIG["LABEL_SIZE"])))
+        d_hspace = st.slider("グラフ間余白", -0.2, 1.5, float(st.session_state.get("hspace", CONFIG["HSPACE"])), 0.05)
         
         st.markdown("---")
         d_danger_v = st.number_input(lang_dict["危険風速ライン(m/s)"], value=float(st.session_state.get("danger_v", CONFIG["DEFAULT_DANGER_V"])), step=1.0)
@@ -1261,7 +1262,7 @@ def show_settings_dialog():
             st.subheader("開発用詳細設定")
             d_min_w = st.slider("コンテナ最小幅 (px)", 500, 5000, int(st.session_state.get("min_container_width", CONFIG["CONTENA_MIN_W"])), 100)
             d_dpi = st.radio("解像度 (DPI)", [200, 300], index=0 if st.session_state.get("graph_dpi", 200) == 200 else 1, horizontal=True)
-            d_hspace = st.slider("グラフ間余白", -0.2, 1.5, float(st.session_state.get("hspace", CONFIG["HSPACE"])), 0.05)
+        #    d_hspace = st.slider("グラフ間余白", -0.2, 1.5, float(st.session_state.get("hspace", CONFIG["HSPACE"])), 0.05)
             d_label_pad = st.slider("ラベル距離", -5, 10, int(st.session_state.get("label_pad", CONFIG["LABEL_PAD"])))
             st.subheader("地図ダイアログ調整")
             d_dial_h = st.slider("地図ダイアログ横余白 (H-Gap)", 0, 20, int(st.session_state.get("dial_h_gap", CONFIG["DIAL_H_GAP"])))
@@ -1453,7 +1454,7 @@ def show_language_dialog():
 # ======================================================================================
 # 22. グラフの表示高さを一括計算するサブルーチン
 # ======================================================================================
-def calculate_graph_height(base_height, ratios, show_wind, show_temp, show_wave, show_ocean_temp, show_tide, hspace=1.0):
+def calculate_graph_height(base_height, ratios, show_wind, show_temp, show_wave, show_ocean_temp, show_tide, hspace=1.25):
     """
     全グラフが表示されている状態の比率合計を基準として、各グラフのサイズを固定します。
     グラフ間の余白（hspace）による高さの増加分を計算に含め、文字の重なりを防ぎます。
