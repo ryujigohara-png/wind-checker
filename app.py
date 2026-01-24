@@ -917,7 +917,7 @@ def render_tide_curve_chart(ax, df, lat, lon, marine_results, res_lat, res_lon, 
         render_ocean_location_info(ax, lat, lon, res_lat, res_lon, label_fs, lang_dict)
         
 # ======================================================================================
-# 12. 高解像度グラフ画像を生成するサブルーチン
+# 12. 高解像度グラフ画像を生成し、左右に分割するサブルーチン
 # ======================================================================================
 # 多言語化対応のため show_spinner=False に設定。
 # 呼び出し側の render_graph_area_module にて辞書に基づいたスピナーを表示します。
@@ -928,10 +928,11 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
     import base64
     from datetime import timedelta
     import matplotlib.pyplot as plt
+    from PIL import Image
 
     # 1. データ取得
     df_raw = fetch_weather_data(lat, lon, 9)
-    if df_raw is None: return None, (0, 0), 0, None
+    if df_raw is None: return None, None, (0, 0), 0, None
     
     # 2. ブラウザと現地の時差から、現地の現在時刻を計算
     browser_offset = now_jst.utcoffset()
@@ -958,7 +959,7 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
     if design_params.get("show_ocean_temp", True): active_plots.append("ocean_temp")
     if design_params.get("show_tide", True): active_plots.append("tide")
     
-    if not active_plots: return None, (0, 0), start_idx, df
+    if not active_plots: return None, None, (0, 0), start_idx, df
 
     # --- 海洋データの事前取得 ---
     marine_results = None
@@ -982,6 +983,9 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
     fig_h = design_params.get("height", CONFIG["GRAPH_HIGHT"])
     dpi_value = design_params.get("graph_dpi", CONFIG.get("DPI", 200))
     
+    # 分割位置を定義 (左側の余白比率)
+    split_ratio = 0.08  # Y軸部分を8%とする (subplots_adjustのleft=0.05より少し多め)
+
     fig, axes = plt.subplots(len(active_plots), 1, figsize=(fig_w, fig_h), dpi=dpi_value, 
                              gridspec_kw={'height_ratios': current_ratios})
     
@@ -1017,17 +1021,41 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
     for ax in axes:
         apply_common_axis_settings(ax, df, formatter, now_jst, design_params)
 
+    # left=0.05 に合わせる
     plt.subplots_adjust(left=0.05, right=0.95, top=0.95, bottom=0.15,
                         hspace=design_params.get("hspace", CONFIG["HSPACE"]))
 
     pos = axes[0].get_position() 
     ratio_info = (pos.x0, pos.width / (len(df) - 1))
     
+    # 画像を一旦メモリに保存
     buf = io.BytesIO()
     fig.savefig(buf, format="png", bbox_inches=None, pad_inches=0, dpi=dpi_value)
     plt.close(fig) 
     
-    return base64.b64encode(buf.getvalue()).decode(), ratio_info, start_idx, df
+    # --- Pillowによる画像分割処理 ---
+    buf.seek(0)
+    full_img = Image.open(buf)
+    img_w, img_h = full_img.size
+    
+    split_px = int(img_w * split_ratio)
+    
+    left_part = full_img.crop((0, 0, split_px, img_h))
+    right_part = full_img.crop((split_px, 0, img_w, img_h))
+    
+    # それぞれをbase64化
+    def img_to_b64(img):
+        b = io.BytesIO()
+        img.save(b, format="PNG")
+        return base64.b64encode(b.getvalue()).decode()
+
+    # 比率情報を分割後の右側基準に調整 (split_ratioを差し引く)
+    # 右側画像の幅における相対位置に変換
+    new_start_x = (ratio_info[0] - split_ratio) / (1.0 - split_ratio)
+    new_hour_w = ratio_info[1] / (1.0 - split_ratio)
+    new_ratio_info = (new_start_x, new_hour_w)
+    
+    return img_to_b64(left_part), img_to_b64(right_part), new_ratio_info, start_idx, df
 
 # ======================================================================================
 # 13. 波高グラフを描画するサブルーチン
@@ -1151,12 +1179,12 @@ def render_ocean_location_info(ax, lat, lon, res_lat, res_lon, label_fs, lang_di
                 fontsize=label_fs - 1, ha='left', va='top')
 
 # ======================================================================================
-# 16. お天気アイコンのHTMLを生成するサブルーチン
+# 16. お天気アイコンのHTMLを生成するサブルーチン（分割表示対応）
 # ======================================================================================
 def generate_weather_icons_html(df, ratio_info, display_width, start_idx, icon_margin=0):
     """
     12番で生成されたdfと物理座標情報を元に、正確な位置へ天気アイコンを配置する。
-    見出し「天気」を言語設定に基づいて多言語化します。
+    戻り値として(見出しHTML, アイコン群HTML)のタプルを返します。
     """
     import pandas as pd
     import streamlit as st
@@ -1166,45 +1194,81 @@ def generate_weather_icons_html(df, ratio_info, display_width, start_idx, icon_m
     lang_dict = translations[st.session_state.lang]
 
     start_x, hour_w = ratio_info
-    icon_html = ""
     
     l_size_pt = st.session_state.get("label_font_size", CONFIG.get("LABEL_SIZE", 7))
-    # グラフ内のフォントサイズ(pt)をpx相当に変換
     header_fs_px = l_size_pt * 2.5
   
-    # --- 「天気」見出しの配置（多言語化） ---
-    # 辞書から「天気」または「Weather」を取得
+    # --- ① 見出し「天気」部分 ---
     weather_label = lang_dict.get("天気", "Weather")
-    
-    label_pos_x = (start_x * display_width) - 16
-    icon_html += f'''
-        <div style="position: absolute; left: {label_pos_x}px; top: 15px; 
-                    transform: translateX(-105%); font-size: {header_fs_px}px; 
-                    font-family: 'Noto Sans JP', sans-serif; color: #333; z-index: 5;
-                    white-space: nowrap;">
-          {weather_label}
+    # 見出しは左側の固定エリアに置くため、位置は左端基準で固定
+    header_html = f'''
+        <div style="width: 100%; height: 35px; position: relative; overflow: visible;">
+            <div style="position: absolute; right: 10px; top: 15px; 
+                        font-size: {header_fs_px}px; font-family: 'Noto Sans JP', sans-serif; 
+                        color: #333; white-space: nowrap;">
+              {weather_label}
+            </div>
         </div>'''
 
-    # 指定された開始位置から3時間おきにアイコンを配置
+    # --- ② アイコン群部分 ---
+    icons_inner_html = ""
     for i in range(int(start_idx), len(df), 3):
         row = df.iloc[i]
         icon = row.get('weather_icon')
         if not icon or pd.isna(icon): continue
         
-        # 物理位置計算：start_x（0行目の位置）＋ i時間分の幅
+        # 物理位置計算：右側画像内での位置
         pos_left_px = (start_x + (i * hour_w)) * display_width
         
-        icon_html += f'''
+        icons_inner_html += f'''
             <div style="position: absolute; left: {pos_left_px}px; top: 10px; 
                         transform: translateX(-50%); width: 80px; text-align: center; 
-                        font-size: 32px; line-height: 1;
-                        z-index: 5;">
+                        font-size: 32px; line-height: 1; z-index: 5;">
                 {icon}
             </div>'''
     
-    # 最終的なHTMLコンテナ
-    return f'<div style="position: relative; width: {display_width}px; height: 35px; margin-bottom: {icon_margin}px; overflow: visible;">{icon_html}</div>'
+    icons_html = f'''
+        <div style="position: relative; width: {display_width}px; height: 35px; 
+                    margin-bottom: {icon_margin}px; overflow: visible;">
+            {icons_inner_html}
+        </div>'''
     
+    return header_html, icons_html
+
+# ======================================================================================
+# 17. 分割されたグラフとアイコンを配置・表示するサブルーチン
+# ======================================================================================
+def render_split_graph_area(left_b64, right_b64, header_html, icons_html, display_width):
+    """
+    分割された画像とHTMLを、CSSを使用して「左固定・右スクロール」で配置する。
+    """
+    import streamlit as st
+
+    # 全体のレイアウト構成
+    # 左側(固定): 8%程度 / 右側(スクロール): 92%程度
+    
+    col_left, col_right = st.columns([8, 92], gap="none")
+
+    with col_left:
+        # 天気の見出しを表示
+        st.components.v1.html(header_html, height=35)
+        # 左側画像（Y軸）を表示
+        st.image(f"data:image/png;base64,{left_b64}", use_container_width=True)
+
+    with col_right:
+        # スクロール可能なコンテナを作成
+        # 天気アイコンと右側画像をセットで中に入れる
+        st.markdown(
+            f'''
+            <div style="overflow-x: auto; overflow-y: hidden; width: 100%;">
+                <div style="width: {display_width}px; position: relative;">
+                    {icons_html}
+                    <img src="data:image/png;base64,{right_b64}" style="width: {display_width}px; display: block;">
+                </div>
+            </div>
+            ''',
+            unsafe_allow_html=True
+        )
 
 # ======================================================================================
 # 20. サイドバーからグラフ表示設定を詳細ダイアログで一括変更するサブルーチン
@@ -2350,11 +2414,12 @@ def render_header_info(current_basho_name):
         st.rerun()
         
 # ======================================================================================
-# 95. 【main機能分離】⑤グラフ描画エリアモジュール
+# 95. 【main機能分離】⑤グラフ描画エリアモジュール（分割・固定表示対応版）
 # ======================================================================================
 def render_graph_area_module(danger_v, sel_dirs, design_params, now_jst):
     """
     グラフ描画エリアを管理するモジュール。
+    Y軸を固定し、グラフデータと天気アイコンを右側でスクロールさせるレイアウトを実現します。
     """
     import streamlit as st
         
@@ -2366,7 +2431,8 @@ def render_graph_area_module(danger_v, sel_dirs, design_params, now_jst):
     msg_gen = lang_dict.get("MSG_GEN_GRAPH", "グラフを生成中...")
     
     with st.spinner(msg_gen):
-        img_b64, ratio_info, start_idx, df_from_graph = generate_high_res_graph(
+        # 修正：戻り値が分割された画像（left, right）になる
+        left_b64, right_b64, ratio_info, start_idx, df_from_graph = generate_high_res_graph(
             st.session_state.lat, 
             st.session_state.lon, 
             danger_v, 
@@ -2376,33 +2442,51 @@ def render_graph_area_module(danger_v, sel_dirs, design_params, now_jst):
         )
     
     # --- 2. アイコン・グラフ描画 ---
-    if img_b64:
+    if left_b64 and right_b64:
         # 正規版のロジックに基づき、表示幅を計算
         dpi = design_params.get("graph_dpi", CONFIG.get("DPI", 200))
-        display_width = int(design_params.get("width", CONFIG["GRAPH_WIDTH"]) * dpi)
-        min_w = design_params.get("min_container_width", 800)
+        # 描画時の全体幅
+        total_width = int(design_params.get("width", CONFIG["GRAPH_WIDTH"]) * dpi)
+        # 画像分割比率 (サブルーチン12の設定と合わせる)
+        split_ratio = 0.08
+        
+        # 右側スクロールエリアの論理幅
+        display_width_right = int(total_width * (1.0 - split_ratio))
+        
         icon_margin = design_params.get("icon_margin", 0)
         
-        # アイコンHTML生成（内部で「天気」ラベルが多言語化される）
-        icons_html = generate_weather_icons_html(
+        # アイコンHTML生成（戻り値が 見出し と アイコン本体 のタプルになる）
+        header_html, icons_body_html = generate_weather_icons_html(
             df_from_graph, 
             ratio_info, 
-            display_width, 
+            display_width_right, 
             start_idx, 
             icon_margin
         )
         
-        # グラフ本体のHTML（正規版通り width を指定して縮小を防ぐ）
-        graph_html = f'<img src="data:image/png;base64,{img_b64}" style="width: {display_width}px; display: block;">'
-        
-        # スクロールコンテナ内に描画
-        st.markdown(
-            f'<div class="scroll-container">'
-            f'<div style="width: {display_width}px; min-width: {min_w}px;">'
-            f'{icons_html}{graph_html}'
-            f'</div></div>', 
-            unsafe_allow_html=True
-        )
+        # --- レイアウト構築 ---
+        # カラム比率を分割比率に合わせる（左: 8, 右: 92）
+        col_left, col_right = st.columns([8, 92], gap="none")
+
+        with col_left:
+            # 左側：天気の見出しと、固定されたY軸画像
+            st.components.v1.html(header_html, height=35)
+            st.image(f"data:image/png;base64,{left_b64}", use_container_width=True)
+
+        with col_right:
+            # 右側：スクロールコンテナ
+            # 天気アイコン群とグラフ画像を重ねて配置
+            st.markdown(
+                f'''
+                <div style="overflow-x: auto; overflow-y: hidden; width: 100%; border-left: 1px solid #eee;">
+                    <div style="width: {display_width_right}px; position: relative;">
+                        {icons_body_html}
+                        <img src="data:image/png;base64,{right_b64}" style="width: {display_width_right}px; display: block;">
+                    </div>
+                </div>
+                ''', 
+                unsafe_allow_html=True
+            )
 
 # ======================================================================================
 # 96. 【レイアウト修正版】操作コントロールパネル（多言語対応版）
