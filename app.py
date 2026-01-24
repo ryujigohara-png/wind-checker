@@ -919,8 +919,6 @@ def render_tide_curve_chart(ax, df, lat, lon, marine_results, res_lat, res_lon, 
 # ======================================================================================
 # 12. 高解像度グラフ画像を生成し、左右に分割するサブルーチン
 # ======================================================================================
-# 多言語化対応のため show_spinner=False に設定。
-# 呼び出し側の render_graph_area_module にて辞書に基づいたスピナーを表示します。
 @st.cache_data(show_spinner=False, ttl=600)
 def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_params, now_jst):
     import pandas as pd
@@ -938,7 +936,6 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
     browser_offset = now_jst.utcoffset()
     browser_offset_s = browser_offset.total_seconds() if browser_offset else 0
     local_offset_s = df_raw.attrs.get('local_offset_seconds', 0)
-    
     now_local = now_jst.replace(tzinfo=None) - timedelta(seconds=browser_offset_s) + timedelta(seconds=local_offset_s)
     
     # 3. 描画開始の設定
@@ -949,7 +946,6 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
     df = df_raw[df_raw['time'] >= padding_start_time].copy().reset_index(drop=True)
     df = df.head(195)
     start_idx = 3
-    
     df = process_wind_data(df, list(selected_dirs_tuple))
     
     active_plots = []
@@ -958,24 +954,14 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
     if design_params.get("show_wave", True): active_plots.append("wave")
     if design_params.get("show_ocean_temp", True): active_plots.append("ocean_temp")
     if design_params.get("show_tide", True): active_plots.append("tide")
-    
     if not active_plots: return None, None, (0, 0), start_idx, df
 
-    # --- 海洋データの事前取得 ---
     marine_results = None
     r_lat, r_lon = lat, lon
-    ocean_keys = {"wave", "ocean_temp", "tide"}
-    if any(k in active_plots for k in ocean_keys):
+    if any(k in active_plots for k in {"wave", "ocean_temp", "tide"}):
         marine_results, r_lat, r_lon = get_marine_data(df['time'], lat, lon)
     
-    # --- エラートラップ：比率データの補完 ---
     ratios = list(design_params.get("ratios", CONFIG["DEFAULT_RATIOS"]))
-    if len(ratios) < 5:
-        default_ratios = CONFIG["DEFAULT_RATIOS"]
-        for i in range(len(ratios), 5):
-            ratios.append(default_ratios[i])
-
-    # 比率計算用のインデックス管理（wind, temp, wave, ocean_temp, tide の順）
     all_possible = ["wind", "temp", "wave", "ocean_temp", "tide"]
     current_ratios = [ratios[i] for i, p in enumerate(all_possible) if p in active_plots]
     
@@ -983,16 +969,14 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
     fig_h = design_params.get("height", CONFIG["GRAPH_HIGHT"])
     dpi_value = design_params.get("graph_dpi", CONFIG.get("DPI", 200))
     
-    # 分割位置を定義 (左側の余白比率)
-    split_ratio = 0.08  # Y軸部分を8%とする (subplots_adjustのleft=0.05より少し多め)
+    # 分割位置の設定（Y軸部分を10%確保）
+    split_ratio = 0.10 
 
     fig, axes = plt.subplots(len(active_plots), 1, figsize=(fig_w, fig_h), dpi=dpi_value, 
                              gridspec_kw={'height_ratios': current_ratios})
-    
     if len(active_plots) == 1: axes = [axes]
     formatter = get_x_axis_formatter()
     
-    # --- 描画ループ部分 ---
     idx = 0
     if "wind" in active_plots:
         render_wind_bar_chart(axes[idx], df, danger_v, start_idx, design_params)
@@ -1001,18 +985,12 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
         render_temp_line_chart(axes[idx], df)
         idx += 1
 
-    # 海洋系グラフの最下部判定と呼び出し
-    has_wave = "wave" in active_plots
-    has_otemp = "ocean_temp" in active_plots
-    has_tide = "tide" in active_plots
-
+    has_wave, has_otemp, has_tide = "wave" in active_plots, "ocean_temp" in active_plots, "tide" in active_plots
     if has_wave:
-        is_bot = (not has_otemp and not has_tide)
-        render_wave_height_chart(axes[idx], df, lat, lon, marine_results, r_lat, r_lon, is_bottom=is_bot)
+        render_wave_height_chart(axes[idx], df, lat, lon, marine_results, r_lat, r_lon, is_bottom=(not has_otemp and not has_tide))
         idx += 1
     if has_otemp:
-        is_bot = (not has_tide)
-        render_ocean_temp_chart(axes[idx], df, lat, lon, marine_results, r_lat, r_lon, is_bottom=is_bot)
+        render_ocean_temp_chart(axes[idx], df, lat, lon, marine_results, r_lat, r_lon, is_bottom=(not has_tide))
         idx += 1
     if has_tide:
         render_tide_curve_chart(axes[idx], df, lat, lon, marine_results, r_lat, r_lon, is_bottom=True)
@@ -1021,40 +999,32 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
     for ax in axes:
         apply_common_axis_settings(ax, df, formatter, now_jst, design_params)
 
-    # left=0.05 に合わせる
-    plt.subplots_adjust(left=0.05, right=0.95, top=0.95, bottom=0.15,
-                        hspace=design_params.get("hspace", CONFIG["HSPACE"]))
+    # 余白を厳密に固定
+    plt.subplots_adjust(left=split_ratio, right=0.98, top=0.95, bottom=0.15, hspace=design_params.get("hspace", CONFIG["HSPACE"]))
 
+    # 座標情報の計算
     pos = axes[0].get_position() 
-    ratio_info = (pos.x0, pos.width / (len(df) - 1))
+    # 右側エリアにおける開始位置(x=0)からの比率を計算
+    new_hour_w = pos.width / (len(df) - 1) / (1.0 - split_ratio)
+    new_ratio_info = (0.0, new_hour_w) # leftをsplit_ratioに合わせたので、データ開始は右側画像の左端(0.0)になる
     
-    # 画像を一旦メモリに保存
     buf = io.BytesIO()
     fig.savefig(buf, format="png", bbox_inches=None, pad_inches=0, dpi=dpi_value)
     plt.close(fig) 
     
-    # --- Pillowによる画像分割処理 ---
     buf.seek(0)
     full_img = Image.open(buf)
     img_w, img_h = full_img.size
-    
     split_px = int(img_w * split_ratio)
     
     left_part = full_img.crop((0, 0, split_px, img_h))
     right_part = full_img.crop((split_px, 0, img_w, img_h))
     
-    # それぞれをbase64化
     def img_to_b64(img):
         b = io.BytesIO()
         img.save(b, format="PNG")
         return base64.b64encode(b.getvalue()).decode()
 
-    # 比率情報を分割後の右側基準に調整 (split_ratioを差し引く)
-    # 右側画像の幅における相対位置に変換
-    new_start_x = (ratio_info[0] - split_ratio) / (1.0 - split_ratio)
-    new_hour_w = ratio_info[1] / (1.0 - split_ratio)
-    new_ratio_info = (new_start_x, new_hour_w)
-    
     return img_to_b64(left_part), img_to_b64(right_part), new_ratio_info, start_idx, df
 
 # ======================================================================================
@@ -1179,61 +1149,46 @@ def render_ocean_location_info(ax, lat, lon, res_lat, res_lon, label_fs, lang_di
                 fontsize=label_fs - 1, ha='left', va='top')
 
 # ======================================================================================
-# 16. お天気アイコンのHTMLを生成するサブルーチン（分割表示対応）
+# 16. お天気アイコンのHTMLを生成するサブルーチン（分離・修正版）
 # ======================================================================================
 def generate_weather_icons_html(df, ratio_info, display_width, start_idx, icon_margin=0):
-    """
-    12番で生成されたdfと物理座標情報を元に、正確な位置へ天気アイコンを配置する。
-    戻り値として(見出しHTML, アイコン群HTML)のタプルを返します。
-    """
     import pandas as pd
     import streamlit as st
 
-    # 辞書の取得
     translations = get_language_dict()
     lang_dict = translations[st.session_state.lang]
 
     start_x, hour_w = ratio_info
-    
     l_size_pt = st.session_state.get("label_font_size", CONFIG.get("LABEL_SIZE", 7))
     header_fs_px = l_size_pt * 2.5
   
-    # --- ① 見出し「天気」部分 ---
     weather_label = lang_dict.get("天気", "Weather")
-    # 見出しは左側の固定エリアに置くため、位置は左端基準で固定
     header_html = f'''
-        <div style="width: 100%; height: 35px; position: relative; overflow: visible;">
-            <div style="position: absolute; right: 10px; top: 15px; 
-                        font-size: {header_fs_px}px; font-family: 'Noto Sans JP', sans-serif; 
-                        color: #333; white-space: nowrap;">
-              {weather_label}
-            </div>
+        <div style="height: 35px; line-height: 35px; text-align: right; padding-right: 5px; 
+                    font-size: {header_fs_px}px; font-family: sans-serif; color: #333;">
+            {weather_label}
         </div>'''
 
-    # --- ② アイコン群部分 ---
-    icons_inner_html = ""
+    icons_inner = ""
     for i in range(int(start_idx), len(df), 3):
         row = df.iloc[i]
         icon = row.get('weather_icon')
         if not icon or pd.isna(icon): continue
         
-        # 物理位置計算：右側画像内での位置
         pos_left_px = (start_x + (i * hour_w)) * display_width
-        
-        icons_inner_html += f'''
-            <div style="position: absolute; left: {pos_left_px}px; top: 10px; 
-                        transform: translateX(-50%); width: 80px; text-align: center; 
-                        font-size: 32px; line-height: 1; z-index: 5;">
+        icons_inner += f'''
+            <div style="position: absolute; left: {pos_left_px}px; top: 0px; 
+                        transform: translateX(-50%); width: 60px; text-align: center; 
+                        font-size: 32px; line-height: 35px; z-index: 5;">
                 {icon}
             </div>'''
     
-    icons_html = f'''
-        <div style="position: relative; width: {display_width}px; height: 35px; 
-                    margin-bottom: {icon_margin}px; overflow: visible;">
-            {icons_inner_html}
+    body_html = f'''
+        <div style="position: relative; width: {display_width}px; height: 35px; overflow: visible;">
+            {icons_inner}
         </div>'''
     
-    return header_html, icons_html
+    return header_html, body_html
 
 # ======================================================================================
 # 17. 分割されたグラフとアイコンを配置・表示するサブルーチン
@@ -2414,80 +2369,42 @@ def render_header_info(current_basho_name):
         st.rerun()
         
 # ======================================================================================
-# 95. 【main機能分離】⑤グラフ描画エリアモジュール（分割・固定表示対応版・エラー修正済）
+# 95. 【main機能分離】⑤グラフ描画エリアモジュール（CSS統合・完全版）
 # ======================================================================================
 def render_graph_area_module(danger_v, sel_dirs, design_params, now_jst):
-    """
-    グラフ描画エリアを管理するモジュール。
-    Y軸を固定し、グラフデータと天気アイコンを右側でスクロールさせるレイアウトを実現します。
-    """
     import streamlit as st
-        
-    # 辞書の取得
     translations = get_language_dict()
     lang_dict = translations[st.session_state.lang]
 
-    # --- 1. グラフ生成（辞書に基づいたスピナーを表示） ---
-    msg_gen = lang_dict.get("MSG_GEN_GRAPH", "グラフを生成中...")
-    
-    with st.spinner(msg_gen):
-        # 戻り値が分割された画像（left, right）になる
-        left_b64, right_b64, ratio_info, start_idx, df_from_graph = generate_high_res_graph(
-            st.session_state.lat, 
-            st.session_state.lon, 
-            danger_v, 
-            tuple(sel_dirs), 
-            design_params, 
-            now_jst
+    with st.spinner(lang_dict.get("MSG_GEN_GRAPH", "グラフを生成中...")):
+        left_b64, right_b64, ratio_info, start_idx, df_graph = generate_high_res_graph(
+            st.session_state.lat, st.session_state.lon, danger_v, tuple(sel_dirs), design_params, now_jst
         )
     
-    # --- 2. アイコン・グラフ描画 ---
     if left_b64 and right_b64:
-        # 正規版のロジックに基づき、表示幅を計算
         dpi = design_params.get("graph_dpi", CONFIG.get("DPI", 200))
-        # 描画時の全体幅
-        total_width = int(design_params.get("width", CONFIG["GRAPH_WIDTH"]) * dpi)
-        # 画像分割比率 (サブルーチン12の設定と合わせる)
-        split_ratio = 0.08
+        total_w = int(design_params.get("width", CONFIG["GRAPH_WIDTH"]) * dpi)
+        split_ratio = 0.10
+        w_left = f"{split_ratio * 100}%"
+        w_right_px = int(total_w * (1.0 - split_ratio))
         
-        # 右側スクロールエリアの論理幅
-        display_width_right = int(total_width * (1.0 - split_ratio))
-        
-        icon_margin = design_params.get("icon_margin", 0)
-        
-        # アイコンHTML生成（戻り値が 見出し と アイコン本体 のタプルになる）
-        header_html, icons_body_html = generate_weather_icons_html(
-            df_from_graph, 
-            ratio_info, 
-            display_width_right, 
-            start_idx, 
-            icon_margin
-        )
-        
-        # --- レイアウト構築 ---
-        # 修正：gap="none" を gap="small" に変更し、エラーを回避
-        col_left, col_right = st.columns([8, 92], gap="small")
+        header_h, body_h = generate_weather_icons_html(df_graph, ratio_info, w_right_px, start_idx)
 
-        with col_left:
-            # 左側：天気の見出しと、固定されたY軸画像
-            st.components.v1.html(header_html, height=35)
-            st.image(f"data:image/png;base64,{left_b64}", use_container_width=True)
-
-        with col_right:
-            # 右側：スクロールコンテナ
-            # 天気アイコン群とグラフ画像を重ねて配置
-            # 隙間を詰めるためのCSS調整 (margin-left) を追加
-            st.markdown(
-                f'''
-                <div style="overflow-x: auto; overflow-y: hidden; width: 100%; border-left: 1px solid #eee; margin-left: -10px;">
-                    <div style="width: {display_width_right}px; position: relative;">
-                        {icons_body_html}
-                        <img src="data:image/png;base64,{right_b64}" style="width: {display_width_right}px; display: block;">
+        # 全体を1つのHTMLとして構成（CSSで左固定、右スクロールを実現）
+        st.write(f'''
+            <div style="display: flex; width: 100%; background: white; border: 1px solid #ddd;">
+                <div style="width: {w_left}; min-width: 60px; flex-shrink: 0; z-index: 10; background: white; border-right: 1px solid #eee;">
+                    {header_h}
+                    <img src="data:image/png;base64,{left_b64}" style="width: 100%; display: block;">
+                </div>
+                <div style="flex-grow: 1; overflow-x: auto; overflow-y: hidden;">
+                    <div style="width: {w_right_px}px; position: relative;">
+                        {body_h}
+                        <img src="data:image/png;base64,{right_b64}" style="width: {w_right_px}px; display: block;">
                     </div>
                 </div>
-                ''', 
-                unsafe_allow_html=True
-            )
+            </div>
+        ''', unsafe_allow_html=True)
 
 # ======================================================================================
 # 96. 【レイアウト修正版】操作コントロールパネル（多言語対応版）
