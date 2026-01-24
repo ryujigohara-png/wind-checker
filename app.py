@@ -2378,39 +2378,33 @@ def render_graph_area_module(danger_v, sel_dirs, design_params, now_jst):
     fig_h_px = int(design_params.get("height", CONFIG["GRAPH_HIGHT"]) * dpi)
     total_w = int(design_params.get("width", CONFIG["GRAPH_WIDTH"]) * dpi)
     
-    # 1. 窓の幅（赤×を消すために、左側の表示幅をグッと絞ります）
-    view_width = 60 
-    # 2. 本来の左側画像の計算幅
+    # 窓の幅を固定し、画像の中の空白（赤×）を隠す設定
+    # view_w を 60 に絞り、margin-left で画像を左にズラして余白を追い出します
+    view_w = 60
     orig_left_w = int(total_w * 0.10)
-    # 3. 右側スクロール領域の幅
     w_right_px = int(total_w * 0.90)
     
-    # アイコンHTMLの取得（サブルーチン16）
     header_h, body_h = generate_weather_icons_html(df_graph, ratio_info, w_right_px, start_idx)
 
-    # 修正ポイント：HTMLを一つの変数にまとめ、最後に markdown で一気に描画します
-    # margin-left: -35px 等で画像内の余白（赤×）を窓の外へ追い出します
-    full_html = f'''
-    <div style="display: flex; gap: 0px; width: 100%; background: white; border: 1px solid #ddd; overflow: hidden; font-family: sans-serif;">
-        
-        <div style="width: {view_width}px; min-width: {view_width}px; flex-shrink: 0; overflow: hidden; background: white; border-right: 1px solid #eee; z-index: 10;">
-            <div style="width: {view_width}px; overflow: hidden;">{header_h}</div>
-            <img src="data:image/png;base64,{left_b64}" 
-                 style="width: {orig_left_w}px; height: {fig_h_px}px; max-width: none; display: block; margin-left: -30px;">
-        </div>
+    # HTMLを組み立て
+    # st.markdownが誤認しないよう、極力シンプルな構造にします
+    html_str = (
+        f'<div style="display:flex; width:100%; background:white; border:1px solid #ddd; overflow:hidden;">'
+        f'  <div style="width:{view_w}px; min-width:{view_w}px; flex-shrink:0; overflow:hidden; border-right:1px solid #eee; z-index:10;">'
+        f'    <div style="width:{view_w}px; overflow:hidden;">{header_h}</div>'
+        f'    <img src="data:image/png;base64,{left_b64}" style="width:{orig_left_w}px; height:{fig_h_px}px; max-width:none; margin-left:-35px; display:block;">'
+        f'  </div>'
+        f'  <div style="flex-grow:1; overflow-x:auto; background:white;">'
+        f'    <div style="width:{w_right_px}px; position:relative;">'
+        f'      {body_h}'
+        f'      <img src="data:image/png;base64,{right_b64}" style="width:100%; height:{fig_h_px}px; display:block;">'
+        f'    </div>'
+        f'  </div>'
+        f'</div>'
+    )
 
-        <div style="flex-grow: 1; overflow-x: auto; overflow-y: hidden; background: white;">
-            <div style="width: {w_right_px}px; position: relative;">
-                {body_h}
-                <img src="data:image/png;base64,{right_b64}" style="width: {w_right_px}px; height: {fig_h_px}px; display: block;">
-            </div>
-        </div>
-        
-    </div>
-    '''
-    
-    # 【重要】unsafe_allow_html=True を指定することで、コードではなく「グラフ」として表示させます
-    st.markdown(full_html, unsafe_allow_html=True)
+    # 確実にHTMLとしてレンダリングさせる
+    st.markdown(html_str, unsafe_allow_html=True)
 
 # ======================================================================================
 # 96. 【レイアウト修正版】操作コントロールパネル（多言語対応版）
