@@ -71,9 +71,9 @@ CONFIG = {
     "MAP_HEIGHT": 350,                  # 地図の高さ
     "SHOW_WIND": True,                  # 風向・風速グラフ表示
     "SHOW_TEMP": True,                  # 気温グラフ表示
-    "SHOW_TIDE": False,                 # 潮位グラフ表示
-    "SHOW_WAVE": False,                 # 波高グラフ表示
-    "SHOW_OCEAN_TEMP": False,           # 海面水温グラフ表示
+    "SHOW_TIDE": True,                  # 潮位グラフ表示
+    "SHOW_WAVE": True,                  # 波高グラフ表示
+    "SHOW_OCEAN_TEMP": True,            # 海面水温グラフ表示
     "SHOW_W_TEXT": False,               # 天気文字表示
     "SHOW_DIR_NAME": False,             # 風向名表示
     "GRAPH_WIDTH": 15,                  # グラフ横幅(inch)
