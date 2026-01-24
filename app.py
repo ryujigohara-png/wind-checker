@@ -2364,9 +2364,8 @@ def render_header_info(current_basho_name):
 # ======================================================================================
 def render_graph_area_module(danger_v, sel_dirs, design_params, now_jst):
     import streamlit as st
-    translations = get_language_dict()
-    lang_dict = translations[st.session_state.lang]
 
+    # 12番は一切いじらずそのまま呼び出し
     res = generate_high_res_graph(
         st.session_state.lat, st.session_state.lon, danger_v, tuple(sel_dirs), design_params, now_jst
     )
@@ -2377,21 +2376,24 @@ def render_graph_area_module(danger_v, sel_dirs, design_params, now_jst):
     fig_h_px = int(design_params.get("height", 6.0) * dpi)
     total_w = int(design_params.get("width", 15.0) * dpi)
     
-    # 窓の幅（数字が見える必要最小限の幅。ここを調整して×の余白を消します）
-    # この値を小さくするほど、赤×の余白が削り取られます。
-    view_width = 70 
+    # 12番の生成画像の本来の幅（10%分）
+    original_left_w = int(total_w * 0.10) 
+    
+    # 【ここが最重要調整ポイント】
+    # 1. 実際に画面に見せる幅（数字が入る幅だけを確保）
+    visible_width = 55 
+    # 2. 画像をどれだけ左にハミ出させて、×印の余白を隠すか
+    # 数字が消えたらこの値を小さく、余白が残ったら大きくしてください
+    shift_left = -35 
 
     header_h, body_h = generate_weather_icons_html(df_graph, ratio_info, (total_w * 0.9), start_idx)
 
-    # 構造：
-    # 1. 左側のdivに overflow:hidden をかけ、画像を「左寄せ」で置く。
-    # 2. 窓の幅(view_width)を狭くすることで、画像右側の余白(赤×)を物理的に遮断する。
     full_content = f'''
-    <div style="display: flex; gap: 0px; width: 100%; background: white; border: 1px solid #ddd; overflow: hidden;">
-        <div style="width: {view_width}px; min-width: {view_width}px; flex-shrink: 0; overflow: hidden; background: white; border-right: 1px solid #eee; z-index: 10;">
-            <div style="width: {view_width}px; overflow: hidden;">{header_h}</div>
+    <div style="display: flex; gap: 0px; width: 100%; background: white; border: 1px solid #ddd; overflow: hidden; font-family: sans-serif;">
+        <div style="width: {visible_width}px; min-width: {visible_width}px; flex-shrink: 0; overflow: hidden; background: white; border-right: 1px solid #eee; z-index: 10;">
+            <div style="width: {visible_width}px; overflow: hidden;">{header_h}</div>
             <img src="data:image/png;base64,{left_b64}" 
-                 style="width: {int(total_w * 0.12)}px; height: {fig_h_px}px; max-width: none; display: block; object-fit: contain; object-position: left;">
+                 style="width: {original_left_w}px; height: {fig_h_px}px; max-width: none; display: block; margin-left: {shift_left}px;">
         </div>
 
         <div style="flex-grow: 1; overflow-x: auto; overflow-y: hidden; background: white;">
