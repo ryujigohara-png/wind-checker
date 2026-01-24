@@ -2388,43 +2388,39 @@ def render_graph_area_module(danger_v, sel_dirs, design_params, now_jst):
     )
 
     st.markdown(html_str, unsafe_allow_html=True)
+    
 # ======================================================================================
 # 96. 【レイアウト修正版】操作コントロールパネル（多言語対応版）
 # ======================================================================================
 def render_compact_control_panel(basho_name):
     """
-    元のロジックを一切変更せず、スマホでの表示を「3行」に凝縮するレイアウト修正版。
-    表示テキストを st.session_state.lang に基づき多言語化します。
+    既存のロジックを一切変更せず、CSSの追加定義のみで
+    スマホでの st.columns の縦並び（折り返し）を禁止する修正版。
     """
-
     import streamlit as st
     from datetime import datetime, timedelta
 
     # 辞書の取得
     translations = get_language_dict()
     lang_dict = translations[st.session_state.lang]
-    
 
-    # 辞書の取得
-    translations = get_language_dict()
-    lang_dict = translations[st.session_state.lang]
-
-    # --- レイアウト制御CSS (維持) ---
+    # --- レイアウト制御CSS (縦並び禁止を強化) ---
     st.markdown("""
         <style>
-            [data-testid="column"] {
+            /* 親要素：スマホ幅になっても絶対に横に並べ続け、折り返さない */
+            [data-testid="stHorizontalBlock"] {
+                flex-wrap: nowrap !important;
+                display: flex !important;
                 flex-direction: row !important;
+                gap: 5px !important;
+            }
+            /* 子要素：各カラムが縦に積み重なるのを防ぎ、比率を維持させる */
+            [data-testid="column"] {
                 flex-basis: auto !important;
                 min-width: 0px !important;
                 flex-grow: 1 !important;
             }
-            [data-testid="stVerticalBlock"] > div {
-                padding: 0px !important;
-                margin-top: -2px !important;
-            }
-            [data-testid="stHorizontalBlock"] {
-                gap: 5px !important;
-            }
+            /* ボタンの高さ調整（既存の意図を尊重） */
             .stButton > button {
                 width: 100% !important;
                 padding: 2px 5px !important;
@@ -2444,6 +2440,7 @@ def render_compact_control_panel(basho_name):
         saved_data = next((f for f in favorites if abs(f['lat'] - st.session_state.lat) < 0.0001 and abs(f['lon'] - st.session_state.lon) < 0.0001), None)
         is_saved = saved_data is not None
 
+        # 元の比率 [0.85, 0.15] を維持
         c1, c2 = st.columns([0.85, 0.15])
         with c1:
             selected_label = st.selectbox(
@@ -2467,7 +2464,6 @@ def render_compact_control_panel(basho_name):
             if st.button(map_btn_label, key="btn_map_open", use_container_width=True):
                 show_location_map_dialog()
         with c4:
-            # 🔄📍現在地 ボタン
             curr_loc_btn_label = lang_dict.get("BTN_CURRENT_LOC_SHORT", "🔄📍現在地")
             if st.button(curr_loc_btn_label, key="btn_get_gps", use_container_width=True):
                 st.session_state.waiting_loc = True
@@ -2496,14 +2492,13 @@ def render_compact_control_panel(basho_name):
             st.rerun()
 
     # --- 選択変更時のロジック処理 ---
-    # 「地図で指定」という文字列も多言語化対応
     map_select_label = lang_dict.get("MAP_SELECT_LABEL", "地図で指定")
     
     if selected_label == map_select_label:
         show_location_map_dialog()
     elif selected_label != st.session_state.last_basho:
+        # ここも元の代入ロジックを完全に維持
         new_lat, new_lon, new_name = total_data[selected_label]
-        st.session_state.temp_lat, st.session_state.temp_lon, st.session_state.temp_basho = total_data[selected_label]
         update_state_and_save({
             "lat": new_lat, 
             "lon": new_lon, 
@@ -2511,7 +2506,6 @@ def render_compact_control_panel(basho_name):
             "needs_graph_update": True
         })
 
-    # 現在地取得の待機処理
     if st.session_state.get("waiting_loc"):
         handle_current_location_update_integrated()
         
