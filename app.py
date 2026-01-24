@@ -2378,24 +2378,27 @@ def render_graph_area_module(danger_v, sel_dirs, design_params, now_jst):
     fig_h_px = int(design_params.get("height", CONFIG["GRAPH_HIGHT"]) * dpi)
     total_w = int(design_params.get("width", CONFIG["GRAPH_WIDTH"]) * dpi)
     
-    # 左側画像の本来の幅を計算 (全体の10%分)
+    # 比率の微調整
     split_ratio = 0.10
     w_left_px = int(total_w * split_ratio)
     w_right_px = int(total_w * (1.0 - split_ratio))
     
     header_h, body_h = generate_weather_icons_html(df_graph, ratio_info, w_right_px, start_idx)
 
-    # 修正ポイント：左側エリアに width だけでなく min-width を px で指定します
+    # 修正ポイント：
+    # 1. flexの gap: 0 でセル間の隙間を排除
+    # 2. 左側エリアの margin-right をマイナスにして画像を右へ引き寄せる
+    # 3. 境界線の border-right を 1px solid #ddd にして自然な繋ぎ目に
     full_content = f'''
-    <div style="display: flex; width: 100%; background: white; border: 1px solid #ddd; font-family: sans-serif;">
-        <div style="width: {w_left_px}px; min-width: {w_left_px}px; flex-shrink: 0; z-index: 10; background: white; border-right: 1px solid #eee;">
+    <div style="display: flex; gap: 0px; width: 100%; background: white; border: 1px solid #ddd; font-family: sans-serif; overflow: hidden;">
+        <div style="width: {w_left_px}px; min-width: {w_left_px}px; flex-shrink: 0; z-index: 10; background: white; margin-right: -2px;">
             {header_h}
-            <img src="data:image/png;base64,{left_b64}" style="width: {w_left_px}px; height: {fig_h_px}px; display: block;">
+            <img src="data:image/png;base64,{left_b64}" style="width: 100%; height: {fig_h_px}px; display: block; object-fit: contain; object-position: right;">
         </div>
-        <div style="flex-grow: 1; overflow-x: auto; overflow-y: hidden; background: white;">
+        <div style="flex-grow: 1; overflow-x: auto; overflow-y: hidden; background: white; border-left: 1px solid #eee;">
             <div style="width: {w_right_px}px; position: relative;">
                 {body_h}
-                <img src="data:image/png;base64,{right_b64}" style="width: {w_right_px}px; height: {fig_h_px}px; display: block;">
+                <img src="data:image/png;base64,{right_b64}" style="width: {w_right_px}px; height: {fig_h_px}px; display: block; object-fit: contain; object-position: left;">
             </div>
         </div>
     </div>
