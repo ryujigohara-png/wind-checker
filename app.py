@@ -80,11 +80,11 @@ CONFIG = {
     "GRAPH_HIGHT": 3.0,                 # グラフ縦幅(inch)
     "GRAPH_FONT_SIZE": 10,              # グラフ内文字サイズ
     "LABEL_SIZE": 7,                    # 軸ラベル文字サイズ
+    "HSPACE": 1.25,                     # グラフ間余白
     "DEFAULT_DANGER_V": 10.0,           # 危険風速
     #開発者詳細設定
     "CONTENA_MIN_W": 2500,              # コンテナ最小幅(px)
     "DPI": 200,                         # 解像度 (DPI)
-    "HSPACE": 1.25,                     # グラフ間余白
     "LABEL_PAD": 0,                     # ラベル距離
     "DIAL_H_GAP": 0,                    # 地図ダイアログ横余白 (H-Gap)
     "DIAL_V_GAP": 0,                    # 地図ダイアログ縦余白（V-Gap）
@@ -1262,7 +1262,6 @@ def show_settings_dialog():
             st.subheader("開発用詳細設定")
             d_min_w = st.slider("コンテナ最小幅 (px)", 500, 5000, int(st.session_state.get("min_container_width", CONFIG["CONTENA_MIN_W"])), 100)
             d_dpi = st.radio("解像度 (DPI)", [200, 300], index=0 if st.session_state.get("graph_dpi", 200) == 200 else 1, horizontal=True)
-        #    d_hspace = st.slider("グラフ間余白", -0.2, 1.5, float(st.session_state.get("hspace", CONFIG["HSPACE"])), 0.05)
             d_label_pad = st.slider("ラベル距離", -5, 10, int(st.session_state.get("label_pad", CONFIG["LABEL_PAD"])))
             st.subheader("地図ダイアログ調整")
             d_dial_h = st.slider("地図ダイアログ横余白 (H-Gap)", 0, 20, int(st.session_state.get("dial_h_gap", CONFIG["DIAL_H_GAP"])))
@@ -1288,7 +1287,6 @@ def show_settings_dialog():
         else:
             d_min_w = st.session_state.get("min_container_width", CONFIG["CONTENA_MIN_W"])
             d_dpi = st.session_state.get("graph_dpi", CONFIG["DPI"])
-            # d_hspace = st.session_state.get("hspace", CONFIG["HSPACE"])
             d_label_pad = st.session_state.get("label_pad", CONFIG["LABEL_PAD"])
             d_dial_h = st.session_state.get("dial_h_gap", CONFIG["DIAL_H_GAP"])
             d_dial_v = st.session_state.get("dial_v_gap", CONFIG["DIAL_V_GAP"])
