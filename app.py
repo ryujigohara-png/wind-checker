@@ -2414,7 +2414,7 @@ def render_header_info(current_basho_name):
         st.rerun()
         
 # ======================================================================================
-# 95. 【main機能分離】⑤グラフ描画エリアモジュール（分割・固定表示対応版）
+# 95. 【main機能分離】⑤グラフ描画エリアモジュール（分割・固定表示対応版・エラー修正済）
 # ======================================================================================
 def render_graph_area_module(danger_v, sel_dirs, design_params, now_jst):
     """
@@ -2431,7 +2431,7 @@ def render_graph_area_module(danger_v, sel_dirs, design_params, now_jst):
     msg_gen = lang_dict.get("MSG_GEN_GRAPH", "グラフを生成中...")
     
     with st.spinner(msg_gen):
-        # 修正：戻り値が分割された画像（left, right）になる
+        # 戻り値が分割された画像（left, right）になる
         left_b64, right_b64, ratio_info, start_idx, df_from_graph = generate_high_res_graph(
             st.session_state.lat, 
             st.session_state.lon, 
@@ -2465,8 +2465,8 @@ def render_graph_area_module(danger_v, sel_dirs, design_params, now_jst):
         )
         
         # --- レイアウト構築 ---
-        # カラム比率を分割比率に合わせる（左: 8, 右: 92）
-        col_left, col_right = st.columns([8, 92], gap="none")
+        # 修正：gap="none" を gap="small" に変更し、エラーを回避
+        col_left, col_right = st.columns([8, 92], gap="small")
 
         with col_left:
             # 左側：天気の見出しと、固定されたY軸画像
@@ -2476,9 +2476,10 @@ def render_graph_area_module(danger_v, sel_dirs, design_params, now_jst):
         with col_right:
             # 右側：スクロールコンテナ
             # 天気アイコン群とグラフ画像を重ねて配置
+            # 隙間を詰めるためのCSS調整 (margin-left) を追加
             st.markdown(
                 f'''
-                <div style="overflow-x: auto; overflow-y: hidden; width: 100%; border-left: 1px solid #eee;">
+                <div style="overflow-x: auto; overflow-y: hidden; width: 100%; border-left: 1px solid #eee; margin-left: -10px;">
                     <div style="width: {display_width_right}px; position: relative;">
                         {icons_body_html}
                         <img src="data:image/png;base64,{right_b64}" style="width: {display_width_right}px; display: block;">
