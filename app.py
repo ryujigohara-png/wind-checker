@@ -90,7 +90,7 @@ CONFIG = {
     "DIAL_V_GAP": 0,                    # 地図ダイアログ縦余白（V-Gap）
     "FAV_BTN_WIDTH": 30,                # MySpot編集ダイアログ ボタン幅(%)
     "FAV_NAME_LEN": 12,                 # MySpot編集ダイアログ 地名表示制限（文字）
-    "LEFT_VIEW_W": 114,                  # 左軸窓の幅 (px)
+    "LEFT_VIEW_W": 116,                  # 左軸窓の幅 (px)
     "LEFT_SHIFT": -185,                  # 左軸画像のズレ (px)
     "DEFAULT_PRECIP_Y": 1.05,           # 降水量ラベル高さ（グラフ枠を1.0とした相対値）
     "DEFAULT_ICON_MARGIN": 0,           # 天気アイコン下余白(px)
