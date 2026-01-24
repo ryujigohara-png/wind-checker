@@ -84,13 +84,13 @@ CONFIG = {
     #開発者詳細設定
     "CONTENA_MIN_W": 2500,              # コンテナ最小幅(px)
     "DPI": 200,                         # 解像度 (DPI)
-    "HSPACE": 0.75,                     # グラフ間余白
+    "HSPACE": 1.25,                     # グラフ間余白
     "LABEL_PAD": 0,                     # ラベル距離
     "DIAL_H_GAP": 0,                    # 地図ダイアログ横余白 (H-Gap)
     "DIAL_V_GAP": 0,                    # 地図ダイアログ縦余白（V-Gap）
     "FAV_BTN_WIDTH": 30,                # MySpot編集ダイアログ ボタン幅(%)
     "FAV_NAME_LEN": 12,                 # MySpot編集ダイアログ 地名表示制限（文字）
-    "DEFAULT_PRECIP_Y": 1.25,           # 降水量ラベル高さ（グラフ枠を1.0とした相対値）
+    "DEFAULT_PRECIP_Y": 1.05,           # 降水量ラベル高さ（グラフ枠を1.0とした相対値）
     "DEFAULT_ICON_MARGIN": 0,           # 天気アイコン下余白(px)
     "DEFAULT_RATIOS": [4.0, 0.8, 0.8, 0.8, 0.8],  # グラフ比率設定
     # その他既定値
@@ -220,7 +220,7 @@ def get_language_dict():
             "海水温 (℃)": "海水温 (℃)",
             "降水量mm　": "降水量mm　",
             "天気": "天気",
-            "OCEAN_INFO": "※指定地点の最寄り（{res_dir}約{dist_km}km）の海洋データを表示しています。",
+            "OCEAN_INFO": "※海洋データは、指定地点の最寄り（{res_dir}約{dist_km}km）のデータを表示しています。",
             "OCEAN_NONE": "※指定地点の近傍(30km圏内)に有効な海洋データがないため表示されません",
             "LEGEND_TITLE": "📊 凡例:",
             "LEGEND_BLUE": "3-5m/s (青)",
