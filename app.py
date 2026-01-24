@@ -1288,7 +1288,7 @@ def show_settings_dialog():
         else:
             d_min_w = st.session_state.get("min_container_width", CONFIG["CONTENA_MIN_W"])
             d_dpi = st.session_state.get("graph_dpi", CONFIG["DPI"])
-            d_hspace = st.session_state.get("hspace", CONFIG["HSPACE"])
+            # d_hspace = st.session_state.get("hspace", CONFIG["HSPACE"])
             d_label_pad = st.session_state.get("label_pad", CONFIG["LABEL_PAD"])
             d_dial_h = st.session_state.get("dial_h_gap", CONFIG["DIAL_H_GAP"])
             d_dial_v = st.session_state.get("dial_v_gap", CONFIG["DIAL_V_GAP"])
