@@ -1149,9 +1149,9 @@ def render_ocean_location_info(ax, lat, lon, res_lat, res_lon, label_fs, lang_di
                 fontsize=label_fs - 1, ha='left', va='top')
 
 # ======================================================================================
-# 16. お天気アイコンのHTMLを生成するサブルーチン（分離・修正版）
+# 16. お天気アイコンのHTMLを生成するサブルーチン
 # ======================================================================================
-def generate_weather_icons_html(df, ratio_info, display_width, start_idx, icon_margin=0):
+def generate_weather_icons_html(df, ratio_info, display_width, start_idx):
     import pandas as pd
     import streamlit as st
 
@@ -1163,30 +1163,21 @@ def generate_weather_icons_html(df, ratio_info, display_width, start_idx, icon_m
     header_fs_px = l_size_pt * 2.5
   
     weather_label = lang_dict.get("天気", "Weather")
-    header_html = f'''
-        <div style="height: 35px; line-height: 35px; text-align: right; padding-right: 5px; 
-                    font-size: {header_fs_px}px; font-family: sans-serif; color: #333;">
-            {weather_label}
-        </div>'''
+    # 見出しHTML（左固定側用）
+    header_html = f'<div style="font-size:{header_fs_px}px; font-family:sans-serif; height:35px; line-height:35px; text-align:right; padding-right:5px; color:#333;">{weather_label}</div>'
 
+    # アイコンHTML（右スクロール側用）
     icons_inner = ""
     for i in range(int(start_idx), len(df), 3):
         row = df.iloc[i]
         icon = row.get('weather_icon')
         if not icon or pd.isna(icon): continue
         
+        # 物理位置計算
         pos_left_px = (start_x + (i * hour_w)) * display_width
-        icons_inner += f'''
-            <div style="position: absolute; left: {pos_left_px}px; top: 0px; 
-                        transform: translateX(-50%); width: 60px; text-align: center; 
-                        font-size: 32px; line-height: 35px; z-index: 5;">
-                {icon}
-            </div>'''
+        icons_inner += f'<div style="position:absolute; left:{pos_left_px}px; top:0px; transform:translateX(-50%); width:60px; text-align:center; font-size:32px; line-height:35px; z-index:5;">{icon}</div>'
     
-    body_html = f'''
-        <div style="position: relative; width: {display_width}px; height: 35px; overflow: visible;">
-            {icons_inner}
-        </div>'''
+    body_html = f'<div style="position:relative; width:{display_width}px; height:35px; overflow:visible;">{icons_inner}</div>'
     
     return header_html, body_html
 
@@ -2369,7 +2360,7 @@ def render_header_info(current_basho_name):
         st.rerun()
         
 # ======================================================================================
-# 95. 【main機能分離】⑤グラフ描画エリアモジュール（CSS統合・完全版）
+# 95. 【main機能分離】⑤グラフ描画エリアモジュール
 # ======================================================================================
 def render_graph_area_module(danger_v, sel_dirs, design_params, now_jst):
     import streamlit as st
@@ -2377,34 +2368,43 @@ def render_graph_area_module(danger_v, sel_dirs, design_params, now_jst):
     lang_dict = translations[st.session_state.lang]
 
     with st.spinner(lang_dict.get("MSG_GEN_GRAPH", "グラフを生成中...")):
-        left_b64, right_b64, ratio_info, start_idx, df_graph = generate_high_res_graph(
+        # 12の戻り値を受け取る（※12を未修正の場合は戻り値の数に注意してください）
+        # ここでは以前提示した「分割版」の戻り値形式に合わせています
+        res = generate_high_res_graph(
             st.session_state.lat, st.session_state.lon, danger_v, tuple(sel_dirs), design_params, now_jst
         )
+        if not res or res[0] is None: return
+        left_b64, right_b64, ratio_info, start_idx, df_graph = res
     
-    if left_b64 and right_b64:
-        dpi = design_params.get("graph_dpi", CONFIG.get("DPI", 200))
-        total_w = int(design_params.get("width", CONFIG["GRAPH_WIDTH"]) * dpi)
-        split_ratio = 0.10
-        w_left = f"{split_ratio * 100}%"
-        w_right_px = int(total_w * (1.0 - split_ratio))
-        
-        header_h, body_h = generate_weather_icons_html(df_graph, ratio_info, w_right_px, start_idx)
+    dpi = design_params.get("graph_dpi", CONFIG.get("DPI", 200))
+    total_w = int(design_params.get("width", CONFIG["GRAPH_WIDTH"]) * dpi)
+    
+    # 分割比率の定義（12をいじらない場合でも、表示上の切り分けとして定義）
+    split_ratio = 0.10
+    w_left_pct = "10%"
+    w_right_px = int(total_w * (1.0 - split_ratio))
+    
+    header_h, body_h = generate_weather_icons_html(df_graph, ratio_info, w_right_px, start_idx)
 
-        # 全体を1つのHTMLとして構成（CSSで左固定、右スクロールを実現）
-        st.write(f'''
-            <div style="display: flex; width: 100%; background: white; border: 1px solid #ddd;">
-                <div style="width: {w_left}; min-width: 60px; flex-shrink: 0; z-index: 10; background: white; border-right: 1px solid #eee;">
-                    {header_h}
-                    <img src="data:image/png;base64,{left_b64}" style="width: 100%; display: block;">
-                </div>
-                <div style="flex-grow: 1; overflow-x: auto; overflow-y: hidden;">
-                    <div style="width: {w_right_px}px; position: relative;">
-                        {body_h}
-                        <img src="data:image/png;base64,{right_b64}" style="width: {w_right_px}px; display: block;">
-                    </div>
-                </div>
+    # 【重要】すべての要素を一つの巨大なHTML文字列として結合します
+    # これによりStreamlitが勝手にコードとして解釈するのを防ぎます
+    full_content = f'''
+    <div style="display: flex; width: 100%; background: white; border: 1px solid #ddd; font-family: sans-serif;">
+        <div style="width: {w_left_pct}; min-width: 70px; flex-shrink: 0; z-index: 10; background: white; border-right: 1px solid #eee;">
+            {header_h}
+            <img src="data:image/png;base64,{left_b64}" style="width: 100%; display: block;">
+        </div>
+        <div style="flex-grow: 1; overflow-x: auto; overflow-y: hidden; background: white;">
+            <div style="width: {w_right_px}px; position: relative;">
+                {body_h}
+                <img src="data:image/png;base64,{right_b64}" style="width: {w_right_px}px; display: block;">
             </div>
-        ''', unsafe_allow_html=True)
+        </div>
+    </div>
+    '''
+    
+    # 最後に一気に流し込む
+    st.markdown(full_content, unsafe_allow_html=True)
 
 # ======================================================================================
 # 96. 【レイアウト修正版】操作コントロールパネル（多言語対応版）
