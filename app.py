@@ -2378,25 +2378,26 @@ def render_graph_area_module(danger_v, sel_dirs, design_params, now_jst):
     fig_h_px = int(design_params.get("height", CONFIG["GRAPH_HIGHT"]) * dpi)
     total_w = int(design_params.get("width", CONFIG["GRAPH_WIDTH"]) * dpi)
     
-    # 左側の表示幅を 70px 程度に固定し、画像の中の無駄な空白を「はみ出させて隠す」設定にします
-    fixed_left_w = 75 
+    # 12で設定した split_ratio (0.10) に基づく本来の幅
     split_ratio = 0.10
+    full_left_w = int(total_w * split_ratio)
     w_right_px = int(total_w * (1.0 - split_ratio))
     
+    # 【調整ポイント】
+    # 数字が見えるギリギリまで右側を左に引き寄せる量（px）
+    # 数字が消える場合は、この値を小さく（例: -30px）してください
+    pull_left = -45 
+
     header_h, body_h = generate_weather_icons_html(df_graph, ratio_info, w_right_px, start_idx)
 
-    # 修正ポイント：
-    # 1. 左側エリアに overflow: hidden をかけ、画像の中の空白部分を枠外に追い出す
-    # 2. 画像の width を 100% ではなく、本来の計算幅（total_w * 0.1）に固定する
-    # 3. 天気見出しの横幅も固定してズレを防ぐ
     full_content = f'''
-    <div style="display: flex; gap: 0px; width: 100%; background: white; border: 1px solid #ddd; font-family: sans-serif;">
-        <div style="width: {fixed_left_w}px; min-width: {fixed_left_w}px; flex-shrink: 0; z-index: 10; background: white; overflow: hidden; border-right: 1px solid #eee;">
-            <div style="width: {fixed_left_w}px;">{header_h}</div>
+    <div style="display: flex; gap: 0px; width: 100%; background: white; border: 1px solid #ddd; font-family: sans-serif; overflow: hidden;">
+        <div style="width: {full_left_w}px; min-width: {full_left_w}px; flex-shrink: 0; z-index: 10; background: white;">
+            {header_h}
             <img src="data:image/png;base64,{left_b64}" 
-                 style="width: {int(total_w * split_ratio)}px; height: {fig_h_px}px; display: block; max-width: none; margin-left: 0px;">
+                 style="width: 100%; height: {fig_h_px}px; display: block; object-fit: contain; object-position: left;">
         </div>
-        <div style="flex-grow: 1; overflow-x: auto; overflow-y: hidden; background: white;">
+        <div style="flex-grow: 1; overflow-x: auto; overflow-y: hidden; background: white; margin-left: {pull_left}px; border-left: 1px solid #eee; z-index: 5;">
             <div style="width: {w_right_px}px; position: relative;">
                 {body_h}
                 <img src="data:image/png;base64,{right_b64}" style="width: {w_right_px}px; height: {fig_h_px}px; display: block;">
@@ -2405,7 +2406,7 @@ def render_graph_area_module(danger_v, sel_dirs, design_params, now_jst):
     </div>
     '''
     
-    st.markdown(full_html := full_content, unsafe_allow_html=True)
+    st.markdown(full_content, unsafe_allow_html=True)
 
 # ======================================================================================
 # 96. 【レイアウト修正版】操作コントロールパネル（多言語対応版）
