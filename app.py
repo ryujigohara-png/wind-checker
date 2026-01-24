@@ -1,40 +1,46 @@
 # -*- coding: utf-8 -*-
-# 正規版　更新 2026.1.20 2245 APIリンク コンプリート版
+# 正規版　更新 2026.1.24 0930 グラフサイズ固定　コンプリート版
 """
-⛵ Pin_Weather! 機能仕様書（2026.01.18 改訂版）
-
+Pin_Weather! 機能仕様書 2026改訂版
+提供された最新のソースコード（2026.1.22 0100 波高、海面水温 コンプリート版）に基づき、波高および海面水温グラフの追加を反映した最新の機能仕様書を作成しました。
+--------------------------------------------------------------------------------
+⛵ Pin_Weather! 機能仕様書（2026.01.22 改訂版）
 1. データ統合・取得仕様
-　• 気象データソース: Open-Meteo APIを使用し、全世界の陸上気象データを取得します。
-　• 取得項目: 気温(2m)、風速(10m)、風向、天気コード、降水量を網羅。
-　• 時間軸と時差対応: 最大9日間の予報を表示。APIの timezone=auto 設定を利用し、実行環境（ブラウザ）の時差と現地時間の時差を動的に計算してグラフの現在時刻ラインや数値表示に反映させます。
-　• 潮位データ（大幅変更点）: 従来のシミュレーション方式から、Open-Meteo Marine APIによる実測値・予測値ベースの取得に変更されました。
-    ◦ 近傍探索ロジック: 指定された座標が陸地などでデータがない場合、周囲30km圏内を8方向、複数の距離ステップ（0.05度〜0.25度）でランダムスキャンし、最初に見つかった海洋データポイントを採用します。
-    ◦ 情報開示: 地点から離れた場所のデータを使用している場合、「〇〇方向 約〇kmのデータ」である旨をグラフ下部に赤字で明示します。
-    ◦ 非表示制御: 30km圏内に海洋データが存在しない場合は、グラフエリアにその旨を表示してエラーを回避します。
-
+　• 気象データソース: Open-Meteo APIを使用し、全世界の気象予報データ（最大9日間）を取得します [1, 2]。
+　• 海洋データソース（拡張）: Open-Meteo Marine APIを使用し、以下の3項目を取得します [3]。
+    ◦ 潮位 (Sea Level Height MSL) [3, 4]
+    ◦ 波高 (Wave Height) [3, 5]
+    ◦ 海面水温 (Sea Surface Temperature) [3, 5]
+　• 近傍探索ロジック: 指定座標が陸地等でデータがない場合、周囲30km圏内を8方向へ段階的にスキャンし、最初に見つかった海洋データを採用します [1, 3]。
+　• 時間軸の完全同期: timezone=auto 設定により、ブラウザの時差と現地の時差を動的に計算し、現在時刻ラインを正確に反映します [1, 6]。
 2. 視覚化（グラフ描画）仕様
-　• 高解像度画像生成: 風速・気温・潮位を統合したグラフを、サーバー側で高解像度（200/300 DPI選択可）な1枚のPNG画像として生成し、Base64形式でクライアントに転送します。
+　• 統合グラフ（5セクション対応）: 最大5つのグラフ（風・気温・波高・水温・潮位）を1枚の高解像度画像（200/300 DPI）として生成します [7-9]。
 　• 風速棒グラフ:
-    ◦ カラー判定: 10m/s以上は「クリムゾン（赤）」、特定風向かつ5m/s以上は「オレンジ」、3m/s以上は「スカイブルー」に色分けします。
-    ◦ 垂直情報配置: 棒グラフの上部に風速数値、風向矢印、降水量（0mm超のみ）、設定により風向名や天気テキストを垂直に並べて表示します。
-　• 気温折れ線グラフ: 3時間ごとの数値を**グラフ枠外（上部）**に配置し、視認性を高めています。
-　• 潮位曲線グラフ: 海洋APIから取得したMSL（平均海面）基準の潮位データをcm単位でプロットし、曲線と塗りつぶしで視覚化します。
-　• 天気アイコン: ☀️や☔などの絵文字アイコンを、グラフ画像上のタイムラインと物理的に一致する座標へ、HTMLコンテナを通じて動的に重ね合わせます。
-
+    ◦ 10m/s以上は「クリムゾン（赤）」、特定風向かつ5m/s以上で「オレンジ」、3m/s以上で「スカイブルー」に色分けします [10, 11]。
+　• 【新機能】波高グラフ:
+    ◦ 色と形式: 緑系（#2ca02c）の折れ線グラフで表示 [12]。
+    ◦ 情報表示: 3時間ごとの数値をグラフ上部に表示し、単位はメートル（m） [12]。
+　• 【新機能】海面水温グラフ:
+    ◦ 色と形式: オレンジ系（#ff7f0e）の折れ線グラフで表示 [13]。
+    ◦ 情報表示: 3時間ごとの数値をグラフ上部に表示し、単位は摂氏（℃） [13]。
+　• 海洋データ注釈: 潮位・波高・水温のいずれかを表示中、データの取得地点が指定座標から0.5km以上離れている場合は、方位と距離を赤字で自動表示します [14-16]。
+　• 天気アイコン: グラフの時間軸に合わせ、☀️や☔などの絵文字アイコンをHTMLレイヤーで正確に重ね合わせます [17-19]。
 3. 地点管理・操作仕様
-　• コンパクト・コントロールパネル: スマホ閲覧を考慮し、場所選択、地図起動、現在地取得、更新ボタンを3行の省スペースに凝縮したUIを採用。
-　• 現在地取得（高速版）: ブラウザのGPS機能を直接叩くJavaScript実行により、高速に現在地の座標を取得します。
-　• 逆引き地名取得: Nominatim APIを使用し、座標から市町村名や町名を取得して表示・保存します。
-　• 地図ダイアログ: Folium地図上でピンを動かし、中心地点の座標を確定できるダイアログ機能を搭載。操作時のズーム倍率保持にも対応しています。
-　• お気に入り（My Spot）機能: 最大10件まで地点を保存可能。名称の編集や並べ替え、削除、10件超過時の警告機能を備えています。
-
-4. システム仕様・カスタマイズ
-　• LocalStorage永続化: 全てのグラフ設定（横幅、縦幅、文字サイズ、表示項目、危険風速設定、比率など）および「お気に入り地点」は、ブラウザのLocalStorageに自動保存され、再訪問時に復元されます。
-　• 初期化フリーズ回避: ブラウザのストレージが空の状態でもアプリが停止しないよう、待機状態と空状態を判別する起動ロジックを実装しています。
-　• 詳細設定ダイアログ: スライダーを用いたUIにより、グラフの余白、比率、文字サイズ、DPI、降水量ラベルの高さなどを微調整可能です。
-　• 開発者モード: URLパラメータに ?mode=dev を付加することで、通常のユーザーには隠されている「コンテナ最小幅」や「地図ダイアログ余白」などのマイクロ調整機能が解放されます。
-
-💡 補足: 今回の修正により、潮位グラフが「計算上の波」ではなく、**実際にその海域で予測されている潮位データ（海洋予報データ）**を反映するようになり、実用性が大幅に向上しました。
+　• コンパクト・操作パネル: スマホ閲覧に最適化されたUIで、地点選択、地図、現在地取得、更新を3行に集約しています [17, 20]。
+　• My Spot（お気に入り）管理:
+    ◦ スター（⭐）登録: 現在地を名称指定して最大10件まで保存可能 [17, 21, 22]。
+    ◦ エディタ機能: 名称変更、並べ替え、削除が可能な専用ダイアログを搭載 [23, 24]。
+　• 高度な位置特定: GPSによる現在地取得、Nominatim APIによる詳細な地名の特定、Folium地図でのピン指定に対応しています [17, 25-27]。
+4. システム・カスタマイズ仕様
+　• 多言語完全対応: 日本語と英語の動的切り替えに対応。UI、気象用語、地名、凡例のすべてが翻訳されます [28-31]。
+　• 詳細設定ダイアログ（拡張）:
+    ◦ 表示トグル: 波高・海面水温を含む各グラフのON/OFFを個別に切り替え可能 [32]。
+    ◦ 比率調整: 風向・気温・波高・海面水温・潮位の5項目それぞれの縦幅比率を詳細に設定可能です [33, 34]。
+　• 永続化と復元: 全ての設定とお気に入り地点、言語設定はブラウザのLocalStorageに保存され、再起動時に自動復元されます [17, 35-37]。
+5. データ透明性
+　• API直接リンク: フッターに、現在表示中の地点の生データ（Weather API / Marine API）への直接リンクを表示します [38, 39]。
+--------------------------------------------------------------------------------
+💡 補足: 今回の修正により、これまでの「風と潮」に加え、航行やマリンレジャーに不可欠な**「波の高さ」と「水温」**が実測予測データとして統合され、より本格的な海洋気象ツールへと進化しました。
 """
 import streamlit as st
 import requests
@@ -65,12 +71,14 @@ CONFIG = {
     "MAP_HEIGHT": 350,                  # 地図の高さ
     "SHOW_WIND": True,                  # 風向・風速グラフ表示
     "SHOW_TEMP": True,                  # 気温グラフ表示
-    "SHOW_TIDE": False,                 # 潮位グラフ表示
+    "SHOW_TIDE": True,                  # 潮位グラフ表示
+    "SHOW_WAVE": True,                  # 波高グラフ表示
+    "SHOW_OCEAN_TEMP": True,            # 海面水温グラフ表示
     "SHOW_W_TEXT": False,               # 天気文字表示
     "SHOW_DIR_NAME": False,             # 風向名表示
     "GRAPH_WIDTH": 15,                  # グラフ横幅(inch)
-    "GRAPH_HIGHT": 2.5,                 # グラフ縦幅(inch)
-    "GRAPH_FONT_SIZE": 11,              # グラフ内文字サイズ
+    "GRAPH_HIGHT": 3.0,                 # グラフ縦幅(inch)
+    "GRAPH_FONT_SIZE": 10,              # グラフ内文字サイズ
     "LABEL_SIZE": 7,                    # 軸ラベル文字サイズ
     "DEFAULT_DANGER_V": 10.0,           # 危険風速
     #開発者詳細設定
@@ -82,9 +90,9 @@ CONFIG = {
     "DIAL_V_GAP": 0,                    # 地図ダイアログ縦余白（V-Gap）
     "FAV_BTN_WIDTH": 30,                # MySpot編集ダイアログ ボタン幅(%)
     "FAV_NAME_LEN": 12,                 # MySpot編集ダイアログ 地名表示制限（文字）
-    "DEFAULT_PRECIP_Y": 1.00,           # 降水量ラベル高さ（グラフ枠を1.0とした相対値）
+    "DEFAULT_PRECIP_Y": 1.25,           # 降水量ラベル高さ（グラフ枠を1.0とした相対値）
     "DEFAULT_ICON_MARGIN": 0,           # 天気アイコン下余白(px)
-    "DEFAULT_RATIOS": [4.0, 1.2, 0.8],  # グラフ比率設定
+    "DEFAULT_RATIOS": [4.0, 0.8, 0.8, 0.8, 0.8],  # グラフ比率設定
     # その他既定値
     "SHOW_DEV_MODE": False,                    # 開発者モード初期値
     "STORAGE_KEY": "wind_checker_settings_v2", # ローカルストレージキー
@@ -161,6 +169,8 @@ def get_language_dict():
             "風向・風速グラフ表示": "風向・風速グラフ表示",
             "気温グラフ表示": "気温グラフ表示",
             "潮位グラフ表示": "潮位グラフ表示",
+            "波高グラフ表示": "波高グラフ表示",
+            "海面水温グラフ表示": "海面水温グラフ表示",
             "天気文字表示": "天気文字表示",
             "風向名表示": "風向名表示",
             "グラフ枠横幅 (inch)": "グラフ枠横幅 (inch)",
@@ -206,6 +216,8 @@ def get_language_dict():
             "風速 (m/s)": "風速 (m/s)",
             "気温 (℃)": "気温 (℃)",
             "潮位 (cm)": "潮位 (cm)",
+            "波高 (m)": "波高 (m)",
+            "海水温 (℃)": "海水温 (℃)",
             "降水量mm　": "降水量mm　",
             "天気": "天気",
             "OCEAN_INFO": "※指定地点の最寄り（{res_dir}約{dist_km}km）の海洋データを表示しています。",
@@ -259,6 +271,8 @@ def get_language_dict():
             "風向・風速グラフ表示": "Show Wind Speed/Dir",
             "気温グラフ表示": "Show Temperature",
             "潮位グラフ表示": "Show Tide Level",
+            "波高グラフ表示": "Show Wave Height",
+            "海面水温グラフ表示": "Show Sea Surface Temperature",
             "天気文字表示": "Show Weather Text",
             "風向名表示": "Show Wind Dir Name",
             "グラフ枠横幅 (inch)": "Graph Width (inch)",
@@ -286,7 +300,7 @@ def get_language_dict():
             "比率:気温": "Ratio: Temp",
             "比率:潮位": "Ratio: Tide",
             "設定をすべて初期値に戻す": "Reset All to Default",
-            "設定を適用して更新": "Apply and Update",
+            "設定を適用して更新": "Apply and Update", 
             "キャンセルして戻る": "Cancel",
             "現在の登録地点 (クリックで削除)": "Current My Spots (Click to delete)",
             "--- 地点の追加 ---": "--- Add New Spot ---",
@@ -304,6 +318,8 @@ def get_language_dict():
             "風速 (m/s)": "Wind Speed (m/s)",
             "気温 (℃)": "Temp (℃)",
             "潮位 (cm)": "Tide (cm)",
+            "波高 (m)": "Wave (m)",
+            "海水温 (℃)": "Water (℃)",
             "降水量mm　": "Precip (mm) ",
             "天気": "Weather",
             "OCEAN_INFO": "*Showing marine data from {res_dir} approx. {dist_km}km away.",
@@ -426,12 +442,12 @@ def fetch_weather_data(lat, lon, days):
         return None
 
 # ======================================================================================
-# 4. 潮位データを取得するサブルーチン
+# 4. 海洋データを取得するサブルーチン
 # ======================================================================================
-def get_tide_level(times, lat, lon):
+def get_marine_data(times, lat, lon):
     """
-    Open-Meteo Marine APIを使用して潮位データを取得します。
-    戻り値を (data, res_lat, res_lon) の3つに整理しました。
+    Open-Meteo Marine APIを使用して海洋データ（潮位、波高、海面水温）を取得します。
+    戻り値は (data_dict, res_lat, res_lon) の3つです。
     """
     import requests
     import pandas as pd
@@ -449,8 +465,9 @@ def get_tide_level(times, lat, lon):
         params = {
             "latitude": t_lat,
             "longitude": t_lon,
-            "hourly": "sea_level_height_msl",
+            "hourly": "sea_level_height_msl,wave_height,sea_surface_temperature",
             "timezone": "auto",
+            "forecast_days": "9",
             "cell_selection": "sea"
         }
 
@@ -475,25 +492,46 @@ def get_tide_level(times, lat, lon):
     # 2. データ抽出
     df_api = pd.DataFrame({
         "time": pd.to_datetime(data["hourly"]["time"]),
-        "h": data["hourly"]["sea_level_height_msl"]
+        "tide": data["hourly"]["sea_level_height_msl"],
+        "wave": data["hourly"]["wave_height"],
+        "temp": data["hourly"]["sea_surface_temperature"]
     })
     df_api["time"] = df_api["time"].dt.tz_localize(None)
 
     levels = []
+    waves = []
+    temps = []
     found_any = False
+
     for t in times:
         t_naive = t.replace(tzinfo=None)
         match = df_api[df_api["time"] == t_naive]
         if not match.empty:
-            val = match.iloc[0]["h"]
-            levels.append(val)
-            if val is not None:
+            row = match.iloc[0]
+            v_tide = row["tide"]
+            v_wave = row["wave"]
+            v_temp = row["temp"]
+            
+            levels.append(v_tide)
+            waves.append(v_wave)
+            temps.append(v_temp)
+            
+            if v_tide is not None or v_wave is not None or v_temp is not None:
                 found_any = True
         else:
             levels.append(np.nan)
+            waves.append(np.nan)
+            temps.append(np.nan)
     
-    # 戻り値を3つに整理（is_nearbyを廃止）
-    return (levels if found_any else None), res_lat, res_lon
+    # データを辞書にまとめる
+    res_dict = {
+        "tide": levels,
+        "wave": waves,
+        "temp": temps
+    } if found_any else None
+
+    # 戻り値を3つに整理
+    return res_dict, res_lat, res_lon
       
 # ==========================================================================================
 # 5. 天気コードからテキストと色を取得するサブルーチン（多言語対応版）
@@ -798,14 +836,14 @@ def render_temp_line_chart(ax, df):
     translations = get_language_dict()
     lang_dict = translations[st.session_state.lang]
 
+    # フォントサイズはユーザー設定（label_font_size）を取得
+    label_fs = int(st.session_state.get("label_font_size", CONFIG["LABEL_SIZE"]))
+
     # メインの折れ線描画
     ax.plot(df['time'], df['temperature_2m'], color=CONFIG["TEMP_COLOR"], linewidth=2, marker='o', markersize=3, markevery=3)
     
-    # Y軸ラベルの多言語化（例: "気温 (℃)" -> "Temp. (°C)"）
-    ax.set_ylabel(lang_dict.get('気温 (℃)', 'Temp. (°C)'), fontsize=CONFIG["LABEL_SIZE"])
-    
-    # フォントサイズは軸ラベルのサイズを取得
-    label_fs = CONFIG["LABEL_SIZE"]
+    # Y軸ラベルの多言語化
+    ax.set_ylabel(lang_dict.get('気温 (℃)', 'Temp. (°C)'), fontsize=label_fs)
     
     # y軸の範囲設定
     t_max = df['temperature_2m'].max()
@@ -820,7 +858,6 @@ def render_temp_line_chart(ax, df):
         
         # 0時、または3の倍数の時刻のみ数値を表示
         if not pd.isna(temp) and (dt.hour % 3 == 0):
-            # transform=ax.get_xaxis_transform() を使用して、枠外へ描画
             ax.text(
                 dt, 
                 1.02, 
@@ -832,14 +869,14 @@ def render_temp_line_chart(ax, df):
                 transform=ax.get_xaxis_transform(),
                 clip_on=False
             )
-
+            
 # ======================================================================================
 # 11. 潮位曲線グラフを描画するサブルーチン
 # ======================================================================================
-def render_tide_curve_chart(ax, df, lat, lon):
+def render_tide_curve_chart(ax, df, lat, lon, marine_results, res_lat, res_lon, is_bottom=False):
     """
-    サブルーチン4(get_tide_level)を呼び出してデータを取得し、グラフを描画します。
-    is_nearbyフラグを廃止し、計算された距離(dist_km)のみに基づいて注釈を表示します。
+    サブルーチン12から渡された海洋データ(marine_results)を使用して、潮位グラフを描画します。
+    is_bottomがTrueの場合のみ、地点注釈を表示します。
     """
     import numpy as np
     import streamlit as st
@@ -848,10 +885,11 @@ def render_tide_curve_chart(ax, df, lat, lon):
 
     translations = get_language_dict()
     lang_dict = translations[st.session_state.lang]
-    label_fs = CONFIG.get("LABEL_SIZE", 10)
+    # ユーザー設定（label_font_size）を優先適用
+    label_fs = int(st.session_state.get("label_font_size", CONFIG.get("LABEL_SIZE", 10)))
 
-    # サブルーチン4を呼び出し（戻り値の数に合わせて受け取り側も修正）
-    tide_levels, res_lat, res_lon = get_tide_level(df['time'], lat, lon)
+    # サブルーチン4を呼び出し
+    tide_levels = marine_results["tide"] if marine_results and "tide" in marine_results else None
 
     # データなし処理
     if tide_levels is None:
@@ -875,26 +913,9 @@ def render_tide_curve_chart(ax, df, lat, lon):
                     fontsize=label_fs, transform=ax.get_xaxis_transform())
 
     # --- 方位・距離メッセージの判定ロジック ---
-    # 距離の近似計算 (km)
-    dx = (res_lon - lon) * 111 * np.cos(np.radians(lat))
-    dy = (res_lat - lat) * 111
-    dist_km = round(np.sqrt(dx**2 + dy**2), 1)
-
-    # is_nearbyフラグに依らず、物理的な距離の乖離(0.5km以上)がある場合に表示
-    if dist_km >= 0.5:
-        # 方位角の計算
-        angle = np.rad2deg(np.arctan2(dx, dy))
-        base_dirs = lang_dict.get("DIRECTIONS_8", ["北", "北東", "東", "南東", "南", "南西", "西", "北西"])
-        directions_9 = base_dirs + [base_dirs[0]]
-        res_dir = directions_9[int((angle + 22.5) % 360 // 45)]
+    if is_bottom:
+        render_ocean_location_info(ax, lat, lon, res_lat, res_lon, label_fs, lang_dict)
         
-        msg_tmpl = lang_dict.get("OCEAN_INFO", "※指定地点の最寄り（{res_dir}約{dist_km}km）の海洋データを表示しています。")
-        info_text = msg_tmpl.format(res_dir=res_dir, dist_km=dist_km)
-        
-        offset_trans = ScaledTranslation(0, - (label_fs * 3.5) / 72, ax.figure.dpi_scale_trans)
-        ax.text(0.0, 0.0, info_text, transform=ax.transAxes + offset_trans, color="#d62728", 
-                fontsize=label_fs - 1, ha='left', va='top')
-      
 # ======================================================================================
 # 12. 高解像度グラフ画像を生成するサブルーチン
 # ======================================================================================
@@ -933,12 +954,29 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
     active_plots = []
     if design_params.get("show_wind", True): active_plots.append("wind")
     if design_params.get("show_temp", True): active_plots.append("temp")
+    if design_params.get("show_wave", True): active_plots.append("wave")
+    if design_params.get("show_ocean_temp", True): active_plots.append("ocean_temp")
     if design_params.get("show_tide", True): active_plots.append("tide")
     
     if not active_plots: return None, (0, 0), start_idx, df
+
+    # --- 海洋データの事前取得 ---
+    marine_results = None
+    r_lat, r_lon = lat, lon
+    ocean_keys = {"wave", "ocean_temp", "tide"}
+    if any(k in active_plots for k in ocean_keys):
+        marine_results, r_lat, r_lon = get_marine_data(df['time'], lat, lon)
     
-    ratios = design_params.get("ratios", CONFIG["DEFAULT_RATIOS"])
-    current_ratios = [ratios[i] for i, p in enumerate(["wind", "temp", "tide"]) if p in active_plots]
+    # --- エラートラップ：比率データの補完 ---
+    ratios = list(design_params.get("ratios", CONFIG["DEFAULT_RATIOS"]))
+    if len(ratios) < 5:
+        default_ratios = CONFIG["DEFAULT_RATIOS"]
+        for i in range(len(ratios), 5):
+            ratios.append(default_ratios[i])
+
+    # 比率計算用のインデックス管理（wind, temp, wave, ocean_temp, tide の順）
+    all_possible = ["wind", "temp", "wave", "ocean_temp", "tide"]
+    current_ratios = [ratios[i] for i, p in enumerate(all_possible) if p in active_plots]
     
     fig_w = design_params.get("width", CONFIG["GRAPH_WIDTH"])
     fig_h = design_params.get("height", CONFIG["GRAPH_HIGHT"])
@@ -950,6 +988,7 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
     if len(active_plots) == 1: axes = [axes]
     formatter = get_x_axis_formatter()
     
+    # --- 描画ループ部分 ---
     idx = 0
     if "wind" in active_plots:
         render_wind_bar_chart(axes[idx], df, danger_v, start_idx, design_params)
@@ -957,9 +996,22 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
     if "temp" in active_plots:
         render_temp_line_chart(axes[idx], df)
         idx += 1
-    if "tide" in active_plots:
-        # 戻り値を受け取らない元の形を維持
-        render_tide_curve_chart(axes[idx], df, lat, lon)
+
+    # 海洋系グラフの最下部判定と呼び出し
+    has_wave = "wave" in active_plots
+    has_otemp = "ocean_temp" in active_plots
+    has_tide = "tide" in active_plots
+
+    if has_wave:
+        is_bot = (not has_otemp and not has_tide)
+        render_wave_height_chart(axes[idx], df, lat, lon, marine_results, r_lat, r_lon, is_bottom=is_bot)
+        idx += 1
+    if has_otemp:
+        is_bot = (not has_tide)
+        render_ocean_temp_chart(axes[idx], df, lat, lon, marine_results, r_lat, r_lon, is_bottom=is_bot)
+        idx += 1
+    if has_tide:
+        render_tide_curve_chart(axes[idx], df, lat, lon, marine_results, r_lat, r_lon, is_bottom=True)
         idx += 1
 
     for ax in axes:
@@ -976,9 +1028,130 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
     plt.close(fig) 
     
     return base64.b64encode(buf.getvalue()).decode(), ratio_info, start_idx, df
-    
+
 # ======================================================================================
-# 13. お天気アイコンのHTMLを生成するサブルーチン
+# 13. 波高グラフを描画するサブルーチン
+# ======================================================================================
+def render_wave_height_chart(ax, df, lat, lon, marine_results, res_lat, res_lon, is_bottom=False):
+    """
+    サブルーチン12から渡された海洋データ(marine_results)を使用して、波高グラフを描画します。
+    is_bottomがTrueの場合のみ、地点注釈を表示します。
+    """
+    import numpy as np
+    import streamlit as st
+    import pandas as pd
+    from matplotlib.transforms import ScaledTranslation
+
+    translations = get_language_dict()
+    lang_dict = translations[st.session_state.lang]
+    # ユーザー設定（label_font_size）を優先適用
+    label_fs = int(st.session_state.get("label_font_size", CONFIG.get("LABEL_SIZE", 10)))
+
+    # データなし処理
+    if marine_results is None or "wave" not in marine_results:
+        ax.clear()
+        ax.set_axis_off()
+        no_data_msg = lang_dict.get("OCEAN_NONE", "※指定地点の近傍に有効な海洋データがないため表示されません")
+        ax.text(0.0, 0.5, no_data_msg, transform=ax.transAxes, color="gray", fontsize=label_fs, ha='left', va='center')
+        return
+
+    # データをdfに格納
+    df['wave_m'] = [v if v is not None else np.nan for v in marine_results["wave"]]
+    
+    # 描画処理
+    ax.plot(df['time'], df['wave_m'], color="#2ca02c", linewidth=2, marker='o', markersize=3, markevery=3)
+    ax.set_ylabel(lang_dict.get("波高 (m)", "Wave (m)"), fontsize=label_fs)
+    ax.grid(True, axis='y', linestyle='--', alpha=0.5)
+
+    # 数値ラベル（3時間おき）
+    for i in range(0, len(df), 3):
+        dt, val = df['time'].iloc[i], df['wave_m'].iloc[i]
+        if not pd.isna(val):
+            ax.text(dt, 1.05, f"{val:.1f}", ha='center', va='bottom', color="#2ca02c", 
+                    fontsize=label_fs, transform=ax.get_xaxis_transform())
+
+    # --- 方位・距離メッセージの判定ロジック ---
+    if is_bottom:
+        render_ocean_location_info(ax, lat, lon, res_lat, res_lon, label_fs, lang_dict)
+        
+# ======================================================================================
+# 14. 海面水温グラフを描画するサブルーチン
+# ======================================================================================
+def render_ocean_temp_chart(ax, df, lat, lon, marine_results, res_lat, res_lon, is_bottom=False):
+    """
+    サブルーチン12から渡された海洋データ(marine_results)を使用して、海面水温グラフを描画します。
+    is_bottomがTrueの場合のみ、地点注釈を表示します。
+    """
+    import numpy as np
+    import streamlit as st
+    import pandas as pd
+    from matplotlib.transforms import ScaledTranslation
+
+    translations = get_language_dict()
+    lang_dict = translations[st.session_state.lang]
+    # ユーザー設定（label_font_size）を優先適用
+    label_fs = int(st.session_state.get("label_font_size", CONFIG.get("LABEL_SIZE", 10)))
+
+    # データなし処理
+    if marine_results is None or "temp" not in marine_results:
+        ax.clear()
+        ax.set_axis_off()
+        no_data_msg = lang_dict.get("OCEAN_NONE", "※指定地点の近傍に有効な海洋データがないため表示されません")
+        ax.text(0.0, 0.5, no_data_msg, transform=ax.transAxes, color="gray", fontsize=label_fs, ha='left', va='center')
+        return
+
+    # データをdfに格納
+    df['ocean_temp'] = [v if v is not None else np.nan for v in marine_results["temp"]]
+    
+    # 描画処理
+    ax.plot(df['time'], df['ocean_temp'], color="#ff7f0e", linewidth=2, marker='o', markersize=3, markevery=3)
+    ax.set_ylabel(lang_dict.get("海水温 (℃)", "Water (°C)"), fontsize=label_fs)
+    ax.grid(True, axis='y', linestyle='--', alpha=0.5)
+
+    # 数値ラベル（3時間おき）
+    for i in range(0, len(df), 3):
+        dt, val = df['time'].iloc[i], df['ocean_temp'].iloc[i]
+        if not pd.isna(val):
+            ax.text(dt, 1.05, f"{val:.1f}", ha='center', va='bottom', color="#ff7f0e", 
+                    fontsize=label_fs, transform=ax.get_xaxis_transform())
+
+    # --- 方位・距離メッセージの判定ロジック ---
+    if is_bottom:
+        render_ocean_location_info(ax, lat, lon, res_lat, res_lon, label_fs, lang_dict)
+        
+# ======================================================================================
+# 15. 海洋データの地点情報を描画するサブルーチン
+# ======================================================================================
+def render_ocean_location_info(ax, lat, lon, res_lat, res_lon, label_fs, lang_dict):
+    """
+    指定地点とAPI取得地点の距離・方位を計算し、グラフ下部に注釈を表示します。
+    """
+    import numpy as np
+    from matplotlib.transforms import ScaledTranslation
+
+    # 距離の近似計算 (km)
+    dx = (res_lon - lon) * 111 * np.cos(np.radians(lat))
+    dy = (res_lat - lat) * 111
+    dist_km = round(np.sqrt(dx**2 + dy**2), 1)
+
+    # 物理的な距離の乖離(0.5km以上)がある場合に表示
+    if dist_km >= 0.5:
+        # 方位角の計算
+        angle = np.rad2deg(np.arctan2(dx, dy))
+        base_dirs = lang_dict.get("DIRECTIONS_8", ["北", "北東", "東", "南東", "南", "南西", "西", "北西"])
+        directions_9 = base_dirs + [base_dirs[0]]
+        res_dir = directions_9[int((angle + 22.5) % 360 // 45)]
+        
+        msg_tmpl = lang_dict.get("OCEAN_INFO", "※指定地点の最寄り（{res_dir}約{dist_km}km）の海洋データを表示しています。")
+        info_text = msg_tmpl.format(res_dir=res_dir, dist_km=dist_km)
+        
+        # テキスト位置のオフセット設定
+        offset_trans = ScaledTranslation(0, - (label_fs * 3.5) / 72, ax.figure.dpi_scale_trans)
+        ax.text(0.0, 0.0, info_text, transform=ax.transAxes + offset_trans, color="#d62728", 
+                fontsize=label_fs - 1, ha='left', va='top')
+
+# ======================================================================================
+# 16. お天気アイコンのHTMLを生成するサブルーチン
 # ======================================================================================
 def generate_weather_icons_html(df, ratio_info, display_width, start_idx, icon_margin=0):
     """
@@ -1038,16 +1211,16 @@ def generate_weather_icons_html(df, ratio_info, display_width, start_idx, icon_m
 # ======================================================================================
 def show_settings_dialog():
     """
-    開発者モード時のみ、お気に入り管理ダイアログの「ボタン幅」と「文字数制限」を
-    調整するためのスライダーを表示する機能を追加した完全版。
+    保存処理の直後に微小な待機時間を入れ、JSの実行完了を待ってから再読み込みする安全版。
+    要素数が不足している古い設定データが読み込まれた場合のIndexErrorを回避する修正済み。
     """
     import streamlit as st
+    import time
 
     # 辞書の取得
     translations = get_language_dict()
     lang_dict = translations[st.session_state.lang]
 
-    # ダイアログのタイトルを辞書から取得
     @st.dialog(lang_dict.get("グラフ表示設定の詳細", "Graph Settings"), dismissible=False)
     def settings_dialog_content():
         # --- 1. 表示設定（トグル） ---
@@ -1055,6 +1228,8 @@ def show_settings_dialog():
         d_show_wind = st.toggle(lang_dict["風向・風速グラフ表示"], value=st.session_state.get("show_wind", CONFIG["SHOW_WIND"]))
         d_show_temp = st.toggle(lang_dict["気温グラフ表示"], value=st.session_state.get("show_temp", CONFIG["SHOW_TEMP"]))
         d_show_tide = st.toggle(lang_dict["潮位グラフ表示"], value=st.session_state.get("show_tide", CONFIG["SHOW_TIDE"]))
+        d_show_wave = st.toggle(lang_dict["波高グラフ表示"], value=st.session_state.get("show_wave", CONFIG["SHOW_WAVE"]))
+        d_show_ocean_temp = st.toggle(lang_dict["海面水温グラフ表示"], value=st.session_state.get("show_ocean_temp", CONFIG["SHOW_OCEAN_TEMP"]))
         d_show_w_text = st.toggle(lang_dict["天気文字表示"], value=st.session_state.get("show_w_text", CONFIG["SHOW_W_TEXT"]))
         d_show_dir_name = st.toggle(lang_dict["風向名表示"], value=st.session_state.get("show_dir_name", CONFIG["SHOW_DIR_NAME"]))
         
@@ -1068,25 +1243,18 @@ def show_settings_dialog():
         st.markdown("---")
         d_danger_v = st.number_input(lang_dict["危険風速ライン(m/s)"], value=float(st.session_state.get("danger_v", CONFIG["DEFAULT_DANGER_V"])), step=1.0)
         
-        # --- 3. 色付風向選択（2列チェックボックス） ---
+        # --- 3. 色付風向選択 ---
         st.subheader(lang_dict["色付風向選択"])
         current_sel = st.session_state.get("sel_dirs", list(CONFIG["DEFAULT_DIRS"]))
         new_sel_dirs = []
         cols = st.columns(2)
-        
-        # 元の ALL_DIRECTIONS リストをそのまま使用し、内部の値「d」はいじらない
         for i, d in enumerate(ALL_DIRECTIONS):
             with cols[i % 2]:
-                # 表示ラベルだけを、辞書の ALL_DIRECTIONS の同じ位置から取得して切り替える
-                # 辞書の中身が ["N", "NNE"...] ならそれが表示される
                 display_label = lang_dict["ALL_DIRECTIONS"][i]
-                
-                # チェックの判定と保存(new_sel_dirs)には、元の日本語「d」をそのまま使う
                 if st.checkbox(display_label, value=(d in current_sel), key=f"dlg_dir_{d}"):
                     new_sel_dirs.append(d)
         
         # --- 4. 開発者用調整 ---
-        # (以下、変更なし)
         is_dev_url = st.query_params.get("mode") == "dev"
         if is_dev_url:
             st.markdown("---")
@@ -1105,11 +1273,17 @@ def show_settings_dialog():
             d_precip_y = st.slider("降水量ラベル高さ", 0.0, 2.0, float(st.session_state.get("precip_y", CONFIG["DEFAULT_PRECIP_Y"])), 0.05)
             d_icon_margin = st.slider("天気アイコン下余白", 0, 100, int(st.session_state.get("icon_margin", CONFIG["DEFAULT_ICON_MARGIN"])), 5)
             st.subheader("グラフ縦比率設定")
+            
+            # --- 修正箇所: 要素数が足りない場合にデフォルト値を補填 ---
             r = st.session_state.get("ratios", CONFIG["DEFAULT_RATIOS"])
-            r0 = st.number_input("比率:風向", 0.5, 10.0, float(r[0]), 0.1)
-            r1 = st.number_input("比率:気温", 0.5, 5.0, float(r[1]), 0.1)
-            r2 = st.number_input("比率:潮位", 0.5, 5.0, float(r[2]), 0.1)
-            d_ratios = [r0, r1, r2]
+            d_r = CONFIG["DEFAULT_RATIOS"]
+            
+            r0 = st.number_input("比率:風向", 0.5, 10.0, float(r[0] if len(r) > 0 else d_r[0]), 0.1)
+            r1 = st.number_input("比率:気温", 0.5, 5.0, float(r[1] if len(r) > 1 else d_r[1]), 0.1)
+            r2 = st.number_input("比率:波高", 0.5, 10.0, float(r[2] if len(r) > 2 else d_r[2]), 0.1)
+            r3 = st.number_input("比率:海面水温", 0.5, 5.0, float(r[3] if len(r) > 3 else d_r[3]), 0.1)
+            r4 = st.number_input("比率:潮位", 0.5, 5.0, float(r[4] if len(r) > 4 else d_r[4]), 0.1)
+            d_ratios = [r0, r1, r2, r3, r4]
         else:
             d_min_w = st.session_state.get("min_container_width", CONFIG["CONTENA_MIN_W"])
             d_dpi = st.session_state.get("graph_dpi", CONFIG["DPI"])
@@ -1129,6 +1303,7 @@ def show_settings_dialog():
         if st.button(lang_dict["設定をすべて初期値に戻す"], key="reset_all_settings", use_container_width=True):
             st.session_state.update({
                 "show_wind": CONFIG["SHOW_WIND"], "show_temp": CONFIG["SHOW_TEMP"], "show_tide": CONFIG["SHOW_TIDE"],
+                "show_wave": CONFIG["SHOW_WAVE"], "show_ocean_temp": CONFIG["SHOW_OCEAN_TEMP"],
                 "width": CONFIG["GRAPH_WIDTH"], "base_height": CONFIG["GRAPH_HIGHT"], "base_font_size": CONFIG["GRAPH_FONT_SIZE"],
                 "label_font_size": CONFIG["LABEL_SIZE"], "danger_v": CONFIG["DEFAULT_DANGER_V"], "sel_dirs": list(CONFIG["DEFAULT_DIRS"]),
                 "min_container_width": CONFIG["CONTENA_MIN_W"], "graph_dpi": CONFIG["DPI"], "show_w_text": CONFIG["SHOW_W_TEXT"],
@@ -1139,6 +1314,7 @@ def show_settings_dialog():
             })
             save_settings_to_browser()
             st.cache_data.clear()
+            time.sleep(0.1) # JS実行のための微小な待ち時間
             st.rerun()
         
         # --- 6. 実行・キャンセルボタン ---
@@ -1147,6 +1323,7 @@ def show_settings_dialog():
             if st.button(lang_dict["設定を適用して更新"], key="apply_all_settings", type="primary", use_container_width=True):
                 st.session_state.update({
                     "show_wind": d_show_wind, "show_temp": d_show_temp, "show_tide": d_show_tide,
+                    "show_wave": d_show_wave, "show_ocean_temp": d_show_ocean_temp,
                     "width": d_width, "base_height": d_base_h, "base_font_size": d_base_f,
                     "label_font_size": d_label_f, "danger_v": d_danger_v, "sel_dirs": new_sel_dirs,
                     "min_container_width": d_min_w, "graph_dpi": d_dpi, "show_w_text": d_show_w_text,
@@ -1155,16 +1332,19 @@ def show_settings_dialog():
                     "fav_btn_width": d_fav_w, "fav_name_len": d_fav_len,
                     "precip_y": d_precip_y, "icon_margin": d_icon_margin, "ratios": d_ratios
                 })
+                
                 save_settings_to_browser()
                 st.cache_data.clear()
-                st.rerun()
+                time.sleep(0.1) # ここが重要：JSのsetItem完了を待つ
+                st.rerun() # ダイアログを閉じて設定を反映
+        
         with c_cancel:
             if st.button(lang_dict["キャンセルして戻る"], key="cancel_all_settings", use_container_width=True):
                 st.rerun()
                 
     # ダイアログの実行
     settings_dialog_content()
-
+    
 # ======================================================================================
 # 21. サイドバー、パラメータ設定（言語設定ダイアログ呼び出し版）
 # ======================================================================================
@@ -1199,7 +1379,10 @@ def show_sidebar_controls():
         st.session_state.get("ratios", CONFIG["DEFAULT_RATIOS"]),
         st.session_state.get("show_wind", True),
         st.session_state.get("show_temp", True),
-        st.session_state.get("show_tide", False)
+        st.session_state.get("show_wave", True),
+        st.session_state.get("show_ocean_temp", True),
+        st.session_state.get("show_tide", False),
+        hspace=st.session_state.get("hspace", 1.0) # ここを追加
     )
 
     design_params = {
@@ -1212,6 +1395,8 @@ def show_sidebar_controls():
         "show_wind": st.session_state.get("show_wind", CONFIG["SHOW_WIND"]),
         "show_temp": st.session_state.get("show_temp", CONFIG["SHOW_TEMP"]),
         "show_tide": st.session_state.get("show_tide", CONFIG["SHOW_TIDE"]),
+        "show_wave": st.session_state.get("show_wave", CONFIG["SHOW_WAVE"]),
+        "show_ocean_temp": st.session_state.get("show_ocean_temp", CONFIG["SHOW_OCEAN_TEMP"]),
         "show_w_text": st.session_state.get("show_w_text", CONFIG["SHOW_W_TEXT"]),
         "show_dir_name": st.session_state.get("show_dir_name", CONFIG["SHOW_DIR_NAME"]),
         "ratios": st.session_state.get("ratios", CONFIG["DEFAULT_RATIOS"]),
@@ -1268,30 +1453,56 @@ def show_language_dialog():
 # ======================================================================================
 # 22. グラフの表示高さを一括計算するサブルーチン
 # ======================================================================================
-def calculate_graph_height(base_height, ratios, show_wind, show_temp, show_tide):
+def calculate_graph_height(base_height, ratios, show_wind, show_temp, show_wave, show_ocean_temp, show_tide, hspace=1.0):
     """
-    各グラフの表示比率と基準縦幅から、最終的なグラフの合計高さを計算する。
+    全グラフが表示されている状態の比率合計を基準として、各グラフのサイズを固定します。
+    グラフ間の余白（hspace）による高さの増加分を計算に含め、文字の重なりを防ぎます。
     """
-    # 1. 基本となる比率の合計（風向・風速 + 気温）
-    base_ratio_total = ratios[0] + ratios[1]
+    import streamlit as st
+
+    # --- 1. エラートラップ：比率データの補完 ---
+    current_ratios = list(ratios)
+    if len(current_ratios) < 5:
+        default_ratios = CONFIG["DEFAULT_RATIOS"]
+        for i in range(len(current_ratios), 5):
+            current_ratios.append(default_ratios[i])
     
-    # 2. 1単位あたりのピクセル高さ
-    fixed_unit_h = base_height / base_ratio_total 
+    # --- 2. スケールの固定計算 ---
+    full_ratio_total = sum(current_ratios)
+    # 1単位あたりの高さ(inch)
+    fixed_unit_h = base_height / full_ratio_total 
     
-    # 3. アイコン表示用のマージン（風向きが表示されている時のみ）
+    # --- 3. アイコンおよび余白の計算 ---
+    # 風向き表示時のマージン
     icon_margin = 0.45 if show_wind else 0.0
     
-    # 4. 各項目の表示可否に応じた高さの積み上げ
-    auto_height = icon_margin
+    # 表示されるグラフの数をカウント
+    active_plots_count = sum([show_wind, show_temp, show_wave, show_ocean_temp, show_tide])
+    
+    # グラフ間の数（グラフが N 個なら間は N-1）
+    num_gaps = max(0, active_plots_count - 1)
+    
+    # グラフ間余白（hspace）による高さの加算
+    # matplotlibの hspace は「平均的な子プロットの高さ」に対する比率なので、
+    # 物理的な高さ(inch)に換算して加算します。
+    # 重なりを防ぐため、基準となる 1ユニットの高さをベースに計算。
+    gap_margin = num_gaps * (hspace * 0.15) # 0.15は文字重なりを防ぐための調整係数
+    
+    # --- 4. 現在表示されている項目の高さを積み上げる ---
+    auto_height = icon_margin + gap_margin
+    
     if show_wind:
-        auto_height += ratios[0] * fixed_unit_h
+        auto_height += current_ratios[0] * fixed_unit_h
     if show_temp:
-        auto_height += ratios[1] * fixed_unit_h
+        auto_height += current_ratios[1] * fixed_unit_h
+    if show_wave:
+        auto_height += current_ratios[2] * fixed_unit_h
+    if show_ocean_temp:
+        auto_height += current_ratios[3] * fixed_unit_h
     if show_tide:
-        auto_height += ratios[2] * fixed_unit_h
+        auto_height += current_ratios[4] * fixed_unit_h
         
     return auto_height
-
 
 # ==========================================================================================
 # 30. 地図UIをダイアログで表示するサブルーチン (倍率維持・完全版・多言語対応)
@@ -1468,10 +1679,19 @@ def fetch_location_name(lat, lon):
     except:
         return default_name
 
-# ==========================================================================================
+# ======================================================================================
 # 82. ブラウザへの保存を実行するサブルーチン
-# ==========================================================================================
+# ======================================================================================
 def save_settings_to_browser():
+    """
+    st.session_state から最新の設定を収集し、localStorage へ保存します。
+    無限ループを避けるため JS 側でのリロードは行わず、Python 側で制御します。
+    """
+    import json
+    import streamlit as st
+    from streamlit_js_eval import streamlit_js_eval
+
+    # 保存用データのパッキング
     save_data = {
         "lat": st.session_state.lat,
         "lon": st.session_state.lon,
@@ -1479,6 +1699,8 @@ def save_settings_to_browser():
         "show_wind": st.session_state.show_wind,
         "show_temp": st.session_state.show_temp,
         "show_tide": st.session_state.show_tide,
+        "show_wave": st.session_state.show_wave,
+        "show_ocean_temp": st.session_state.show_ocean_temp,
         "show_w_text": st.session_state.get("show_w_text", CONFIG["SHOW_W_TEXT"]),
         "show_dir_name": st.session_state.get("show_dir_name", CONFIG["SHOW_DIR_NAME"]),
         "width": st.session_state.width,
@@ -1491,20 +1713,31 @@ def save_settings_to_browser():
         "label_pad": st.session_state.get("label_pad", CONFIG["LABEL_PAD"]),
         "hspace": st.session_state.get("hspace", CONFIG["HSPACE"]),
         "ratios": st.session_state.get("ratios", CONFIG["DEFAULT_RATIOS"]),
-        # 【重要】お気に入りリストを保存対象に含める
         "user_locations": st.session_state.get("user_locations", []),
         "map_lat": st.session_state.get("map_lat", st.session_state.lat),
         "map_lon": st.session_state.get("map_lon", st.session_state.lon),
         "temp_label": st.session_state.get("temp_label", None),
-        # --- 今回追加：言語設定の保存 ---
         "lang": st.session_state.get("lang", "ja")
     }
+    
+    # JSON化とエスケープ
     json_data = json.dumps(save_data, ensure_ascii=False)
-    # クォートのエスケープ処理を追加してJSエラーを防止
-    escaped_json = json_data.replace("'", "\\'")
-    components.html(
-        f"""<script>localStorage.setItem("{CONFIG['STORAGE_KEY']}", '{escaped_json}');</script>""",
-        height=0,    )
+    safe_json = json_data.replace('"', '\\"')
+    
+    # JavaScript命令の構築（リロード命令を削除し、純粋に保存のみ行う）
+    js_cmd = f"""
+        try {{
+            localStorage.setItem('{CONFIG['STORAGE_KEY']}', '{safe_json}');
+            console.log("--- SAVE_PROCESS_SUCCESS ---");
+        }} catch (e) {{
+            console.error("--- SAVE_PROCESS_FAILED ---", e);
+        }}
+    """
+    
+    # 実行。実行のたびに新しいキーを発行して確実に JS を動かす
+    import time
+    dynamic_key = f"save_exec_{int(time.time() * 1000)}"
+    streamlit_js_eval(js_expressions=js_cmd, key=dynamic_key)
 
 # ==========================================================================================
 # 83. ステート更新・保存・再描画を一本化するサブルーチン (新規追加)
@@ -1531,6 +1764,8 @@ def sync_all_settings():
         "show_wind": CONFIG["SHOW_WIND"],
         "show_temp": CONFIG["SHOW_TEMP"],
         "show_tide": CONFIG["SHOW_TIDE"],
+        "show_wave": CONFIG["SHOW_WAVE"],
+        "show_ocean_temp": CONFIG["SHOW_OCEAN_TEMP"],
         "show_w_text": CONFIG["SHOW_W_TEXT"],
         "show_dir_name": CONFIG["SHOW_DIR_NAME"],
         "lat": CONFIG["DEFAULT_LAT"],
@@ -1574,6 +1809,8 @@ def sync_all_settings():
             st.session_state.show_wind = data.get("show_wind", CONFIG["SHOW_WIND"])
             st.session_state.show_temp = data.get("show_temp", CONFIG["SHOW_TEMP"])
             st.session_state.show_tide = data.get("show_tide", CONFIG["SHOW_TIDE"])
+            st.session_state.show_wave = data.get("show_wave", CONFIG["SHOW_WAVE"])
+            st.session_state.show_ocean_temp = data.get("show_ocean_temp", CONFIG["SHOW_OCEAN_TEMP"])
             st.session_state.show_w_text = data.get("show_w_text", CONFIG["SHOW_W_TEXT"])
             st.session_state.show_dir_name = data.get("show_dir_name", CONFIG["SHOW_DIR_NAME"])
             st.session_state.width = float(data.get("width", CONFIG["GRAPH_WIDTH"]))
@@ -2393,7 +2630,7 @@ def main():
     # --- [追加] APIリンクの表示 ---
     lat, lon = st.session_state.lat, st.session_state.lon
     w_url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&hourly=temperature_2m,windspeed_10m,winddirection_10m,precipitation&timezone=auto"
-    m_url = f"https://marine-api.open-meteo.com/v1/marine?latitude={lat}&longitude={lon}&hourly=sea_level_height_msl&timezone=auto"
+    m_url = f"https://marine-api.open-meteo.com/v1/marine?latitude={lat}&longitude={lon}&hourly=wave_height,sea_surface_temperature,sea_level_height_msl&timezone=auto"
 
     st.markdown(
         f"""
