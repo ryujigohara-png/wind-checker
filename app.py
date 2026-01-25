@@ -2390,125 +2390,128 @@ def render_graph_area_module(danger_v, sel_dirs, design_params, now_jst):
     st.markdown(html_str, unsafe_allow_html=True)
     
 # ======================================================================================
-# 96. 【レイアウト修正版】操作コントロールパネル（多言語・絶対横並び・完全版）
+# 96. 【修正・完全版】操作コントロールパネル（絶対横並び・全デバイス対応）
 # ======================================================================================
 def render_compact_control_panel(basho_name):
-    """
-    スマホでの表示を強制的に横並びにする完全版サブルーチン。
-    st.columnsを使わずCSSでインライン制御することで、レスポンシブな縦積みを回避します。
-    """
     import streamlit as st
     from datetime import datetime, timedelta
 
-    # 1. 辞書の取得
+    # 辞書の取得
     translations = get_language_dict()
     lang_dict = translations[st.session_state.lang]
 
-    # 2. 強力なインライン化CSS（グラフのFlexboxと同様の原理を適用）
+    # --- 【最後の手段】CSS：Streamlitの標準レイアウトを完全にバイパスする ---
     st.markdown("""
         <style>
-            /* ボタンやセレクトボックスをインラインブロック化 */
-            .stButton, .stSelectbox {
-                display: inline-block !important;
-                vertical-align: top !important;
-                margin-bottom: 0px !important;
-            }
-            /* 場所選択の幅を強制固定（スマホ幅を考慮） */
-            div[data-testid="stSelectbox"] {
-                width: 82% !important;
-            }
-            /* お気に入りボタン（⭐/✅）の幅を強制固定 */
-            div.stButton:has(button[key*="fav"]) {
-                width: 15% !important;
-                margin-left: 3px !important;
-            }
-            /* 地図と現在地ボタンを約半分ずつに固定 */
-            div.stButton:has(button[key="btn_map_open"]), 
-            div.stButton:has(button[key="btn_get_gps"]) {
-                width: 48.5% !important;
-            }
-            /* 更新ボタンは100%幅 */
-            div.stButton:has(button[key="btn_graph_refresh"]) {
+            /* 親コンテナ：グラフと同じFlexboxを適用し、折り返し(wrap)を禁止 */
+            .force-horizontal-container {
+                display: flex !important;
+                flex-direction: row !important;
+                flex-wrap: nowrap !important; /* 絶対に縦に並べない */
+                align-items: flex-start !important;
+                gap: 8px !important;
                 width: 100% !important;
-                margin-top: 5px !important;
+                margin-bottom: 10px !important;
             }
-            /* ボタン内のフォントとパディング微調整 */
+            /* 各要素の幅を比率で強制固定（グラフの手法と同じ） */
+            .item-place { flex: 0 0 82% !important; min-width: 0 !important; }
+            .item-fav   { flex: 0 0 15% !important; min-width: 0 !important; }
+            .item-half  { flex: 0 0 49% !important; min-width: 0 !important; }
+
+            /* ボタンとセレクトボックスの高さと余白を極限まで調整 */
             .stButton > button {
                 width: 100% !important;
-                padding: 0px 2px !important;
-                min-height: 40px !important;
+                padding: 0px 5px !important;
+                min-height: 42px !important;
+                white-space: nowrap !important;
+            }
+            [data-testid="stSelectbox"] {
+                margin-bottom: 0px !important;
             }
         </style>
     """, unsafe_allow_html=True)
 
-    with st.container():
-        # --- 1. 場所選択 ＋ お気に入り ---
-        display_list, total_data = get_combined_location_list(
-            CONFIG["LOCATION_MASTER"], 
-            st.session_state.lat, 
-            st.session_state.lon
-        )
-        favorites = st.session_state.get("user_locations", [])
-        saved_data = next((f for f in favorites if abs(f['lat'] - st.session_state.lat) < 0.0001 and abs(f['lon'] - st.session_state.lon) < 0.0001), None)
-        is_saved = saved_data is not None
+    # データ準備
+    display_list, total_data = get_combined_location_list(
+        CONFIG["LOCATION_MASTER"], st.session_state.lat, st.session_state.lon
+    )
+    favorites = st.session_state.get("user_locations", [])
+    is_saved = any(abs(f['lat'] - st.session_state.lat) < 0.0001 and abs(f['lon'] - st.session_state.lon) < 0.0001 for f in favorites)
 
-        # セレクトボックス
+    # --- 行1：場所選択 ＋ お気に入り（絶対横並び） ---
+    # Streamlitの枠組みを使わず、自作のdivで直接包む
+    st.markdown('<div class="force-horizontal-container">', unsafe_allow_html=True)
+    
+    with st.container():
+        # 左側：地点選択
+        st.markdown('<div class="item-place">', unsafe_allow_html=True)
         selected_label = st.selectbox(
-            lang_dict.get("SELECT_PLACE", "SELECT"), 
-            options=display_list, 
+            "SELECT_PLACE", options=display_list, 
             index=display_list.index(st.session_state.last_basho) if st.session_state.last_basho in display_list else 0,
-            label_visibility="collapsed"
+            label_visibility="collapsed", key="sb_place_final"
         )
-        # 横に並べるお気に入りボタン
+        st.markdown('</div>', unsafe_allow_html=True)
+        
+        # 右側：お気に入り
+        st.markdown('<div class="item-fav">', unsafe_allow_html=True)
         if is_saved:
-            st.button("✅", key="fav_saved_icon_inline", disabled=True, help=lang_dict.get("HELP_FAV_SAVED", "Registered"))
+            st.button("✅", key="btn_fav_ok_final", disabled=True)
         else:
-            if st.button("⭐", key="fav_save_action_inline", help=lang_dict.get("HELP_FAV_SAVE", "Register")):
+            if st.button("⭐", key="btn_fav_save_final"):
                 pure_name = st.session_state.last_basho.split(" (")[0]
                 show_favorite_registration_dialog(pure_name, st.session_state.lat, st.session_state.lon)
-
-        # --- 2. 地図 ＋ 現在地 ---
-        st.button(lang_dict.get("BTN_MAP", "🗺️Map"), key="btn_map_open", use_container_width=False)
-        st.button(lang_dict.get("BTN_CURRENT_LOC_SHORT", "📍GPS"), key="btn_get_gps", use_container_width=False)
-
-        # --- 3. グラフ更新 (省略なし) ---
-        now_jst = st.session_state.get('now_jst', datetime.now())
-        try:
-            # タイムゾーン変換ロジック
-            df_tmp = fetch_weather_data(st.session_state.lat, st.session_state.lon, 1)
-            browser_offset = now_jst.utcoffset()
-            browser_offset_s = browser_offset.total_seconds() if browser_offset else 0
-            local_offset_s = df_tmp.attrs.get('local_offset_seconds', 0)
-            now_local = now_jst.replace(tzinfo=None) - timedelta(seconds=browser_offset_s) + timedelta(seconds=local_offset_s)
-        except Exception:
-            now_local = now_jst.replace(tzinfo=None)
-
-        dt_format = lang_dict.get('DATETIME_FORMAT', '%Y/%m/%d %H:%M:%S')
-        date_time_str = now_local.strftime(dt_format)
-        update_text = lang_dict.get('BTN_UPDATE', 'Update')
-        update_label = f"🔄📊{update_text} ({date_time_str})"
-        
-        if st.button(update_label, key="btn_graph_refresh", use_container_width=False):
-            st.cache_data.clear()
-            st.session_state.needs_graph_update = True
-            st.rerun()
-
-    # --- 選択変更時のロジック処理 ---
-    map_select_label = lang_dict.get("MAP_SELECT_LABEL", "地図で指定")
+        st.markdown('</div>', unsafe_allow_html=True)
     
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    # --- 行2：地図 ＋ 現在地（絶対横並び） ---
+    st.markdown('<div class="force-horizontal-container">', unsafe_allow_html=True)
+    
+    with st.container():
+        # 左側：地図
+        st.markdown('<div class="item-half">', unsafe_allow_html=True)
+        if st.button(lang_dict.get("BTN_MAP", "🗺️地図"), key="btn_map_final", use_container_width=True):
+            show_location_map_dialog()
+        st.markdown('</div>', unsafe_allow_html=True)
+        
+        # 右側：現在地
+        st.markdown('<div class="item-half">', unsafe_allow_html=True)
+        if st.button(lang_dict.get("BTN_CURRENT_LOC_SHORT", "📍現在地"), key="btn_gps_final", use_container_width=True):
+            st.session_state.waiting_loc = True
+            st.session_state.geo_key = f"geo_{datetime.now().timestamp()}"
+            st.rerun()
+        st.markdown('</div>', unsafe_allow_html=True)
+        
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    # --- 行3：グラフ更新（ここは幅100%で良い） ---
+    now_jst = st.session_state.get('now_jst', datetime.now())
+    try:
+        df_tmp = fetch_weather_data(st.session_state.lat, st.session_state.lon, 1)
+        local_offset_s = df_tmp.attrs.get('local_offset_seconds', 0)
+        now_local = now_jst.replace(tzinfo=None) + timedelta(seconds=local_offset_s - 32400)
+    except Exception:
+        now_local = now_jst
+
+    dt_format = lang_dict.get('DATETIME_FORMAT', '%Y/%m/%d %H:%M:%S')
+    update_label = f"🔄📊 {lang_dict.get('BTN_UPDATE', '更新')} ({now_local.strftime(dt_format)})"
+    
+    if st.button(update_label, key="btn_refresh_final", use_container_width=True):
+        st.cache_data.clear()
+        st.session_state.needs_graph_update = True
+        st.rerun()
+
+    # --- 選択変更時のロジック ---
+    map_select_label = lang_dict.get("MAP_SELECT_LABEL", "地図で指定")
     if selected_label == map_select_label:
         show_location_map_dialog()
     elif selected_label != st.session_state.last_basho:
         new_lat, new_lon, new_name = total_data[selected_label]
-        st.session_state.temp_lat, st.session_state.temp_lon, st.session_state.temp_basho = total_data[selected_label]
+        st.session_state.temp_lat, st.session_state.temp_lon, st.session_state.temp_basho = new_lat, new_lon, new_name
         update_state_and_save({
-            "lat": new_lat, 
-            "lon": new_lon, 
-            "last_basho": selected_label,
-            "needs_graph_update": True
+            "lat": new_lat, "lon": new_lon, "last_basho": selected_label, "needs_graph_update": True
         })
 
-    # 現在地取得の待機処理
     if st.session_state.get("waiting_loc"):
         handle_current_location_update_integrated()
         
