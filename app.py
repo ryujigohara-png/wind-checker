@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# 正規版　更新 2026.1.25 0055 Y軸固定　コンプリート版
+# 正規版　更新 2026.1.25 2355 Y軸固定　コンプリート版
 """
 Pin_Weather! 機能仕様書 2026改訂版
 提供された最新のソースコード（2026.1.22 0100 波高、海面水温 コンプリート版）に基づき、波高および海面水温グラフの追加を反映した最新の機能仕様書を作成しました。
@@ -152,8 +152,8 @@ def get_language_dict():
         "ja": {
             "表示設定": "表示設定",
             "⛵Pin_Weather!": "⛵Pin_Weather!",
-            "LABEL_FAV_ADD": "⭐ お気に入り追加",
-            "LABEL_FAV_OK": "✅ 登録済み",
+            "LABEL_FAV_ADD": "⭐ My Spot 追加",
+            "LABEL_FAV_OK": "✅ My Spot 登録済",
             "FAV_PREFIX": "📍 ",
             "MAP_SELECT_LABEL": "地図で指定",
             "BTN_CURRENT_LOC": "🔄📍現在地　　　　　　　　　　",
@@ -256,8 +256,8 @@ def get_language_dict():
         "en": {
             "表示設定": "Display Settings",
             "⛵Pin_Weather!": "⛵Pin_Weather!",
-            "LABEL_FAV_OK": "✅ Registered",
-            "LABEL_FAV_ADD": "⭐ Add Favorite",
+            "LABEL_FAV_ADD": "⭐ Add My Spot",
+            "LABEL_FAV_OK": "✅ My Spot Registered",
             "FAV_PREFIX": "📍 ",
             "MAP_SELECT_LABEL": "Select on Map",
             "BTN_CURRENT_LOC": "🔄📍Current Location          ",
