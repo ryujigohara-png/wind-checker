@@ -2399,8 +2399,8 @@ def render_graph_area_module(danger_v, sel_dirs, design_params, now_jst):
 def render_compact_control_panel(basho_name):
     """
     正規版のロジック、キー名、文言を完全に維持。
-    カラム比率を [0.35, 0.15, 0.1, 0.12, 0.28] に調整し、左側の隙間を詰めました。
-    update_label はご指定通り 🔄📊 と 日時 のみの構成に修正しています。
+    カラム比率を指定の [0.35, 0.15, 0.1, 0.12, 0.28] に復元。
+    CSSによりすべてのボタンとセレクトボックスの高さを低い方に統一しました。
     """
 
     import streamlit as st
@@ -2410,7 +2410,7 @@ def render_compact_control_panel(basho_name):
     translations = get_language_dict()
     lang_dict = translations[st.session_state.lang]
 
-    # --- レイアウト制御CSS (正規版をそのまま維持) ---
+    # --- レイアウト制御CSS (比率復元と高さの厳格統一) ---
     st.markdown("""
         <style>
             [data-testid="column"] {
@@ -2426,16 +2426,22 @@ def render_compact_control_panel(basho_name):
             [data-testid="stHorizontalBlock"] {
                 gap: 5px !important;
             }
+            /* ボタンと入力要素の高さを低い方(32px程度)に統一 */
             .stButton > button {
                 width: 100% !important;
-                padding: 2px 5px !important;
-                min-height: 35px !important;
+                padding: 0px 5px !important;
+                min-height: 32px !important;
+                height: 32px !important;
+            }
+            div[data-testid="stSelectbox"] div[data-baseweb="select"] {
+                min-height: 32px !important;
+                height: 32px !important;
             }
         </style>
     """, unsafe_allow_html=True)
 
     with st.container():
-        # --- 1. データ準備 (正規版を維持) ---
+        # --- 1. データ準備 (維持) ---
         display_list, total_data = get_combined_location_list(
             CONFIG["LOCATION_MASTER"], 
             st.session_state.lat, 
@@ -2445,7 +2451,7 @@ def render_compact_control_panel(basho_name):
         saved_data = next((f for f in favorites if abs(f['lat'] - st.session_state.lat) < 0.0001 and abs(f['lon'] - st.session_state.lon) < 0.0001), None)
         is_saved = saved_data is not None
 
-        # --- 2. PC横5セルレイアウト (比率を調整して隙間を縮小) ---
+        # --- 2. PC横5セルレイアウト (比率復元) ---
         c1, c2, c3, c4, c5 = st.columns([0.35, 0.15, 0.1, 0.12, 0.28])
 
         with c1:
@@ -2491,7 +2497,7 @@ def render_compact_control_panel(basho_name):
             dt_format = lang_dict.get('DATETIME_FORMAT', '%Y/%m/%d %H:%M:%S')
             date_time_str = now_local.strftime(dt_format)
             
-            # ご指定通りの構成に修正
+            # ご指定通りの構成 (🔄📊 + 日時)
             update_label = f"🔄📊 {date_time_str}"
             
             if st.button(update_label, key="btn_graph_refresh", use_container_width=True):
@@ -2499,7 +2505,7 @@ def render_compact_control_panel(basho_name):
                 st.session_state.needs_graph_update = True
                 st.rerun()
 
-    # --- 3. 選択変更時のロジック処理 (正規版を維持) ---
+    # --- 3. 選択変更時のロジック処理 (維持) ---
     map_select_label = lang_dict.get("MAP_SELECT_LABEL", "地図で指定")
     if selected_label == map_select_label:
         show_location_map_dialog()
