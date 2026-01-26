@@ -94,7 +94,7 @@ CONFIG = {
     "LEFT_SHIFT": -185,                  # 左軸画像のズレ (px)
     "DEFAULT_PRECIP_Y": 1.05,           # 降水量ラベル高さ（グラフ枠を1.0とした相対値）
     "DEFAULT_ICON_MARGIN": 0,           # 天気アイコン下余白(px)
-    "DEFAULT_RATIOS": [4.0, 0.8, 0.8, 0.8, 0.8],  # グラフ比率設定
+    "DEFAULT_RATIOS": [4.0, 1.0, 1.0, 1.0, 1.0],  # グラフ比率設定
     # その他既定値
     "SHOW_DEV_MODE": False,                    # 開発者モード初期値
     "STORAGE_KEY": "wind_checker_settings_v2", # ローカルストレージキー
