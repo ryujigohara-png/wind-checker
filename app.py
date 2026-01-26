@@ -2446,7 +2446,7 @@ def render_compact_control_panel(basho_name):
         is_saved = saved_data is not None
 
         # --- 2. PC横5セルレイアウト (比率を調整して隙間を縮小) ---
-        c1, c2, c3, c4, c5 = st.columns([0.35, 0.12, 0.1, 0.12, 0.31])
+        c1, c2, c3, c4, c5 = st.columns([0.35, 0.15, 0.1, 0.12, 0.28])
 
         with c1:
             selected_label = st.selectbox(
