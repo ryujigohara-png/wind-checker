@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# 正規版　更新 2026.1.26 2315 5セル横並び　コンプリート版
+# 正規版　更新 2026.1.26 2358 5セル横並び　コンプリート版
 """
 Pin_Weather! 機能仕様書 2026改訂版
 提供された最新のソースコード（2026.1.22 0100 波高、海面水温 コンプリート版）に基づき、波高および海面水温グラフの追加を反映した最新の機能仕様書を作成しました。
@@ -2399,8 +2399,8 @@ def render_graph_area_module(danger_v, sel_dirs, design_params, now_jst):
 def render_compact_control_panel(basho_name):
     """
     正規版のロジック、キー名、文言を完全に維持。
-    PCでのレイアウトを横1行5セルに変更。
-    登録済みの「⭐MySpot」クリック時は、既存の管理ダイアログ(92_4)を呼び出します。
+    カラム比率を [0.35, 0.12, 0.1, 0.12, 0.31] に調整し、左側の隙間を詰めました。
+    update_label はご指定通り 🔄📊 と 日時 のみの構成に修正しています。
     """
 
     import streamlit as st
@@ -2435,7 +2435,7 @@ def render_compact_control_panel(basho_name):
     """, unsafe_allow_html=True)
 
     with st.container():
-        # --- 1. データ準備 (正規版をそのまま維持) ---
+        # --- 1. データ準備 (正規版を維持) ---
         display_list, total_data = get_combined_location_list(
             CONFIG["LOCATION_MASTER"], 
             st.session_state.lat, 
@@ -2445,11 +2445,10 @@ def render_compact_control_panel(basho_name):
         saved_data = next((f for f in favorites if abs(f['lat'] - st.session_state.lat) < 0.0001 and abs(f['lon'] - st.session_state.lon) < 0.0001), None)
         is_saved = saved_data is not None
 
-        # --- 2. PC横5セルレイアウトへの配置 ---
-        c1, c2, c3, c4, c5 = st.columns([0.35, 0.15, 0.1, 0.12, 0.28])
+        # --- 2. PC横5セルレイアウト (比率を調整して隙間を縮小) ---
+        c1, c2, c3, c4, c5 = st.columns([0.35, 0.12, 0.1, 0.12, 0.31])
 
         with c1:
-            # 正規版と同一のセレクトボックス
             selected_label = st.selectbox(
                 lang_dict.get("SELECT_PLACE", "地点を選択してください"), 
                 options=display_list, 
@@ -2458,25 +2457,20 @@ def render_compact_control_panel(basho_name):
             )
 
         with c2:
-            # お気に入り登録・編集ボタン
             if is_saved:
-                # 登録済み：クリックで既存の管理ダイアログ(92_4)を表示
                 if st.button("⭐MySpot", key="fav_manage_call", help=lang_dict.get("HELP_FAV_SAVED", "お気に入り登録済み（クリックで管理）")):
                     manage_favorites_dialog()
             else:
-                # 未登録：登録用ダイアログを表示
                 if st.button("☆MySpot", key="fav_save_action", help=lang_dict.get("HELP_FAV_SAVE", "この場所をお気に入りに登録")):
                     pure_name = st.session_state.last_basho.split(" (")[0]
                     show_favorite_registration_dialog(pure_name, st.session_state.lat, st.session_state.lon)
 
         with c3:
-            # 地図 (正規版のまま)
             map_btn_label = lang_dict.get("BTN_MAP", "🗺️地図")
             if st.button(map_btn_label, key="btn_map_open", use_container_width=True):
                 show_location_map_dialog()
 
         with c4:
-            # 🔄📍現在地 ボタン (正規版のまま)
             curr_loc_btn_label = lang_dict.get("BTN_CURRENT_LOC_SHORT", "🔄📍現在地")
             if st.button(curr_loc_btn_label, key="btn_get_gps", use_container_width=True):
                 st.session_state.waiting_loc = True
@@ -2484,7 +2478,6 @@ def render_compact_control_panel(basho_name):
                 st.rerun()
 
         with c5:
-            # グラフ更新 (正規版のまま)
             now_jst = st.session_state.get('now_jst', datetime.now())
             try:
                 df_tmp = fetch_weather_data(st.session_state.lat, st.session_state.lon, 1)
@@ -2497,8 +2490,8 @@ def render_compact_control_panel(basho_name):
 
             dt_format = lang_dict.get('DATETIME_FORMAT', '%Y/%m/%d %H:%M:%S')
             date_time_str = now_local.strftime(dt_format)
-            # update_text = lang_dict.get('BTN_UPDATE', '更新')
-            # update_label = f"🔄📊{update_text} ({date_time_str})"
+            
+            # ご指定通りの構成に修正
             update_label = f"🔄📊 {date_time_str}"
             
             if st.button(update_label, key="btn_graph_refresh", use_container_width=True):
@@ -2506,22 +2499,17 @@ def render_compact_control_panel(basho_name):
                 st.session_state.needs_graph_update = True
                 st.rerun()
 
-    # --- 3. 選択変更時のロジック処理 (正規版を完全に維持) ---
+    # --- 3. 選択変更時のロジック処理 (正規版を維持) ---
     map_select_label = lang_dict.get("MAP_SELECT_LABEL", "地図で指定")
-    
     if selected_label == map_select_label:
         show_location_map_dialog()
     elif selected_label != st.session_state.last_basho:
         new_lat, new_lon, new_name = total_data[selected_label]
         st.session_state.temp_lat, st.session_state.temp_lon, st.session_state.temp_basho = total_data[selected_label]
         update_state_and_save({
-            "lat": new_lat, 
-            "lon": new_lon, 
-            "last_basho": selected_label,
-            "needs_graph_update": True
+            "lat": new_lat, "lon": new_lon, "last_basho": selected_label, "needs_graph_update": True
         })
 
-    # 現在地取得の待機処理 (正規版を完全に維持)
     if st.session_state.get("waiting_loc"):
         handle_current_location_update_integrated()
         
