@@ -2467,8 +2467,8 @@ def render_compact_control_panel(basho_name):
             )
 
         with c2:
-            # 状態に応じたラベル（☆MySpot / ★MySpot）
-            fav_label = "★MySpot" if is_saved else "☆MySpot"
+            # 状態に応じたラベル（☆MySpot / ⭐MySpot）
+            fav_label = "⭐MySpot" if is_saved else "☆MySpot"
             if st.button(fav_label, key="v96_final_fav", disabled=is_saved):
                 pure_name = st.session_state.last_basho.split(" (")[0]
                 show_favorite_registration_dialog(pure_name, st.session_state.lat, st.session_state.lon)
