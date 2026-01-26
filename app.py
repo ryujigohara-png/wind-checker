@@ -260,7 +260,7 @@ def get_language_dict():
             "LABEL_FAV_OK": "✅ My Spot Registered",
             "FAV_PREFIX": "📍 ",
             "MAP_SELECT_LABEL": "Select on Map",
-            "BTN_CURRENT_LOC": "🔄📍Current Location          ",
+            "BTN_CURRENT_LOC": "🔄📍GPS          ",
             "MSG_GETTING_LOC": "🛰️ Getting current location...",
             "MSG_IDENTIFY_LOC": "Identifying location name...",
             "ERR_LOC_FAILED": "❌ Failed to get location information.",
