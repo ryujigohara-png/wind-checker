@@ -1998,8 +1998,8 @@ def show_favorite_control_bar(location_options, current_display_label, current_l
 def show_favorite_registration_dialog(default_name, lat, lon):
     """
     お気に入り登録時に「地名」を確認・修正してLocalStorageへ永続保存する。
-    登録後、メイン画面のコンボボックスおよび地図座標変数が当該地点を指すように同期します。
-    表示文字列を st.session_state.lang に基づき多言語化します。
+    登録後、メイン画面のコンボボックス表示形式「名称 (緯度, 経度)」と完全一致する名称を
+    session_state.last_basho にセットすることで、二重表示を防止します。
     """
     import streamlit as st
 
@@ -2031,7 +2031,7 @@ def show_favorite_registration_dialog(default_name, lat, lon):
                 if "user_locations" not in st.session_state:
                     st.session_state.user_locations = []
                 
-                # リストに追加 (内部データは日本語を含む new_name をそのまま保持)
+                # リストに追加 (内部データはユーザーが入力した名称を保持)
                 st.session_state.user_locations.append({
                     "name": new_name,
                     "lat": lat,
@@ -2047,15 +2047,15 @@ def show_favorite_registration_dialog(default_name, lat, lon):
                 st.session_state.temp_lat = lat
                 st.session_state.temp_lon = lon
                 
-                # 2. コンボボックスの選択名を新登録名に設定
-                st.session_state.last_basho = new_name
+                # 2. 【修正箇所】コンボボックスの表示形式「名称 (緯度, 経度)」に合わせて同期
+                # これにより、セレクトボックス内の既存リストと一致し、二重表示（緯度経度なし項目）が消えます
+                formatted_name = f"{new_name} ({lat:.4f}, {lon:.4f})"
+                st.session_state.last_basho = formatted_name
+                st.session_state.temp_label = formatted_name
                 
                 # 3. グラフ更新フラグを立てる
                 st.session_state.needs_graph_update = True
                 
-                # --- 【重要・修正箇所】コンボボックスの不一致を防ぐため、None ではなく登録した名称を強制セット ---
-                st.session_state.temp_label = new_name
-
                 # 保存処理の呼び出し
                 if "save_settings_to_browser" in globals():
                     save_settings_to_browser()
