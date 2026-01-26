@@ -2399,7 +2399,7 @@ def render_graph_area_module(danger_v, sel_dirs, design_params, now_jst):
 def render_compact_control_panel(basho_name):
     """
     正規版のロジック、キー名、文言を完全に維持。
-    カラム比率を [0.35, 0.12, 0.1, 0.12, 0.31] に調整し、左側の隙間を詰めました。
+    カラム比率を [0.38, 0.15, 0.1, 0.12, 0.28] に調整し、左側の隙間を詰めました。
     update_label はご指定通り 🔄📊 と 日時 のみの構成に修正しています。
     """
 
