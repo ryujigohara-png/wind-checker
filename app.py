@@ -2394,12 +2394,12 @@ def render_graph_area_module(danger_v, sel_dirs, design_params, now_jst):
     st.markdown(html_str, unsafe_allow_html=True)
     
 # ======================================================================================
-# 96. 【修正・完全版】操作コントロールパネル（お気に入り記号・色変更版）
+# 96. 【完成版】操作コントロールパネル
 # ======================================================================================
 def render_compact_control_panel(basho_name):
     """
     PC横5セルレイアウト。
-    未登録:「☆MySpot」、登録済:「★MySpot」とし、登録済のみCSSで黄色に強調します。
+    お気に入りボタンを「背景なし・枠線なし」のアイコン風にし、登録済のみ黄色に強調します。
     """
     import streamlit as st
     from datetime import datetime, timedelta
@@ -2418,10 +2418,9 @@ def render_compact_control_panel(basho_name):
     saved_data = next((f for f in favorites if abs(f['lat'] - st.session_state.lat) < 0.0001 and abs(f['lon'] - st.session_state.lon) < 0.0001), None)
     is_saved = saved_data is not None
 
-    # 3. 動的CSSの生成（2番目のボタンの色を制御）
-    # 登録済みならテキストを黄色(#FFD700)に。未登録なら通常の色。
+    # 3. 動的CSSの生成
+    # 登録済みならゴールド（黄色）、未登録なら標準色（inherit）
     fav_text_color = "#FFD700" if is_saved else "inherit"
-    fav_bg_color = "#333333" if is_saved else "transparent" # 登録済は背景を少し暗くして星を目立たせる例
 
     st.markdown(f"""
         <style>
@@ -2443,10 +2442,14 @@ def render_compact_control_panel(basho_name):
                 padding: 2px 5px !important;
                 min-height: 35px !important;
             }}
-            /* お気に入りボタン（2番目のカラム）の特定スタイル */
+            
+            /* --- お気に入りボタン（2番目のカラム）をアイコン風にする設定 --- */
             div[data-testid="column"]:nth-of-type(2) button {{
-                color: {fav_text_color} !important;
-                border-color: {fav_text_color if is_saved else "#CCCCCC"} !important;
+                background-color: transparent !important; /* 背景を消す */
+                border: none !important;                /* 枠線を消す */
+                color: {fav_text_color} !important;     /* 登録済なら黄色、未登録なら標準 */
+                font-size: 1.15em !important;           /* アイコンらしく少し大きく */
+                box-shadow: none !important;            /* 影も消す */
             }}
         </style>
     """, unsafe_allow_html=True)
@@ -2460,23 +2463,24 @@ def render_compact_control_panel(basho_name):
                 lang_dict.get("SELECT_PLACE", "地点を選択してください"), 
                 options=display_list, 
                 index=display_list.index(st.session_state.last_basho) if st.session_state.last_basho in display_list else 0,
-                label_visibility="collapsed", key="v96_star_sb"
+                label_visibility="collapsed", key="v96_final_sb"
             )
 
         with c2:
-            # 状態に応じた記号とラベル（指示通り ☆/★MySpot）
-            # 辞書を通さずとも、ここで直接指定するか辞書の値を読み込みます
+            # 状態に応じたラベル（☆MySpot / ★MySpot）
             fav_label = "★MySpot" if is_saved else "☆MySpot"
-            if st.button(fav_label, key="v96_star_fav", disabled=is_saved):
+            if st.button(fav_label, key="v96_final_fav", disabled=is_saved):
                 pure_name = st.session_state.last_basho.split(" (")[0]
                 show_favorite_registration_dialog(pure_name, st.session_state.lat, st.session_state.lon)
 
         with c3:
-            if st.button(lang_dict.get("BTN_MAP", "🗺️地図"), key="v96_star_map", use_container_width=True):
+            if st.button(lang_dict.get("BTN_MAP", "🗺️地図"), key="v96_final_map", use_container_width=True):
                 show_location_map_dialog()
 
         with c4:
-            if st.button(lang_dict.get("BTN_CURRENT_LOC_SHORT", "📍現在地"), key="v96_star_gps", use_container_width=True):
+            # 現在地のラベル（必要に応じて辞書または直接変更してください）
+            curr_loc_btn_label = lang_dict.get("BTN_CURRENT_LOC_SHORT", "📍GPS")
+            if st.button(curr_loc_btn_label, key="v96_final_gps", use_container_width=True):
                 st.session_state.waiting_loc = True
                 st.session_state.geo_key = f"geo_{datetime.now().timestamp()}"
                 st.rerun()
@@ -2496,14 +2500,14 @@ def render_compact_control_panel(basho_name):
             date_time_str = now_local.strftime(dt_format)
             # update_text = lang_dict.get('BTN_UPDATE', '更新')
             # update_label = f"🔄📊{update_text} ({date_time_str})"
-            update_label = f"🔄📊({date_time_str})"
+            update_label = f"🔄📊 {date_time_str}"
             
-            if st.button(update_label, key="v96_star_refresh", use_container_width=True):
+            if st.button(update_label, key="v96_final_refresh", use_container_width=True):
                 st.cache_data.clear()
                 st.session_state.needs_graph_update = True
                 st.rerun()
 
-    # --- 選択変更時のロジック処理（維持） ---
+    # --- 選択変更時のロジック処理 ---
     map_select_label = lang_dict.get("MAP_SELECT_LABEL", "地図で指定")
     if selected_label == map_select_label:
         show_location_map_dialog()
@@ -2516,6 +2520,7 @@ def render_compact_control_panel(basho_name):
 
     if st.session_state.get("waiting_loc"):
         handle_current_location_update_integrated()
+        
         
 # ======================================================================================
 # 99. フッター情報表示 (凡例およびクレジット表記)
