@@ -162,7 +162,7 @@ def get_language_dict():
             "ERR_LOC_FAILED": "❌ 位置情報の取得に失敗しました。",
             "BTN_UPDATE": "更新",
             "BTN_MAP": "🗺️地図",
-            "BTN_CURRENT_LOC_SHORT": "🔄📍現在地",
+            "BTN_CURRENT_LOC_SHORT": "📍現在地",
             "SELECT_PLACE": "地点を選択してください",
             "HELP_FAV_SAVED": "お気に入り登録済み",
             "HELP_FAV_SAVE": "この場所をお気に入りに登録",
@@ -266,7 +266,7 @@ def get_language_dict():
             "ERR_LOC_FAILED": "❌ Failed to get location information.",
             "BTN_UPDATE": "Update",
             "BTN_MAP": "🗺️Map",
-            "BTN_CURRENT_LOC_SHORT": "🔄📍Current Location",
+            "BTN_CURRENT_LOC_SHORT": "📍GPS",
             "SELECT_PLACE": "Select a location",
             "HELP_FAV_SAVED": "Saved to Favorites",
             "HELP_FAV_SAVE": "Add to Favorites",
@@ -2394,95 +2394,93 @@ def render_graph_area_module(danger_v, sel_dirs, design_params, now_jst):
     st.markdown(html_str, unsafe_allow_html=True)
     
 # ======================================================================================
-# 96. 【修正・完全版】操作コントロールパネル
+# 96. 【修正・完全版】操作コントロールパネル（お気に入り記号・色変更版）
 # ======================================================================================
 def render_compact_control_panel(basho_name):
     """
-    正規版のロジックを維持。PCでは横1行5セル、スマホでは自動的に縦に並びます。
-    お気に入りボタンは lang_dict の LABEL_FAV_ADD / LABEL_FAV_OK を使用します。
+    PC横5セルレイアウト。
+    未登録:「☆MySpot」、登録済:「★MySpot」とし、登録済のみCSSで黄色に強調します。
     """
-
     import streamlit as st
     from datetime import datetime, timedelta
 
-    # 辞書の取得
+    # 1. 辞書の取得
     translations = get_language_dict()
     lang_dict = translations[st.session_state.lang]
 
-    # --- レイアウト制御CSS (正規版をそのまま維持) ---
-    st.markdown("""
+    # 2. データ準備
+    display_list, total_data = get_combined_location_list(
+        CONFIG["LOCATION_MASTER"], 
+        st.session_state.lat, 
+        st.session_state.lon
+    )
+    favorites = st.session_state.get("user_locations", [])
+    saved_data = next((f for f in favorites if abs(f['lat'] - st.session_state.lat) < 0.0001 and abs(f['lon'] - st.session_state.lon) < 0.0001), None)
+    is_saved = saved_data is not None
+
+    # 3. 動的CSSの生成（2番目のボタンの色を制御）
+    # 登録済みならテキストを黄色(#FFD700)に。未登録なら通常の色。
+    fav_text_color = "#FFD700" if is_saved else "inherit"
+    fav_bg_color = "#333333" if is_saved else "transparent" # 登録済は背景を少し暗くして星を目立たせる例
+
+    st.markdown(f"""
         <style>
-            [data-testid="column"] {
+            [data-testid="column"] {{
                 flex-direction: row !important;
                 flex-basis: auto !important;
                 min-width: 0px !important;
                 flex-grow: 1 !important;
-            }
-            [data-testid="stVerticalBlock"] > div {
+            }}
+            [data-testid="stVerticalBlock"] > div {{
                 padding: 0px !important;
                 margin-top: -2px !important;
-            }
-            [data-testid="stHorizontalBlock"] {
+            }}
+            [data-testid="stHorizontalBlock"] {{
                 gap: 5px !important;
-            }
-            .stButton > button {
+            }}
+            .stButton > button {{
                 width: 100% !important;
                 padding: 2px 5px !important;
                 min-height: 35px !important;
-            }
+            }}
+            /* お気に入りボタン（2番目のカラム）の特定スタイル */
+            div[data-testid="column"]:nth-of-type(2) button {{
+                color: {fav_text_color} !important;
+                border-color: {fav_text_color if is_saved else "#CCCCCC"} !important;
+            }}
         </style>
     """, unsafe_allow_html=True)
 
     with st.container():
-        # --- 1. データ準備 (正規版ロジック) ---
-        display_list, total_data = get_combined_location_list(
-            CONFIG["LOCATION_MASTER"], 
-            st.session_state.lat, 
-            st.session_state.lon
-        )
-        favorites = st.session_state.get("user_locations", [])
-        saved_data = next((f for f in favorites if abs(f['lat'] - st.session_state.lat) < 0.0001 and abs(f['lon'] - st.session_state.lon) < 0.0001), None)
-        is_saved = saved_data is not None
-
-        # --- PCで横1行5セルの構成 ---
-        # セルの比率は、場所選択(c1)と更新(c5)に余裕を持たせています
+        # PCで横1行5セル
         c1, c2, c3, c4, c5 = st.columns([0.35, 0.15, 0.1, 0.12, 0.28])
 
-        # (1) 場所選択
         with c1:
             selected_label = st.selectbox(
                 lang_dict.get("SELECT_PLACE", "地点を選択してください"), 
                 options=display_list, 
                 index=display_list.index(st.session_state.last_basho) if st.session_state.last_basho in display_list else 0,
-                label_visibility="collapsed", key="v96_final_sb"
+                label_visibility="collapsed", key="v96_star_sb"
             )
 
-        # (2) お気に入り登録（指示通り辞書キーを使用）
         with c2:
-            if is_saved:
-                # ✅ 登録済み
-                st.button(lang_dict.get("LABEL_FAV_OK"), key="fav_saved_v96", disabled=True)
-            else:
-                # ⭐ お気に入り追加
-                if st.button(lang_dict.get("LABEL_FAV_ADD"), key="fav_save_v96"):
-                    pure_name = st.session_state.last_basho.split(" (")[0]
-                    show_favorite_registration_dialog(pure_name, st.session_state.lat, st.session_state.lon)
+            # 状態に応じた記号とラベル（指示通り ☆/★MySpot）
+            # 辞書を通さずとも、ここで直接指定するか辞書の値を読み込みます
+            fav_label = "★MySpot" if is_saved else "☆MySpot"
+            if st.button(fav_label, key="v96_star_fav", disabled=is_saved):
+                pure_name = st.session_state.last_basho.split(" (")[0]
+                show_favorite_registration_dialog(pure_name, st.session_state.lat, st.session_state.lon)
 
-        # (3) 地図
         with c3:
-            map_btn_label = lang_dict.get("BTN_MAP", "🗺️地図")
-            if st.button(map_btn_label, key="btn_map_v96", use_container_width=True):
+            if st.button(lang_dict.get("BTN_MAP", "🗺️地図"), key="v96_star_map", use_container_width=True):
                 show_location_map_dialog()
 
-        # (4) 現在地
         with c4:
-            curr_loc_btn_label = lang_dict.get("BTN_CURRENT_LOC_SHORT", "🔄📍現在地")
-            if st.button(curr_loc_btn_label, key="btn_gps_v96", use_container_width=True):
+            if st.button(lang_dict.get("BTN_CURRENT_LOC_SHORT", "📍現在地"), key="v96_star_gps", use_container_width=True):
                 st.session_state.waiting_loc = True
                 st.session_state.geo_key = f"geo_{datetime.now().timestamp()}"
                 st.rerun()
 
-        # (5) グラフ更新 (正規版ロジック)
         with c5:
             now_jst = st.session_state.get('now_jst', datetime.now())
             try:
@@ -2496,30 +2494,26 @@ def render_compact_control_panel(basho_name):
 
             dt_format = lang_dict.get('DATETIME_FORMAT', '%Y/%m/%d %H:%M:%S')
             date_time_str = now_local.strftime(dt_format)
-            update_text = lang_dict.get('BTN_UPDATE', '更新')
-            update_label = f"🔄📊{update_text} ({date_time_str})"
+            # update_text = lang_dict.get('BTN_UPDATE', '更新')
+            # update_label = f"🔄📊{update_text} ({date_time_str})"
+            update_label = f"🔄📊({date_time_str})"
             
-            if st.button(update_label, key="btn_refresh_v96", use_container_width=True):
+            if st.button(update_label, key="v96_star_refresh", use_container_width=True):
                 st.cache_data.clear()
                 st.session_state.needs_graph_update = True
                 st.rerun()
 
-    # --- 選択変更時のロジック処理 (正規版をそのまま維持) ---
+    # --- 選択変更時のロジック処理（維持） ---
     map_select_label = lang_dict.get("MAP_SELECT_LABEL", "地図で指定")
-    
     if selected_label == map_select_label:
         show_location_map_dialog()
     elif selected_label != st.session_state.last_basho:
         new_lat, new_lon, new_name = total_data[selected_label]
         st.session_state.temp_lat, st.session_state.temp_lon, st.session_state.temp_basho = total_data[selected_label]
         update_state_and_save({
-            "lat": new_lat, 
-            "lon": new_lon, 
-            "last_basho": selected_label,
-            "needs_graph_update": True
+            "lat": new_lat, "lon": new_lon, "last_basho": selected_label, "needs_graph_update": True
         })
 
-    # 現在地取得の待機処理 (維持)
     if st.session_state.get("waiting_loc"):
         handle_current_location_update_integrated()
         
