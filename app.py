@@ -2399,8 +2399,8 @@ def render_graph_area_module(danger_v, sel_dirs, design_params, now_jst):
 def render_compact_control_panel(basho_name):
     """
     正規版のロジック、キー名、文言を完全に維持。
-    PCでのレイアウトを横1行5セルに変更し、お気に入りボタンのラベルのみを
-    「⭐MySpot」および「☆MySpot」に変更しました。
+    PCでのレイアウトを横1行5セルに変更。
+    登録済みの「⭐MySpot」クリック時は、既存の管理ダイアログ(92_4)を呼び出します。
     """
 
     import streamlit as st
@@ -2445,11 +2445,11 @@ def render_compact_control_panel(basho_name):
         saved_data = next((f for f in favorites if abs(f['lat'] - st.session_state.lat) < 0.0001 and abs(f['lon'] - st.session_state.lon) < 0.0001), None)
         is_saved = saved_data is not None
 
-        # --- 2. PC横5セルレイアウトへの変更 ---
+        # --- 2. PC横5セルレイアウトへの配置 ---
         c1, c2, c3, c4, c5 = st.columns([0.35, 0.15, 0.1, 0.12, 0.28])
 
         with c1:
-            # 正規版と同一のセレクトボックス（キー名指定なし）
+            # 正規版と同一のセレクトボックス
             selected_label = st.selectbox(
                 lang_dict.get("SELECT_PLACE", "地点を選択してください"), 
                 options=display_list, 
@@ -2458,10 +2458,13 @@ def render_compact_control_panel(basho_name):
             )
 
         with c2:
-            # お気に入り登録（ラベルのみ ⭐MySpot / ☆MySpot に変更）
+            # お気に入り登録・編集ボタン
             if is_saved:
-                st.button("⭐MySpot", key="fav_saved_icon", disabled=True, help=lang_dict.get("HELP_FAV_SAVED", "お気に入り登録済み"))
+                # 登録済み：クリックで既存の管理ダイアログ(92_4)を表示
+                if st.button("⭐MySpot", key="fav_manage_call", help=lang_dict.get("HELP_FAV_SAVED", "お気に入り登録済み（クリックで管理）")):
+                    manage_favorites_dialog()
             else:
+                # 未登録：登録用ダイアログを表示
                 if st.button("☆MySpot", key="fav_save_action", help=lang_dict.get("HELP_FAV_SAVE", "この場所をお気に入りに登録")):
                     pure_name = st.session_state.last_basho.split(" (")[0]
                     show_favorite_registration_dialog(pure_name, st.session_state.lat, st.session_state.lon)
