@@ -2496,7 +2496,7 @@ def render_compact_control_panel(basho_name):
             date_time_str = now_local.strftime(dt_format)
             # update_text = lang_dict.get('BTN_UPDATE', '更新')
             # update_label = f"🔄📊{update_text} ({date_time_str})"
-            update_label = f"🔄📊{update_text} ({date_time_str})"
+            update_label = f"🔄📊 {date_time_str}"
             
             if st.button(update_label, key="btn_graph_refresh", use_container_width=True):
                 st.cache_data.clear()
