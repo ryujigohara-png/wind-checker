@@ -2398,11 +2398,11 @@ def render_graph_area_module(danger_v, sel_dirs, design_params, now_jst):
 # ======================================================================================
 def render_compact_control_panel(basho_name):
     """
-    OSの描画特性に合わせて星マークを自動切替します。
-    - Android/iOS: 黄色くなる「🌟」(点なし) を表示。
-    - Windows(PC): デザインの綺麗な「⭐」(黄色) を表示。
-    比率 [0.35, 0.15, 0.1, 0.12, 0.28] およびロジックは一切変更していません。
+    正規版のロジック、比率 [0.35, 0.15, 0.1, 0.12, 0.28] を完全に維持。
+    スマホ(Android/iOS)での白黒化を避けるため、登録済み時は「🌟」を使用します。
+    スマホでのボタン重なりを防止するCSSのみを適用しています。
     """
+
     import streamlit as st
     from datetime import datetime, timedelta
 
@@ -2410,39 +2410,34 @@ def render_compact_control_panel(basho_name):
     translations = get_language_dict()
     lang_dict = translations[st.session_state.lang]
 
-    # --- レイアウト制御CSS (OS別星マーク出し分け) ---
+    # --- レイアウト制御CSS (スマホの重なり解消に専念) ---
     st.markdown("""
         <style>
-            [data-testid="column"] { flex-direction: row !important; gap: 5px !important; }
-            [data-testid="stVerticalBlock"] > div { padding: 0px !important; margin-top: -2px !important; }
+            [data-testid="column"] {
+                flex-direction: row !important;
+                flex-basis: auto !important;
+                min-width: 0px !important;
+                flex-grow: 1 !important;
+            }
+            [data-testid="stVerticalBlock"] > div {
+                padding: 0px !important;
+                margin-top: -2px !important;
+            }
+            [data-testid="stHorizontalBlock"] {
+                gap: 5px !important;
+            }
+            /* ボタンの重なり防止 */
             .stButton > button {
-                width: 100% !important; padding: 2px 5px !important; min-height: 38px !important; 
-                height: auto !important; margin-bottom: 6px !important;
-                display: flex !important; align-items: center !important; justify-content: center !important;
+                width: 100% !important;
+                padding: 2px 5px !important;
+                min-height: 38px !important; 
+                height: auto !important;
+                margin-bottom: 6px !important;
+                display: flex !important;
+                align-items: center !important;
+                justify-content: center !important;
+                line-height: 1.2 !important;
             }
-
-            /* --- 星マークのOS別出し分けロジック --- */
-            /* 1. 全デバイス共通：ボタン内の元の「⭐」を一旦消す */
-            button:contains("⭐MySpot") span {
-                color: transparent !important;
-                position: relative;
-            }
-
-            /* 2. デフォルト（Windows/PC想定）: シンプルな「⭐」を黒色で描画 */
-            button:contains("⭐MySpot") span::before {
-                content: "⭐MySpot";
-                color: black !important;
-                position: absolute; left: 0; white-space: nowrap; visibility: visible !important;
-            }
-
-            /* 3. AndroidおよびiOS（タッチデバイス）の場合のみ「🌟」に差し替える */
-            /* これによりAndroidでも黄色い星（点なし）が表示されます */
-            @media (pointer: coarse) {
-                button:contains("⭐MySpot") span::before {
-                    content: "🌟MySpot" !important;
-                }
-            }
-
             div[data-testid="stSelectbox"] div[data-baseweb="select"] {
                 min-height: 38px !important;
                 height: 38px !important;
@@ -2461,7 +2456,7 @@ def render_compact_control_panel(basho_name):
         saved_data = next((f for f in favorites if abs(f['lat'] - st.session_state.lat) < 0.0001 and abs(f['lon'] - st.session_state.lon) < 0.0001), None)
         is_saved = saved_data is not None
 
-        # --- 2. 5セルレイアウト (比率維持) ---
+        # --- 2. PC横5セルレイアウト (比率維持) ---
         c1, c2, c3, c4, c5 = st.columns([0.35, 0.15, 0.1, 0.12, 0.28])
 
         with c1:
@@ -2473,21 +2468,24 @@ def render_compact_control_panel(basho_name):
             )
 
         with c2:
-            # ラベルは「⭐MySpot」で記述し、CSSがAndroidなら「🌟」へ自動で書き換えます
+            # Android/iOSでの白黒化を防ぐため、登録済みは一貫して「🌟」を使用
             if is_saved:
-                if st.button("⭐MySpot", key="fav_manage_call", help=lang_dict.get("HELP_FAV_SAVED", "お気に入り登録済み")):
+                if st.button("🌟MySpot", key="fav_manage_call", help=lang_dict.get("HELP_FAV_SAVED", "お気に入り登録済み（クリックで管理）")):
                     manage_favorites_dialog()
             else:
-                if st.button("☆MySpot", key="fav_save_action", help=lang_dict.get("HELP_FAV_SAVE", "お気に入りに登録")):
+                # 未登録は白抜きの「☆」
+                if st.button("☆MySpot", key="fav_save_action", help=lang_dict.get("HELP_FAV_SAVE", "この場所をお気に入りに登録")):
                     pure_name = st.session_state.last_basho.split(" (")[0]
                     show_favorite_registration_dialog(pure_name, st.session_state.lat, st.session_state.lon)
 
         with c3:
-            if st.button(lang_dict.get("BTN_MAP", "🗺️地図"), key="btn_map_open", use_container_width=True):
+            map_btn_label = lang_dict.get("BTN_MAP", "🗺️地図")
+            if st.button(map_btn_label, key="btn_map_open", use_container_width=True):
                 show_location_map_dialog()
 
         with c4:
-            if st.button(lang_dict.get("BTN_CURRENT_LOC_SHORT", "🔄📍現在地"), key="btn_get_gps", use_container_width=True):
+            curr_loc_btn_label = lang_dict.get("BTN_CURRENT_LOC_SHORT", "🔄📍現在地")
+            if st.button(curr_loc_btn_label, key="btn_get_gps", use_container_width=True):
                 st.session_state.waiting_loc = True
                 st.session_state.geo_key = f"geo_{datetime.now().timestamp()}"
                 st.rerun()
@@ -2496,11 +2494,18 @@ def render_compact_control_panel(basho_name):
             now_jst = st.session_state.get('now_jst', datetime.now())
             try:
                 df_tmp = fetch_weather_data(st.session_state.lat, st.session_state.lon, 1)
-                now_local = now_jst.replace(tzinfo=None) - timedelta(seconds=now_jst.utcoffset().total_seconds()) + timedelta(seconds=df_tmp.attrs.get('local_offset_seconds', 0))
-            except:
+                browser_offset = now_jst.utcoffset()
+                browser_offset_s = browser_offset.total_seconds() if browser_offset else 0
+                local_offset_s = df_tmp.attrs.get('local_offset_seconds', 0)
+                now_local = now_jst.replace(tzinfo=None) - timedelta(seconds=browser_offset_s) + timedelta(seconds=local_offset_s)
+            except Exception:
                 now_local = now_jst.replace(tzinfo=None)
+
+            dt_format = lang_dict.get('DATETIME_FORMAT', '%Y/%m/%d %H:%M:%S')
+            date_time_str = now_local.strftime(dt_format)
             
-            update_label = f"🔄📊 {now_local.strftime(lang_dict.get('DATETIME_FORMAT', '%Y/%m/%d %H:%M:%S'))}"
+            update_label = f"🔄📊 {date_time_str}"
+            
             if st.button(update_label, key="btn_graph_refresh", use_container_width=True):
                 st.cache_data.clear()
                 st.session_state.needs_graph_update = True
@@ -2511,10 +2516,12 @@ def render_compact_control_panel(basho_name):
     if selected_label == map_select_label:
         show_location_map_dialog()
     elif selected_label != st.session_state.last_basho:
-        new_lat, new_lon, _ = total_data[selected_label]
+        new_lat, new_lon, new_name = total_data[selected_label]
+        st.session_state.temp_lat, st.session_state.temp_lon, st.session_state.temp_basho = total_data[selected_label]
         update_state_and_save({
             "lat": new_lat, "lon": new_lon, "last_basho": selected_label, "needs_graph_update": True
         })
+
     if st.session_state.get("waiting_loc"):
         handle_current_location_update_integrated()
         
