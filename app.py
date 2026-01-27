@@ -2470,10 +2470,10 @@ def render_compact_control_panel(basho_name):
         with c2:
             # 登録済み：黄色い星 ⭐ / 未登録：白抜きの星 ☆
             if is_saved:
-                if st.button("⭐MySpot", key="fav_manage_call", help=lang_dict.get("HELP_FAV_SAVED", "お気に入り登録済み（クリックで管理）")):
+                if st.button("⭐ MySpot", key="fav_manage_call", help=lang_dict.get("HELP_FAV_SAVED", "お気に入り登録済み（クリックで管理）")):
                     manage_favorites_dialog()
             else:
-                if st.button("☆MySpot", key="fav_save_action", help=lang_dict.get("HELP_FAV_SAVE", "この場所をお気に入りに登録")):
+                if st.button("☆ MySpot", key="fav_save_action", help=lang_dict.get("HELP_FAV_SAVE", "この場所をお気に入りに登録")):
                     pure_name = st.session_state.last_basho.split(" (")[0]
                     show_favorite_registration_dialog(pure_name, st.session_state.lat, st.session_state.lon)
 
