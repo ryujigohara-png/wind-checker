@@ -2399,8 +2399,8 @@ def render_graph_area_module(danger_v, sel_dirs, design_params, now_jst):
 def render_compact_control_panel(basho_name):
     """
     正規版のロジック、比率 [0.35, 0.15, 0.1, 0.12, 0.28] を完全に維持。
-    B案：CSSにてカラー絵文字フォントを強制指定し、スマホでの「⭐」の黄色化を図ります。
-    スマホの重なり防止（margin-bottom）も継続適用しています。
+    B案：Material Symbolsを導入し、PC・スマホ共通のデザインで黄色い星を表示します。
+    スマホの重なり防止（margin-bottom）も継続適用。
     """
 
     import streamlit as st
@@ -2410,8 +2410,9 @@ def render_compact_control_panel(basho_name):
     translations = get_language_dict()
     lang_dict = translations[st.session_state.lang]
 
-    # --- レイアウト制御CSS (カラー絵文字フォント強制指定) ---
+    # --- レイアウト制御CSS (アイコンフォント読み込みと星の合成) ---
     st.markdown("""
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,1,0" />
         <style>
             [data-testid="column"] {
                 flex-direction: row !important;
@@ -2426,7 +2427,7 @@ def render_compact_control_panel(basho_name):
             [data-testid="stHorizontalBlock"] {
                 gap: 5px !important;
             }
-            /* ボタンの重なり防止と、カラー絵文字の強制適用 */
+            /* ボタンの重なり防止と高さ確保 */
             .stButton > button {
                 width: 100% !important;
                 padding: 2px 5px !important;
@@ -2437,8 +2438,25 @@ def render_compact_control_panel(basho_name):
                 align-items: center !important;
                 justify-content: center !important;
                 line-height: 1.2 !important;
-                /* カラー絵文字フォントを優先指定 */
-                font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", "Segoe UI Symbol", "Android Emoji", "EmojiSymbols", sans-serif !important;
+            }
+            /* 登録済みボタン(⭐付)の特定と星アイコンの合成 */
+            button[kind="secondary"]:has(span:contains("⭐")) {
+                position: relative !important;
+            }
+            /* 絵文字の⭐自体は透明にして、後ろにアイコンを置く */
+            button:contains("⭐") span {
+                color: transparent !important;
+                position: relative;
+            }
+            button:contains("⭐") span::before {
+                content: "star"; /* Material Symbolsの星 */
+                font-family: 'Material Symbols Outlined' !important;
+                color: #FFD700 !important; /* 鮮やかな黄金色 */
+                font-size: 20px !important;
+                position: absolute;
+                left: -2px;
+                top: -2px;
+                visibility: visible !important;
             }
             div[data-testid="stSelectbox"] div[data-baseweb="select"] {
                 min-height: 38px !important;
@@ -2470,9 +2488,9 @@ def render_compact_control_panel(basho_name):
             )
 
         with c2:
-            # 登録済み：⭐ (B案のCSSにより黄色化を期待) / 未登録：☆
+            # 登録済み：⭐ (CSSでMaterial Symbolの星に置換) / 未登録：☆
             if is_saved:
-                if st.button("🌟MySpot", key="fav_manage_call", help=lang_dict.get("HELP_FAV_SAVED", "お気に入り登録済み（クリックで管理）")):
+                if st.button("⭐MySpot", key="fav_manage_call", help=lang_dict.get("HELP_FAV_SAVED", "お気に入り登録済み（クリックで管理）")):
                     manage_favorites_dialog()
             else:
                 if st.button("☆MySpot", key="fav_save_action", help=lang_dict.get("HELP_FAV_SAVE", "この場所をお気に入りに登録")):
