@@ -2394,13 +2394,13 @@ def render_graph_area_module(danger_v, sel_dirs, design_params, now_jst):
     st.markdown(html_str, unsafe_allow_html=True)
     
 # ======================================================================================
-# 96. 【修正・完全版】操作コントロールパネル
+# 96. 【修正版】操作コントロールパネル
 # ======================================================================================
 def render_compact_control_panel(basho_name):
     """
-    正規版のロジック、キー名、文言を完全に維持。
-    カラム比率を指定の [0.35, 0.15, 0.1, 0.12, 0.28] に復元。
-    CSSによりすべてのボタンとセレクトボックスの高さを低い方に統一しました。
+    正規版のロジック、比率 [0.35, 0.15, 0.1, 0.12, 0.28] を完全に維持。
+    スマホ画面でのボタンの重なりをCSSの余白調整で解消。
+    未登録時は「☆」、登録済み時は「⭐」と明示的に使い分けます。
     """
 
     import streamlit as st
@@ -2410,7 +2410,7 @@ def render_compact_control_panel(basho_name):
     translations = get_language_dict()
     lang_dict = translations[st.session_state.lang]
 
-    # --- レイアウト制御CSS (比率復元と高さの厳格統一) ---
+    # --- レイアウト制御CSS (スマホの重なり解消) ---
     st.markdown("""
         <style>
             [data-testid="column"] {
@@ -2426,16 +2426,21 @@ def render_compact_control_panel(basho_name):
             [data-testid="stHorizontalBlock"] {
                 gap: 5px !important;
             }
-            /* ボタンと入力要素の高さを低い方(32px程度)に統一 */
+            /* ボタンの重なり防止：高さを自動にしつつ、垂直方向のマージンを確保 */
             .stButton > button {
                 width: 100% !important;
-                padding: 0px 5px !important;
-                min-height: 32px !important;
-                height: 32px !important;
+                padding: 2px 5px !important;
+                min-height: 38px !important; 
+                height: auto !important;
+                margin-bottom: 6px !important; /* スマホでボタンが並んだ際の隙間を確保 */
+                display: flex !important;
+                align-items: center !important;
+                justify-content: center !important;
+                line-height: 1.2 !important;
             }
             div[data-testid="stSelectbox"] div[data-baseweb="select"] {
-                min-height: 32px !important;
-                height: 32px !important;
+                min-height: 38px !important;
+                height: 38px !important;
             }
         </style>
     """, unsafe_allow_html=True)
@@ -2451,7 +2456,7 @@ def render_compact_control_panel(basho_name):
         saved_data = next((f for f in favorites if abs(f['lat'] - st.session_state.lat) < 0.0001 and abs(f['lon'] - st.session_state.lon) < 0.0001), None)
         is_saved = saved_data is not None
 
-        # --- 2. PC横5セルレイアウト (比率復元) ---
+        # --- 2. PC横5セルレイアウト (比率維持) ---
         c1, c2, c3, c4, c5 = st.columns([0.35, 0.15, 0.1, 0.12, 0.28])
 
         with c1:
@@ -2463,6 +2468,7 @@ def render_compact_control_panel(basho_name):
             )
 
         with c2:
+            # 登録済み：黄色い星 ⭐ / 未登録：白抜きの星 ☆
             if is_saved:
                 if st.button("⭐MySpot", key="fav_manage_call", help=lang_dict.get("HELP_FAV_SAVED", "お気に入り登録済み（クリックで管理）")):
                     manage_favorites_dialog()
@@ -2497,7 +2503,6 @@ def render_compact_control_panel(basho_name):
             dt_format = lang_dict.get('DATETIME_FORMAT', '%Y/%m/%d %H:%M:%S')
             date_time_str = now_local.strftime(dt_format)
             
-            # ご指定通りの構成 (🔄📊 + 日時)
             update_label = f"🔄📊 {date_time_str}"
             
             if st.button(update_label, key="btn_graph_refresh", use_container_width=True):
