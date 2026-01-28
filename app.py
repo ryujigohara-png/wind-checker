@@ -2605,7 +2605,7 @@ def main():
     #     st.image(icon_path, width=800) 🌤
     # else:
     #     st.title(lang_dict["⛵Pin_Weather!"])            
-    st.title("📍🌤Pin_Weather!")            
+    st.title("📍Pin_Weather!")            
          
     now_jst = datetime.now(timezone(timedelta(hours=9)))
 
