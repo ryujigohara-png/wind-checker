@@ -2422,7 +2422,7 @@ def render_compact_control_panel(basho_name):
             [data-testid="stVerticalBlock"] > div {
                 padding: 0px !important;
                 margin-top: -1px !important;
-                margin-bottom: -1px !important;
+                margin-bottom: -2px !important;
             }
             /* カラム間の隙間 */
             [data-testid="stHorizontalBlock"] {
