@@ -371,7 +371,7 @@ def initialize_app():
     import os
     from PIL import Image
 
-    icon_path = "pin_weather_02.png"
+    icon_path = "pin_weather_01.png"
     
     # 1. ページ設定（ブラウザタブ用）
     if os.path.exists(icon_path):
