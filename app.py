@@ -2394,13 +2394,12 @@ def render_graph_area_module(danger_v, sel_dirs, design_params, now_jst):
     st.markdown(html_str, unsafe_allow_html=True)
     
 # ======================================================================================
-# 96. 【修正・完全版】操作コントロールパネル
+# 96. 【修正版】操作コントロールパネル
 # ======================================================================================
 def render_compact_control_panel(basho_name):
     """
     正規版のロジック、比率 [0.35, 0.15, 0.1, 0.12, 0.28] を完全に維持。
-    スマホ(Android/iOS)での白黒化を避けるため、登録済み時は「🌟」を使用します。
-    スマホでのボタン重なりを防止するCSSのみを適用しています。
+    CSSを調整し、スマホで各要素が縦に並んだ際の垂直方向の隙間を最小限に詰めました。
     """
 
     import streamlit as st
@@ -2410,7 +2409,7 @@ def render_compact_control_panel(basho_name):
     translations = get_language_dict()
     lang_dict = translations[st.session_state.lang]
 
-    # --- レイアウト制御CSS (スマホの重なり解消に専念) ---
+    # --- レイアウト制御CSS (垂直方向の隙間を詰める) ---
     st.markdown("""
         <style>
             [data-testid="column"] {
@@ -2419,28 +2418,35 @@ def render_compact_control_panel(basho_name):
                 min-width: 0px !important;
                 flex-grow: 1 !important;
             }
+            /* 垂直方向のブロック間隔を極限まで詰める */
             [data-testid="stVerticalBlock"] > div {
                 padding: 0px !important;
-                margin-top: -2px !important;
+                margin-top: -4px !important;
+                margin-bottom: -4px !important;
             }
+            /* カラム間の隙間 */
             [data-testid="stHorizontalBlock"] {
-                gap: 5px !important;
+                gap: 2px !important;
             }
-            /* ボタンの重なり防止 */
+            /* ボタンの高さとマージン調整 */
             .stButton > button {
                 width: 100% !important;
-                padding: 2px 5px !important;
-                min-height: 38px !important; 
-                height: auto !important;
-                margin-bottom: 6px !important;
+                padding: 0px 5px !important;
+                min-height: 36px !important; 
+                height: 36px !important;
+                margin-bottom: 2px !important; /* ボタンの下の隙間を最小化 */
                 display: flex !important;
                 align-items: center !important;
                 justify-content: center !important;
                 line-height: 1.2 !important;
             }
+            /* セレクトボックスの高さ調整 */
+            div[data-testid="stSelectbox"] {
+                margin-bottom: 2px !important;
+            }
             div[data-testid="stSelectbox"] div[data-baseweb="select"] {
-                min-height: 38px !important;
-                height: 38px !important;
+                min-height: 36px !important;
+                height: 36px !important;
             }
         </style>
     """, unsafe_allow_html=True)
@@ -2468,24 +2474,21 @@ def render_compact_control_panel(basho_name):
             )
 
         with c2:
-            # Android/iOSでの白黒化を防ぐため、登録済みは一貫して「🌟」を使用
+            # 前回の決定事項「登録済みは🌟」を維持
             if is_saved:
-                if st.button("🌟MySpot", key="fav_manage_call", help=lang_dict.get("HELP_FAV_SAVED", "お気に入り登録済み（クリックで管理）")):
+                if st.button("🌟MySpot", key="fav_manage_call", help=lang_dict.get("HELP_FAV_SAVED", "お気に入り登録済み")):
                     manage_favorites_dialog()
             else:
-                # 未登録は白抜きの「☆」
-                if st.button("☆MySpot", key="fav_save_action", help=lang_dict.get("HELP_FAV_SAVE", "この場所をお気に入りに登録")):
+                if st.button("☆MySpot", key="fav_save_action", help=lang_dict.get("HELP_FAV_SAVE", "お気に入りに登録")):
                     pure_name = st.session_state.last_basho.split(" (")[0]
                     show_favorite_registration_dialog(pure_name, st.session_state.lat, st.session_state.lon)
 
         with c3:
-            map_btn_label = lang_dict.get("BTN_MAP", "🗺️地図")
-            if st.button(map_btn_label, key="btn_map_open", use_container_width=True):
+            if st.button(lang_dict.get("BTN_MAP", "🗺️地図"), key="btn_map_open", use_container_width=True):
                 show_location_map_dialog()
 
         with c4:
-            curr_loc_btn_label = lang_dict.get("BTN_CURRENT_LOC_SHORT", "🔄📍現在地")
-            if st.button(curr_loc_btn_label, key="btn_get_gps", use_container_width=True):
+            if st.button(lang_dict.get("BTN_CURRENT_LOC_SHORT", "🔄📍現在地"), key="btn_get_gps", use_container_width=True):
                 st.session_state.waiting_loc = True
                 st.session_state.geo_key = f"geo_{datetime.now().timestamp()}"
                 st.rerun()
@@ -2494,33 +2497,24 @@ def render_compact_control_panel(basho_name):
             now_jst = st.session_state.get('now_jst', datetime.now())
             try:
                 df_tmp = fetch_weather_data(st.session_state.lat, st.session_state.lon, 1)
-                browser_offset = now_jst.utcoffset()
-                browser_offset_s = browser_offset.total_seconds() if browser_offset else 0
-                local_offset_s = df_tmp.attrs.get('local_offset_seconds', 0)
-                now_local = now_jst.replace(tzinfo=None) - timedelta(seconds=browser_offset_s) + timedelta(seconds=local_offset_s)
-            except Exception:
+                browser_offset_s = now_jst.utcoffset().total_seconds() if now_jst.utcoffset() else 0
+                now_local = now_jst.replace(tzinfo=None) - timedelta(seconds=browser_offset_s) + timedelta(seconds=df_tmp.attrs.get('local_offset_seconds', 0))
+            except:
                 now_local = now_jst.replace(tzinfo=None)
 
-            dt_format = lang_dict.get('DATETIME_FORMAT', '%Y/%m/%d %H:%M:%S')
-            date_time_str = now_local.strftime(dt_format)
-            
-            update_label = f"🔄📊 {date_time_str}"
-            
+            update_label = f"🔄📊 {now_local.strftime(lang_dict.get('DATETIME_FORMAT', '%Y/%m/%d %H:%M:%S'))}"
             if st.button(update_label, key="btn_graph_refresh", use_container_width=True):
                 st.cache_data.clear()
                 st.session_state.needs_graph_update = True
                 st.rerun()
 
-    # --- 3. 選択変更時のロジック処理 ---
+    # --- 3. 選択同期ロジック (維持) ---
     map_select_label = lang_dict.get("MAP_SELECT_LABEL", "地図で指定")
     if selected_label == map_select_label:
         show_location_map_dialog()
     elif selected_label != st.session_state.last_basho:
-        new_lat, new_lon, new_name = total_data[selected_label]
-        st.session_state.temp_lat, st.session_state.temp_lon, st.session_state.temp_basho = total_data[selected_label]
-        update_state_and_save({
-            "lat": new_lat, "lon": new_lon, "last_basho": selected_label, "needs_graph_update": True
-        })
+        new_lat, new_lon, _ = total_data[selected_label]
+        update_state_and_save({"lat": new_lat, "lon": new_lon, "last_basho": selected_label, "needs_graph_update": True})
 
     if st.session_state.get("waiting_loc"):
         handle_current_location_update_integrated()
@@ -2606,12 +2600,13 @@ def main():
     
     danger_v, sel_dirs, design_params = show_sidebar_controls()
     
-    icon_path = "pin_weather_02.png"
-    if os.path.exists(icon_path):
-        st.image(icon_path, width=800) 
-    else:
-        st.title(lang_dict["⛵Pin_Weather!"])            
-       
+    # icon_path = "pin_weather_02.png"
+    # if os.path.exists(icon_path):
+    #     st.image(icon_path, width=800) 
+    # else:
+    #     st.title(lang_dict["⛵Pin_Weather!"])            
+    st.title(lang_dict["⛵Pin_Weather!"])            
+         
     now_jst = datetime.now(timezone(timedelta(hours=9)))
 
     # --- 2. 各モジュールの描画 ---
