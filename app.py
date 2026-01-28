@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# 正規版　更新 2026.1.27 2200 🌟MySpot　コンプリート版
+# 正規版　更新 2026.1.28 2310 ロゴアイコン　コンプリート版
 """
 Pin_Weather! 機能仕様書 2026改訂版
 提供された最新のソースコード（2026.1.22 0100 波高、海面水温 コンプリート版）に基づき、波高および海面水温グラフの追加を反映した最新の機能仕様書を作成しました。
@@ -94,7 +94,7 @@ CONFIG = {
     "LEFT_SHIFT": -185,                  # 左軸画像のズレ (px)
     "DEFAULT_PRECIP_Y": 1.05,           # 降水量ラベル高さ（グラフ枠を1.0とした相対値）
     "DEFAULT_ICON_MARGIN": 0,           # 天気アイコン下余白(px)
-    "DEFAULT_RATIOS": [4.0, 0.8, 0.8, 0.8, 0.8],  # グラフ比率設定
+    "DEFAULT_RATIOS": [4.0, 1.0, 1.0, 1.0, 1.0],  # グラフ比率設定
     # その他既定値
     "SHOW_DEV_MODE": False,                    # 開発者モード初期値
     "STORAGE_KEY": "wind_checker_settings_v2", # ローカルストレージキー
@@ -152,6 +152,8 @@ def get_language_dict():
         "ja": {
             "表示設定": "表示設定",
             "⛵Pin_Weather!": "⛵Pin_Weather!",
+            "LABEL_FAV_ADD": "⭐ My Spot 追加",
+            "LABEL_FAV_OK": "✅ My Spot 登録済",
             "FAV_PREFIX": "📍 ",
             "MAP_SELECT_LABEL": "地図で指定",
             "BTN_CURRENT_LOC": "🔄📍現在地　　　　　　　　　　",
@@ -160,7 +162,7 @@ def get_language_dict():
             "ERR_LOC_FAILED": "❌ 位置情報の取得に失敗しました。",
             "BTN_UPDATE": "更新",
             "BTN_MAP": "🗺️地図",
-            "BTN_CURRENT_LOC_SHORT": "🔄📍現在地",
+            "BTN_CURRENT_LOC_SHORT": "📍現在地",
             "SELECT_PLACE": "地点を選択してください",
             "HELP_FAV_SAVED": "お気に入り登録済み",
             "HELP_FAV_SAVE": "この場所をお気に入りに登録",
@@ -254,15 +256,17 @@ def get_language_dict():
         "en": {
             "表示設定": "Display Settings",
             "⛵Pin_Weather!": "⛵Pin_Weather!",
+            "LABEL_FAV_ADD": "⭐ Add My Spot",
+            "LABEL_FAV_OK": "✅ My Spot Registered",
             "FAV_PREFIX": "📍 ",
             "MAP_SELECT_LABEL": "Select on Map",
-            "BTN_CURRENT_LOC": "🔄📍Current Location          ",
+            "BTN_CURRENT_LOC": "🔄📍GPS          ",
             "MSG_GETTING_LOC": "🛰️ Getting current location...",
             "MSG_IDENTIFY_LOC": "Identifying location name...",
             "ERR_LOC_FAILED": "❌ Failed to get location information.",
             "BTN_UPDATE": "Update",
             "BTN_MAP": "🗺️Map",
-            "BTN_CURRENT_LOC_SHORT": "🔄📍Current Location",
+            "BTN_CURRENT_LOC_SHORT": "📍GPS",
             "SELECT_PLACE": "Select a location",
             "HELP_FAV_SAVED": "Saved to Favorites",
             "HELP_FAV_SAVE": "Add to Favorites",
@@ -367,7 +371,7 @@ def initialize_app():
     import os
     from PIL import Image
 
-    icon_path = "pin_weather_02.png"
+    icon_path = "pin_weather_01.png"
     
     # 1. ページ設定（ブラウザタブ用）
     if os.path.exists(icon_path):
@@ -1994,8 +1998,8 @@ def show_favorite_control_bar(location_options, current_display_label, current_l
 def show_favorite_registration_dialog(default_name, lat, lon):
     """
     お気に入り登録時に「地名」を確認・修正してLocalStorageへ永続保存する。
-    登録後、メイン画面のコンボボックスおよび地図座標変数が当該地点を指すように同期します。
-    表示文字列を st.session_state.lang に基づき多言語化します。
+    登録後、メイン画面のコンボボックス表示形式「名称 (緯度, 経度)」と完全一致する名称を
+    session_state.last_basho にセットすることで、二重表示を防止します。
     """
     import streamlit as st
 
@@ -2027,7 +2031,7 @@ def show_favorite_registration_dialog(default_name, lat, lon):
                 if "user_locations" not in st.session_state:
                     st.session_state.user_locations = []
                 
-                # リストに追加 (内部データは日本語を含む new_name をそのまま保持)
+                # リストに追加 (内部データはユーザーが入力した名称を保持)
                 st.session_state.user_locations.append({
                     "name": new_name,
                     "lat": lat,
@@ -2043,15 +2047,15 @@ def show_favorite_registration_dialog(default_name, lat, lon):
                 st.session_state.temp_lat = lat
                 st.session_state.temp_lon = lon
                 
-                # 2. コンボボックスの選択名を新登録名に設定
-                st.session_state.last_basho = new_name
+                # 2. 【修正箇所】コンボボックスの表示形式「名称 (緯度, 経度)」に合わせて同期
+                # これにより、セレクトボックス内の既存リストと一致し、二重表示（緯度経度なし項目）が消えます
+                formatted_name = f"{new_name} ({lat:.4f}, {lon:.4f})"
+                st.session_state.last_basho = formatted_name
+                st.session_state.temp_label = formatted_name
                 
                 # 3. グラフ更新フラグを立てる
                 st.session_state.needs_graph_update = True
                 
-                # --- 【重要・修正箇所】コンボボックスの不一致を防ぐため、None ではなく登録した名称を強制セット ---
-                st.session_state.temp_label = new_name
-
                 # 保存処理の呼び出し
                 if "save_settings_to_browser" in globals():
                     save_settings_to_browser()
@@ -2388,13 +2392,14 @@ def render_graph_area_module(danger_v, sel_dirs, design_params, now_jst):
     )
 
     st.markdown(html_str, unsafe_allow_html=True)
+    
 # ======================================================================================
-# 96. 【レイアウト修正版】操作コントロールパネル（多言語対応版）
+# 96. 【修正版】操作コントロールパネル
 # ======================================================================================
 def render_compact_control_panel(basho_name):
     """
-    元のロジックを一切変更せず、スマホでの表示を「3行」に凝縮するレイアウト修正版。
-    表示テキストを st.session_state.lang に基づき多言語化します。
+    正規版のロジック、比率 [0.35, 0.15, 0.1, 0.12, 0.28] を完全に維持。
+    CSSを調整し、スマホで各要素が縦に並んだ際の垂直方向の隙間を最小限に詰めました。
     """
 
     import streamlit as st
@@ -2403,13 +2408,8 @@ def render_compact_control_panel(basho_name):
     # 辞書の取得
     translations = get_language_dict()
     lang_dict = translations[st.session_state.lang]
-    
 
-    # 辞書の取得
-    translations = get_language_dict()
-    lang_dict = translations[st.session_state.lang]
-
-    # --- レイアウト制御CSS (維持) ---
+    # --- レイアウト制御CSS (垂直方向の隙間を詰める) ---
     st.markdown("""
         <style>
             [data-testid="column"] {
@@ -2418,23 +2418,41 @@ def render_compact_control_panel(basho_name):
                 min-width: 0px !important;
                 flex-grow: 1 !important;
             }
+            /* 垂直方向のブロック間隔を極限まで詰める */
             [data-testid="stVerticalBlock"] > div {
                 padding: 0px !important;
-                margin-top: -2px !important;
+                margin-top: -1px !important;
+                margin-bottom: -2px !important;
             }
+            /* カラム間の隙間 */
             [data-testid="stHorizontalBlock"] {
-                gap: 5px !important;
+                gap: 2px !important;
             }
+            /* ボタンの高さとマージン調整 */
             .stButton > button {
                 width: 100% !important;
-                padding: 2px 5px !important;
-                min-height: 35px !important;
+                padding: 0px 5px !important;
+                min-height: 36px !important; 
+                height: 36px !important;
+                margin-bottom: 2px !important; /* ボタンの下の隙間を最小化 */
+                display: flex !important;
+                align-items: center !important;
+                justify-content: center !important;
+                line-height: 1.2 !important;
+            }
+            /* セレクトボックスの高さ調整 */
+            div[data-testid="stSelectbox"] {
+                margin-bottom: 2px !important;
+            }
+            div[data-testid="stSelectbox"] div[data-baseweb="select"] {
+                min-height: 36px !important;
+                height: 36px !important;
             }
         </style>
     """, unsafe_allow_html=True)
 
     with st.container():
-        # --- 1. 場所選択 ＋ お気に入り ---
+        # --- 1. データ準備 ---
         display_list, total_data = get_combined_location_list(
             CONFIG["LOCATION_MASTER"], 
             st.session_state.lat, 
@@ -2444,7 +2462,9 @@ def render_compact_control_panel(basho_name):
         saved_data = next((f for f in favorites if abs(f['lat'] - st.session_state.lat) < 0.0001 and abs(f['lon'] - st.session_state.lon) < 0.0001), None)
         is_saved = saved_data is not None
 
-        c1, c2 = st.columns([0.85, 0.15])
+        # --- 2. PC横5セルレイアウト (比率維持) ---
+        c1, c2, c3, c4, c5 = st.columns([0.35, 0.15, 0.1, 0.12, 0.28])
+
         with c1:
             selected_label = st.selectbox(
                 lang_dict.get("SELECT_PLACE", "地点を選択してください"), 
@@ -2452,68 +2472,53 @@ def render_compact_control_panel(basho_name):
                 index=display_list.index(st.session_state.last_basho) if st.session_state.last_basho in display_list else 0,
                 label_visibility="collapsed"
             )
+
         with c2:
+            # 前回の決定事項「登録済みは🌟」を維持
             if is_saved:
-                st.button("✅", key="fav_saved_icon", disabled=True, help=lang_dict.get("HELP_FAV_SAVED", "お気に入り登録済み"))
+                if st.button("🌟MySpot", key="fav_manage_call", help=lang_dict.get("HELP_FAV_SAVED", "お気に入り登録済み")):
+                    manage_favorites_dialog()
             else:
-                if st.button("⭐", key="fav_save_action", help=lang_dict.get("HELP_FAV_SAVE", "この場所をお気に入りに登録")):
+                if st.button("☆MySpot", key="fav_save_action", help=lang_dict.get("HELP_FAV_SAVE", "お気に入りに登録")):
                     pure_name = st.session_state.last_basho.split(" (")[0]
                     show_favorite_registration_dialog(pure_name, st.session_state.lat, st.session_state.lon)
 
-        # --- 2. 地図 ＋ 現在地 ---
-        c3, c4 = st.columns([0.5, 0.5])
         with c3:
-            map_btn_label = lang_dict.get("BTN_MAP", "🗺️地図")
-            if st.button(map_btn_label, key="btn_map_open", use_container_width=True):
+            if st.button(lang_dict.get("BTN_MAP", "🗺️地図"), key="btn_map_open", use_container_width=True):
                 show_location_map_dialog()
+
         with c4:
-            # 🔄📍現在地 ボタン
-            curr_loc_btn_label = lang_dict.get("BTN_CURRENT_LOC_SHORT", "🔄📍現在地")
-            if st.button(curr_loc_btn_label, key="btn_get_gps", use_container_width=True):
+            if st.button(lang_dict.get("BTN_CURRENT_LOC_SHORT", "🔄📍現在地"), key="btn_get_gps", use_container_width=True):
                 st.session_state.waiting_loc = True
                 st.session_state.geo_key = f"geo_{datetime.now().timestamp()}"
                 st.rerun()
 
-        # --- 3. グラフ更新 ---
-        now_jst = st.session_state.get('now_jst', datetime.now())
-        try:
-            df_tmp = fetch_weather_data(st.session_state.lat, st.session_state.lon, 1)
-            browser_offset = now_jst.utcoffset()
-            browser_offset_s = browser_offset.total_seconds() if browser_offset else 0
-            local_offset_s = df_tmp.attrs.get('local_offset_seconds', 0)
-            now_local = now_jst.replace(tzinfo=None) - timedelta(seconds=browser_offset_s) + timedelta(seconds=local_offset_s)
-        except Exception:
-            now_local = now_jst.replace(tzinfo=None)
+        with c5:
+            now_jst = st.session_state.get('now_jst', datetime.now())
+            try:
+                df_tmp = fetch_weather_data(st.session_state.lat, st.session_state.lon, 1)
+                browser_offset_s = now_jst.utcoffset().total_seconds() if now_jst.utcoffset() else 0
+                now_local = now_jst.replace(tzinfo=None) - timedelta(seconds=browser_offset_s) + timedelta(seconds=df_tmp.attrs.get('local_offset_seconds', 0))
+            except:
+                now_local = now_jst.replace(tzinfo=None)
 
-        dt_format = lang_dict.get('DATETIME_FORMAT', '%Y/%m/%d %H:%M:%S')
-        date_time_str = now_local.strftime(dt_format)
-        update_text = lang_dict.get('BTN_UPDATE', '更新')
-        update_label = f"🔄📊{update_text} ({date_time_str})"
-        
-        if st.button(update_label, key="btn_graph_refresh", use_container_width=True):
-            st.cache_data.clear()
-            st.session_state.needs_graph_update = True
-            st.rerun()
+            update_label = f"🔄📊 {now_local.strftime(lang_dict.get('DATETIME_FORMAT', '%Y/%m/%d %H:%M:%S'))}"
+            if st.button(update_label, key="btn_graph_refresh", use_container_width=True):
+                st.cache_data.clear()
+                st.session_state.needs_graph_update = True
+                st.rerun()
 
-    # --- 選択変更時のロジック処理 ---
-    # 「地図で指定」という文字列も多言語化対応
+    # --- 3. 選択同期ロジック (維持) ---
     map_select_label = lang_dict.get("MAP_SELECT_LABEL", "地図で指定")
-    
     if selected_label == map_select_label:
         show_location_map_dialog()
     elif selected_label != st.session_state.last_basho:
-        new_lat, new_lon, new_name = total_data[selected_label]
-        st.session_state.temp_lat, st.session_state.temp_lon, st.session_state.temp_basho = total_data[selected_label]
-        update_state_and_save({
-            "lat": new_lat, 
-            "lon": new_lon, 
-            "last_basho": selected_label,
-            "needs_graph_update": True
-        })
+        new_lat, new_lon, _ = total_data[selected_label]
+        update_state_and_save({"lat": new_lat, "lon": new_lon, "last_basho": selected_label, "needs_graph_update": True})
 
-    # 現在地取得の待機処理
     if st.session_state.get("waiting_loc"):
         handle_current_location_update_integrated()
+        
         
 # ======================================================================================
 # 99. フッター情報表示 (凡例およびクレジット表記)
@@ -2595,12 +2600,13 @@ def main():
     
     danger_v, sel_dirs, design_params = show_sidebar_controls()
     
-    icon_path = "pin_weather_02.png"
+    icon_path = "pin_weather_03.png"
     if os.path.exists(icon_path):
         st.image(icon_path, width=800) 
     else:
         st.title(lang_dict["⛵Pin_Weather!"])            
-       
+    # st.title("Pin_Weather!")            
+         
     now_jst = datetime.now(timezone(timedelta(hours=9)))
 
     # --- 2. 各モジュールの描画 ---
