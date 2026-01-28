@@ -2602,10 +2602,10 @@ def main():
     
     # icon_path = "pin_weather_02.png"
     # if os.path.exists(icon_path):
-    #     st.image(icon_path, width=800) 🌤
+    #     st.image(icon_path, width=800) 
     # else:
     #     st.title(lang_dict["⛵Pin_Weather!"])            
-    st.title("📍Pin_Weather!")            
+    st.title("Pin_Weather!")            
          
     now_jst = datetime.now(timezone(timedelta(hours=9)))
 
