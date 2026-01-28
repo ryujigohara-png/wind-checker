@@ -2421,8 +2421,8 @@ def render_compact_control_panel(basho_name):
             /* 垂直方向のブロック間隔を極限まで詰める */
             [data-testid="stVerticalBlock"] > div {
                 padding: 0px !important;
-                margin-top: -0px !important;
-                margin-bottom: -2px !important;
+                margin-top: -1px !important;
+                margin-bottom: -1px !important;
             }
             /* カラム間の隙間 */
             [data-testid="stHorizontalBlock"] {
