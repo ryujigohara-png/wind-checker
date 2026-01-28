@@ -381,6 +381,16 @@ def initialize_app():
     else:
         app_icon = "⛵"
 
+    # 1. アプリの冒頭（メインの処理が始まる前）に配置
+    st.markdown("""
+        <script>
+            var meta = document.createElement('meta');
+            meta.name = "viewport";
+            meta.content = "width=device-width, initial-scale=1.0, minimum-scale=0.1, user-scalable=yes";
+            document.getElementsByTagName('head')[0].appendChild(meta);
+        </script>
+    """, unsafe_allow_html=True)
+
     st.set_page_config(
         page_title="Pin_Weather!",
         page_icon=app_icon,
