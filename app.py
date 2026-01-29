@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# 正規版　更新 2026.1.28 2310 ロゴアイコン　コンプリート版
+# 正規版　更新 2026.1.29 1900 raciosエラートラップ　コンプリート版
 """
 Pin_Weather! 機能仕様書 2026改訂版
 提供された最新のソースコード（2026.1.22 0100 波高、海面水温 コンプリート版）に基づき、波高および海面水温グラフの追加を反映した最新の機能仕様書を作成しました。
@@ -967,9 +967,16 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
     if any(k in active_plots for k in {"wave", "ocean_temp", "tide"}):
         marine_results, r_lat, r_lon = get_marine_data(df['time'], lat, lon)
     
+    # --- エラートラップ：ratiosの整合性チェック ---
     ratios = list(design_params.get("ratios", CONFIG["DEFAULT_RATIOS"]))
     all_possible = ["wind", "temp", "wave", "ocean_temp", "tide"]
+    
+    # 設定されたratiosが足りない場合、デフォルト値で補完するエラートラップ
+    if len(ratios) < len(all_possible):
+        ratios = list(CONFIG["DEFAULT_RATIOS"])
+        
     current_ratios = [ratios[i] for i, p in enumerate(all_possible) if p in active_plots]
+    # --------------------------------------------
     
     fig_w = design_params.get("width", CONFIG["GRAPH_WIDTH"])
     fig_h = design_params.get("height", CONFIG["GRAPH_HIGHT"])
@@ -1208,9 +1215,9 @@ def show_settings_dialog():
         st.subheader(lang_dict["表示設定"])
         d_show_wind = st.toggle(lang_dict["風向・風速グラフ表示"], value=st.session_state.get("show_wind", CONFIG["SHOW_WIND"]))
         d_show_temp = st.toggle(lang_dict["気温グラフ表示"], value=st.session_state.get("show_temp", CONFIG["SHOW_TEMP"]))
-        d_show_tide = st.toggle(lang_dict["潮位グラフ表示"], value=st.session_state.get("show_tide", CONFIG["SHOW_TIDE"]))
         d_show_wave = st.toggle(lang_dict["波高グラフ表示"], value=st.session_state.get("show_wave", CONFIG["SHOW_WAVE"]))
         d_show_ocean_temp = st.toggle(lang_dict["海面水温グラフ表示"], value=st.session_state.get("show_ocean_temp", CONFIG["SHOW_OCEAN_TEMP"]))
+        d_show_tide = st.toggle(lang_dict["潮位グラフ表示"], value=st.session_state.get("show_tide", CONFIG["SHOW_TIDE"]))
         d_show_w_text = st.toggle(lang_dict["天気文字表示"], value=st.session_state.get("show_w_text", CONFIG["SHOW_W_TEXT"]))
         d_show_dir_name = st.toggle(lang_dict["風向名表示"], value=st.session_state.get("show_dir_name", CONFIG["SHOW_DIR_NAME"]))
         
