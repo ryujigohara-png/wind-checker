@@ -1199,12 +1199,9 @@ def generate_weather_icons_html(df, ratio_info, display_width, start_idx):
 # ======================================================================================
 def show_settings_dialog():
     """
-    保存処理の直後に微小な待機時間を入れ、JSの実行完了を待ってから再読み込みする安全版。
-    要素数が不足している古い設定データが読み込まれた場合のIndexErrorを回避する修正済み。
-    【スマホ最適化最終版】:
-    - チェックボックスを廃止し、2列ボタン形式（トグルボタン）に変更。
-    - CSSでスマホでも列幅を約50%に強制固定し、1列への崩れを防止。
-    - ダイヤモンド配置（1・9行目中央、2-8行目左右）を維持し、日本語3-4文字を収める。
+    画像分析に基づき、スマホのダイアログ幅（実効約80-85%）に収まるよう各カラムを38%に制限。
+    チェックボックスの「箱」による場所占有を排除するため、ボタン形式のUIを採用。
+    選択状態を反映し、適用・保存・再読み込みまでを完結させる完全版。
     """
     import streamlit as st
     import time
@@ -1215,48 +1212,42 @@ def show_settings_dialog():
 
     @st.dialog(lang_dict.get("グラフ表示設定の詳細", "Graph Settings"), dismissible=False)
     def settings_dialog_content():
-        # --- スマホで2列を死守し、ボタン幅を最適化する強力なCSS ---
+        # --- 物理的な「はみ出し」を封じ込めるためのCSS強制設定 ---
         st.markdown("""
             <style>
-            /* 1. ダイアログ内の余白を最小化 */
+            /* 1. ダイアログ内の余白を極限まで削る */
             [data-testid="stDialog"] [data-testid="stVerticalBlock"] {
                 padding-left: 0.3rem !important;
                 padding-right: 0.3rem !important;
             }
-            /* 2. 横並びブロック（st.columns）のスタック（1列化）を強制阻止 */
+            /* 2. カラムの幅をダイアログ幅の38%に固定（2つで76%＋隙間） */
+            [data-testid="column"] {
+                flex: 0 0 38% !important;
+                min-width: 38% !important;
+                max-width: 40% !important;
+                padding: 0px 2px !important;
+            }
+            /* 3. 横並び（st.columns）の崩れを防止 */
             [data-testid="stHorizontalBlock"] {
                 display: flex !important;
                 flex-direction: row !important;
-                flex-wrap: nowrap !important;
-                gap: 6px !important;
+                justify-content: center !important;
+                gap: 4px !important;
                 width: 100% !important;
-                align-items: center !important;
             }
-            /* 3. 各カラムの幅を強制的に固定（2列時は50%弱、3列時はバランス調整） */
-            [data-testid="column"] {
-                flex: 1 1 auto !important;
-                min-width: 0px !important;
-            }
-            /* 2列構成時のカラム幅固定 */
-            [data-testid="stHorizontalBlock"]:not(:has(div[data-testid="column"]:nth-child(3))) [data-testid="column"] {
-                width: 48% !important;
-                flex: 1 1 48% !important;
-            }
-            /* 4. ボタンのスタイル：チェックボックスの代わりとして機能させる */
+            /* 4. ボタン内の余白をゼロにし、文字が溢れないようにする */
             div.stButton > button {
                 width: 100% !important;
-                padding: 5px 2px !important;
+                padding: 0px !important;
                 margin: 0px !important;
-                font-size: 0.85rem !important;
-                min-height: 2.6rem !important;
+                font-size: 0.78rem !important;
+                min-height: 2.4rem !important;
                 white-space: nowrap !important;
-                border-radius: 6px !important;
-                transition: all 0.2s ease;
             }
-            /* 5. サブヘッダーの余白調整 */
-            .stSubheader {
-                padding-top: 1rem !important;
-                margin-bottom: 0.5rem !important;
+            /* 5. 1行目・9行目の中央寄せ用（3列構成）の幅調整 */
+            [data-testid="stHorizontalBlock"]:has(div[data-testid="column"]:nth-child(3)) [data-testid="column"] {
+                flex: 0 0 28% !important;
+                min-width: 15% !important;
             }
             </style>
         """, unsafe_allow_html=True)
@@ -1277,55 +1268,47 @@ def show_settings_dialog():
         # --- 2. 色付風向選択 (ボタン形式ダイヤモンド配置) ---
         st.subheader(lang_dict["色付風向選択"])
         
-        # ダイアログ内の操作用一時ステートを作成
+        # ダイアログ内での一時的な選択状態管理
         if "tmp_sel_dirs" not in st.session_state:
             st.session_state.tmp_sel_dirs = list(st.session_state.get("sel_dirs", CONFIG["DEFAULT_DIRS"]))
 
-        def toggle_direction(d_name):
-            if d_name in st.session_state.tmp_sel_dirs:
-                st.session_state.tmp_sel_dirs.remove(d_name)
+        def toggle_dir(dir_name):
+            if dir_name in st.session_state.tmp_sel_dirs:
+                st.session_state.tmp_sel_dirs.remove(dir_name)
             else:
-                st.session_state.tmp_sel_dirs.append(d_name)
+                st.session_state.tmp_sel_dirs.append(dir_name)
 
-        # --- 配置ロジック ---
-        # 1行目: 北 (中央寄せ)
+        # 1行目: 北 (中央配置)
         c1, c2, c3 = st.columns([1, 2, 1])
         with c2:
             d = ALL_DIRECTIONS[0]
             is_sel = d in st.session_state.tmp_sel_dirs
             if st.button(lang_dict["ALL_DIRECTIONS"][0], key=f"btn_{d}", type="primary" if is_sel else "secondary"):
-                toggle_direction(d)
+                toggle_dir(d)
                 st.rerun()
 
-        # 2〜8行目: 西側と東側を左右に並べる
+        # 2〜8行目: 西側と東側の2列固定
         pairs = [(15, 1), (14, 2), (13, 3), (12, 4), (11, 5), (10, 6), (9, 7)]
         for w_idx, e_idx in pairs:
             cols = st.columns(2)
-            # 左カラム（西側）
-            with cols[0]:
-                d_w = ALL_DIRECTIONS[w_idx]
-                is_sel_w = d_w in st.session_state.tmp_sel_dirs
-                if st.button(lang_dict["ALL_DIRECTIONS"][w_idx], key=f"btn_{d_w}", type="primary" if is_sel_w else "secondary"):
-                    toggle_direction(d_w)
-                    st.rerun()
-            # 右カラム（東側）
-            with cols[1]:
-                d_e = ALL_DIRECTIONS[e_idx]
-                is_sel_e = d_e in st.session_state.tmp_sel_dirs
-                if st.button(lang_dict["ALL_DIRECTIONS"][e_idx], key=f"btn_{d_e}", type="primary" if is_sel_e else "secondary"):
-                    toggle_direction(d_e)
-                    st.rerun()
+            for i, side_idx in enumerate([w_idx, e_idx]):
+                with cols[i]:
+                    d = ALL_DIRECTIONS[side_idx]
+                    is_sel = d in st.session_state.tmp_sel_dirs
+                    if st.button(lang_dict["ALL_DIRECTIONS"][side_idx], key=f"btn_{d}", type="primary" if is_sel else "secondary"):
+                        toggle_dir(d)
+                        st.rerun()
 
-        # 9行目: 南 (中央寄せ)
+        # 9行目: 南 (中央配置)
         c1, c2, c3 = st.columns([1, 2, 1])
         with c2:
             d = ALL_DIRECTIONS[8]
             is_sel = d in st.session_state.tmp_sel_dirs
             if st.button(lang_dict["ALL_DIRECTIONS"][8], key=f"btn_{d}", type="primary" if is_sel else "secondary"):
-                toggle_direction(d)
+                toggle_dir(d)
                 st.rerun()
 
-        # --- 4. 開発者用調整 ---
+        # --- 3. 開発者用詳細設定 ---
         is_dev_url = st.query_params.get("mode") == "dev"
         if is_dev_url:
             st.markdown("---")
@@ -1368,7 +1351,7 @@ def show_settings_dialog():
             r4 = st.number_input("比率:潮位", 0.5, 5.0, float(r[4] if len(r) > 4 else d_r[4]), 0.1)
             d_ratios = [r0, r1, r2, r3, r4]
         else:
-            # 通常モード時は既存のセッション値を使用
+            # 開発者モードでない場合は既存値をそのまま保持
             d_width = st.session_state.get("width", CONFIG["GRAPH_WIDTH"])
             d_base_h = st.session_state.get("base_height", CONFIG["GRAPH_HIGHT"])
             d_base_f = st.session_state.get("base_font_size", CONFIG["GRAPH_FONT_SIZE"])
@@ -1389,7 +1372,7 @@ def show_settings_dialog():
         
         st.markdown("---")
         
-        # --- 5. リセットボタン ---
+        # --- 4. 設定のリセット処理 ---
         if st.button(lang_dict["設定をすべて初期値に戻す"], key="reset_all_settings", use_container_width=True):
             st.session_state.update({
                 "show_wind": CONFIG["SHOW_WIND"], "show_temp": CONFIG["SHOW_TEMP"], "show_tide": CONFIG["SHOW_TIDE"],
@@ -1403,17 +1386,17 @@ def show_settings_dialog():
                 "fav_btn_width": CONFIG.get("FAV_BTN_WIDTH", 30), "fav_name_len": CONFIG.get("FAV_NAME_LEN", 12),
                 "precip_y": CONFIG["DEFAULT_PRECIP_Y"], "icon_margin": CONFIG["DEFAULT_ICON_MARGIN"], "ratios": CONFIG["DEFAULT_RATIOS"]
             })
-            if "tmp_sel_dirs" in st.session_state:
-                st.session_state.tmp_sel_dirs = list(CONFIG["DEFAULT_DIRS"])
+            if "tmp_sel_dirs" in st.session_state: del st.session_state.tmp_sel_dirs
             save_settings_to_browser()
             st.cache_data.clear()
             time.sleep(0.1)
             st.rerun()
         
-        # --- 6. 実行・キャンセルボタン ---
+        # --- 5. 適用・キャンセルボタン ---
         c_exec, c_cancel = st.columns(2)
         with c_exec:
             if st.button(lang_dict["設定を適用して更新"], key="apply_all_settings", type="primary", use_container_width=True):
+                # 一時変数を本番の session_state に反映
                 st.session_state.update({
                     "show_wind": d_show_wind, "show_temp": d_show_temp, "show_tide": d_show_tide,
                     "show_wave": d_show_wave, "show_ocean_temp": d_show_ocean_temp,
@@ -1426,7 +1409,6 @@ def show_settings_dialog():
                     "fav_btn_width": d_fav_w, "fav_name_len": d_fav_len,
                     "precip_y": d_precip_y, "icon_margin": d_icon_margin, "ratios": d_ratios
                 })
-                
                 save_settings_to_browser()
                 st.cache_data.clear()
                 if "tmp_sel_dirs" in st.session_state: del st.session_state.tmp_sel_dirs
@@ -1438,7 +1420,7 @@ def show_settings_dialog():
                 if "tmp_sel_dirs" in st.session_state: del st.session_state.tmp_sel_dirs
                 st.rerun()
                 
-    # ダイアログの実行
+    # ダイアログの起動
     settings_dialog_content()
     
 # ======================================================================================
