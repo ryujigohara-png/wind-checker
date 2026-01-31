@@ -1212,17 +1212,18 @@ def show_settings_dialog():
 
     @st.dialog(lang_dict.get("グラフ表示設定の詳細", "Graph Settings"), dismissible=False)
     def settings_dialog_content():
-        # --- ご指示の38%制限を適用するCSS ---
+        # --- 38% 制限のテスト用CSS（修正版） ---
         st.markdown("""
             <style>
-            /* ボタン要素の幅を38%に制限するテスト */
-            div.stButton > button {
+            /* 1. 風向選択ボタン（3列・2列配置内）の幅を38%に制限 */
+            /* カラム(st.columns)の中にあるボタンのみを対象にする */
+            [data-testid="column"] div.stButton > button {
                 width: 38% !important;
             }
-            /* 下部の適用・キャンセルボタンは幅いっぱいにするための上書き */
-            div.stButton > button[key^="apply"], 
-            div.stButton > button[key^="cancel"],
-            div.stButton > button[key^="reset"] {
+            
+            /* 2. 下部の「初期値」「更新」「キャンセル」ボタンは幅100%を維持 */
+            /* カラム外（ダイアログ直下の垂直ブロック）にあるボタンを対象にする */
+            [data-testid="stDialog"] > div > div > div > div.stButton > button {
                 width: 100% !important;
             }
             </style>
@@ -1253,7 +1254,7 @@ def show_settings_dialog():
             else:
                 st.session_state.tmp_sel_dirs.append(dir_name)
 
-        # 1行目: 北
+        # 1行目: 北 (c2のカラム内にあるのでCSSで38%が適用されるはず)
         c1, c2, c3 = st.columns([1, 2, 1])
         with c2:
             d = ALL_DIRECTIONS[0]
@@ -1346,7 +1347,9 @@ def show_settings_dialog():
         
         st.markdown("---")
         
-        # --- 5. 保存・キャンセルボタン (1列ずつ配置) ---
+        # --- 5. 保存・キャンセルボタン (st.columnsを使わず1列ずつ配置) ---
+        
+        # 初期値に戻すボタン
         if st.button(lang_dict["設定をすべて初期値に戻す"], key="reset_all_settings", use_container_width=True):
             st.session_state.update({
                 "show_wind": CONFIG["SHOW_WIND"], "show_temp": CONFIG["SHOW_TEMP"], "show_tide": CONFIG["SHOW_TIDE"],
@@ -1365,6 +1368,7 @@ def show_settings_dialog():
             time.sleep(0.1)
             st.rerun()
         
+        # 適用ボタン
         if st.button(lang_dict["設定を適用して更新"], key="apply_all_settings", type="primary", use_container_width=True):
             st.session_state.update({
                 "show_wind": d_show_wind, "show_temp": d_show_temp, "show_tide": d_show_tide,
@@ -1384,6 +1388,7 @@ def show_settings_dialog():
             time.sleep(0.1)
             st.rerun()
         
+        # キャンセルボタン
         if st.button(lang_dict["キャンセルして戻る"], key="cancel_all_settings", use_container_width=True):
             if "tmp_sel_dirs" in st.session_state: del st.session_state.tmp_sel_dirs
             st.rerun()
