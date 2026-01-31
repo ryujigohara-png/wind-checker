@@ -1221,14 +1221,6 @@ def show_settings_dialog():
         d_show_w_text = st.toggle(lang_dict["天気文字表示"], value=st.session_state.get("show_w_text", CONFIG["SHOW_W_TEXT"]))
         d_show_dir_name = st.toggle(lang_dict["風向名表示"], value=st.session_state.get("show_dir_name", CONFIG["SHOW_DIR_NAME"]))
         
-        # --- 2. サイズ・文字 ---
-        w_cfg, h_cfg, f_cfg = CONFIG["SLIDER_WIDTH"], CONFIG["SLIDER_HEIGHT"], CONFIG["SLIDER_FONT"]
-        d_width = st.number_input(lang_dict["グラフ枠横幅 (inch)"], float(w_cfg["min"]), float(w_cfg["max"]), float(st.session_state.get("width", CONFIG["GRAPH_WIDTH"])), float(w_cfg["step"]))
-        d_base_h = st.number_input(lang_dict["グラフ枠縦幅 (inch)"], float(h_cfg["min"]), float(h_cfg["max"]), float(st.session_state.get("base_height", CONFIG["GRAPH_HIGHT"])), float(h_cfg["step"]))
-        d_base_f = st.number_input(lang_dict["グラフ内文字サイズ"], int(f_cfg["min"]), int(f_cfg["max"]), int(st.session_state.get("base_font_size", CONFIG["GRAPH_FONT_SIZE"])))
-        d_label_f = st.number_input(lang_dict["軸ラベル文字サイズ"], int(f_cfg["min"]), int(f_cfg["max"]), int(st.session_state.get("label_font_size", CONFIG["LABEL_SIZE"])))
-        d_hspace = st.number_input("グラフ間余白", -0.2, 1.5, float(st.session_state.get("hspace", CONFIG["HSPACE"])), 0.05)
-       
         st.markdown("---")
         d_danger_v = st.number_input(lang_dict["危険風速ライン(m/s)"], value=float(st.session_state.get("danger_v", CONFIG["DEFAULT_DANGER_V"])), step=1.0)
         
@@ -1248,6 +1240,15 @@ def show_settings_dialog():
         if is_dev_url:
             st.markdown("---")
             st.subheader("開発用詳細設定")
+
+            # --- 2. サイズ・文字 ---
+            w_cfg, h_cfg, f_cfg = CONFIG["SLIDER_WIDTH"], CONFIG["SLIDER_HEIGHT"], CONFIG["SLIDER_FONT"]
+            d_width = st.number_input(lang_dict["グラフ枠横幅 (inch)"], float(w_cfg["min"]), float(w_cfg["max"]), float(st.session_state.get("width", CONFIG["GRAPH_WIDTH"])), float(w_cfg["step"]))
+            d_base_h = st.number_input(lang_dict["グラフ枠縦幅 (inch)"], float(h_cfg["min"]), float(h_cfg["max"]), float(st.session_state.get("base_height", CONFIG["GRAPH_HIGHT"])), float(h_cfg["step"]))
+            d_base_f = st.number_input(lang_dict["グラフ内文字サイズ"], int(f_cfg["min"]), int(f_cfg["max"]), int(st.session_state.get("base_font_size", CONFIG["GRAPH_FONT_SIZE"])))
+            d_label_f = st.number_input(lang_dict["軸ラベル文字サイズ"], int(f_cfg["min"]), int(f_cfg["max"]), int(st.session_state.get("label_font_size", CONFIG["LABEL_SIZE"])))
+            d_hspace = st.number_input("グラフ間余白", -0.2, 1.5, float(st.session_state.get("hspace", CONFIG["HSPACE"])), 0.05)
+       
             d_min_w = st.slider("コンテナ最小幅 (px)", 500, 5000, int(st.session_state.get("min_container_width", CONFIG["CONTENA_MIN_W"])), 100)
             d_dpi = st.radio("解像度 (DPI)", [200, 300], index=0 if st.session_state.get("graph_dpi", 200) == 200 else 1, horizontal=True)
             d_label_pad = st.slider("ラベル距離", -5, 10, int(st.session_state.get("label_pad", CONFIG["LABEL_PAD"])))
