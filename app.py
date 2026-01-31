@@ -1199,9 +1199,8 @@ def generate_weather_icons_html(df, ratio_info, display_width, start_idx):
 # ======================================================================================
 def show_settings_dialog():
     """
-    保存処理の直後に微小な待機時間を入れ、JS의実行完了を待ってから再読み込みする安全版。
-    要素数が不足している古い設定データが読み込まれた場合のIndexErrorを回避する修正済み。
-    スマホでの「はみ出し」を防止するため、余白と文字サイズを極限まで最適化したダイヤモンド配置版。
+    チェックボックスのはみ出しを解消するため、方角選択をボタン形式のUIに変更。
+    開発者モード（is_dev_url）の詳細設定項目もすべて保持した完全版。
     """
     import streamlit as st
     import time
@@ -1212,46 +1211,31 @@ def show_settings_dialog():
 
     @st.dialog(lang_dict.get("グラフ表示設定の詳細", "Graph Settings"), dismissible=False)
     def settings_dialog_content():
-        # --- スマホのはみ出しを防止し、極限まで省スペース化するCSS ---
+        # --- スマホでのボタン配置と色を制御するCSS ---
         st.markdown("""
             <style>
-            /* 1. ダイアログ全体の左右余白を削減 */
+            /* ダイアログの余白を削る */
             [data-testid="stDialog"] [data-testid="stVerticalBlock"] {
-                padding-left: 0.2rem !important;
-                padding-right: 0.2rem !important;
+                padding-left: 0.5rem !important;
+                padding-right: 0.5rem !important;
             }
-            /* 2. カラム間の隙間を最小化 */
+            /* カラムを強制横並び */
             [data-testid="column"] {
                 flex: 1 1 0% !important;
                 min-width: 0px !important;
-                padding: 0px 2px !important;
             }
-            /* 3. 横並びを強制 */
             [data-testid="stHorizontalBlock"] {
                 display: flex !important;
                 flex-direction: row !important;
-                flex-wrap: nowrap !important;
-                gap: 0.3rem !important;
+                gap: 0.5rem !important;
             }
-            /* 4. チェックボックスの文字と箱の隙間を詰め、文字を小さく */
-            .stCheckbox {
-                margin-bottom: -10px !important;
-            }
-            .stCheckbox label {
-                padding: 0px !important;
-                margin: 0px !important;
-            }
-            .stCheckbox p {
-                font-size: 0.75rem !important; /* 文字をさらに少し小さく */
-                line-height: 1.2 !important;
-                overflow: visible !important;
-                text-overflow: clip !important;
-                white-space: nowrap !important;
-            }
-            /* 5. チェックボックスの箱自体を少し小さく */
-            .stCheckbox [data-testid="stWidgetLabel"] div div {
-                transform: scale(0.85);
-                margin-right: -4px !important;
+            /* ボタンのスタイル調整（文字を中央に、余白を小さく） */
+            div.stButton > button {
+                width: 100% !important;
+                padding: 4px 0px !important;
+                font-size: 0.85rem !important;
+                border-radius: 4px !important;
+                height: 2.2rem !important;
             }
             </style>
         """, unsafe_allow_html=True)
@@ -1269,43 +1253,54 @@ def show_settings_dialog():
         st.markdown("---")
         d_danger_v = st.number_input(lang_dict["危険風速ライン(m/s)"], value=float(st.session_state.get("danger_v", CONFIG["DEFAULT_DANGER_V"])), step=1.0)
         
-        # --- 3. 色付風向選択 (ダイヤモンド配置) ---
+        # --- 2. 色付風向選択 (ボタン形式・一時状態管理) ---
         st.subheader(lang_dict["色付風向選択"])
-        current_sel = st.session_state.get("sel_dirs", list(CONFIG["DEFAULT_DIRS"]))
-        new_sel_dirs = []
         
-        # 1行目: 北 (中央寄せ) - 比率を [1, 3, 1] にして中央を広く確保
-        c1, c2, c3 = st.columns([1, 3, 1])
-        with c2:
-            d = ALL_DIRECTIONS[0] # 北
-            if st.checkbox(lang_dict["ALL_DIRECTIONS"][0], value=(d in current_sel), key=f"dlg_dir_{d}"):
-                new_sel_dirs.append(d)
+        # ダイアログを閉じるまでの一時的な選択状態を保持
+        if "tmp_sel_dirs" not in st.session_state:
+            st.session_state.tmp_sel_dirs = list(st.session_state.get("sel_dirs", CONFIG["DEFAULT_DIRS"]))
 
-        # 2〜8行目: 西側と東側を対面配置
+        def toggle_dir(dir_name):
+            if dir_name in st.session_state.tmp_sel_dirs:
+                st.session_state.tmp_sel_dirs.remove(dir_name)
+            else:
+                st.session_state.tmp_sel_dirs.append(dir_name)
+
+        # 1行目: 北 (中央寄せ)
+        c1, c2, c3 = st.columns([1, 2, 1])
+        with c2:
+            d = ALL_DIRECTIONS[0]
+            is_sel = d in st.session_state.tmp_sel_dirs
+            if st.button(lang_dict["ALL_DIRECTIONS"][0], key=f"btn_{d}", type="primary" if is_sel else "secondary"):
+                toggle_dir(d)
+                st.rerun()
+
+        # 2〜8行目: 西側と東側を左右に配置
         pairs = [(15, 1), (14, 2), (13, 3), (12, 4), (11, 5), (10, 6), (9, 7)]
         for w_idx, e_idx in pairs:
             cols = st.columns(2)
-            with cols[0]:
-                d_w = ALL_DIRECTIONS[w_idx]
-                if st.checkbox(lang_dict["ALL_DIRECTIONS"][w_idx], value=(d_w in current_sel), key=f"dlg_dir_{d_w}"):
-                    new_sel_dirs.append(d_w)
-            with cols[1]:
-                d_e = ALL_DIRECTIONS[e_idx]
-                if st.checkbox(lang_dict["ALL_DIRECTIONS"][e_idx], value=(d_e in current_sel), key=f"dlg_dir_{d_e}"):
-                    new_sel_dirs.append(d_e)
+            for idx, side_idx in enumerate([w_idx, e_idx]):
+                with cols[idx]:
+                    d = ALL_DIRECTIONS[side_idx]
+                    is_sel = d in st.session_state.tmp_sel_dirs
+                    if st.button(lang_dict["ALL_DIRECTIONS"][side_idx], key=f"btn_{d}", type="primary" if is_sel else "secondary"):
+                        toggle_dir(d)
+                        st.rerun()
 
         # 9行目: 南 (中央寄せ)
-        c1, c2, c3 = st.columns([1, 3, 1])
+        c1, c2, c3 = st.columns([1, 2, 1])
         with c2:
-            d = ALL_DIRECTIONS[8] # 南
-            if st.checkbox(lang_dict["ALL_DIRECTIONS"][8], value=(d in current_sel), key=f"dlg_dir_{d}"):
-                new_sel_dirs.append(d)
-        
-        # --- 4. 開発者用調整 ---
+            d = ALL_DIRECTIONS[8]
+            is_sel = d in st.session_state.tmp_sel_dirs
+            if st.button(lang_dict["ALL_DIRECTIONS"][8], key=f"btn_{d}", type="primary" if is_sel else "secondary"):
+                toggle_dir(d)
+                st.rerun()
+
+        # --- 3. 開発者用詳細設定（URLパラメータ mode=dev の時のみ表示） ---
         is_dev_url = st.query_params.get("mode") == "dev"
         if is_dev_url:
             st.markdown("---")
-            st.subheader("開発用詳細設定")
+            st.subheader("🛠️ 開発用詳細設定")
 
             w_cfg, h_cfg, f_cfg = CONFIG["SLIDER_WIDTH"], CONFIG["SLIDER_HEIGHT"], CONFIG["SLIDER_FONT"]
             d_width = st.number_input(lang_dict["グラフ枠横幅 (inch)"], float(w_cfg["min"]), float(w_cfg["max"]), float(st.session_state.get("width", CONFIG["GRAPH_WIDTH"])), float(w_cfg["step"]))
@@ -1344,6 +1339,7 @@ def show_settings_dialog():
             r4 = st.number_input("比率:潮位", 0.5, 5.0, float(r[4] if len(r) > 4 else d_r[4]), 0.1)
             d_ratios = [r0, r1, r2, r3, r4]
         else:
+            # 非開発者モード時は既存の値を維持
             d_width = st.session_state.get("width", CONFIG["GRAPH_WIDTH"])
             d_base_h = st.session_state.get("base_height", CONFIG["GRAPH_HIGHT"])
             d_base_f = st.session_state.get("base_font_size", CONFIG["GRAPH_FONT_SIZE"])
@@ -1364,6 +1360,7 @@ def show_settings_dialog():
         
         st.markdown("---")
         
+        # --- 4. リセットボタン ---
         if st.button(lang_dict["設定をすべて初期値に戻す"], key="reset_all_settings", use_container_width=True):
             st.session_state.update({
                 "show_wind": CONFIG["SHOW_WIND"], "show_temp": CONFIG["SHOW_TEMP"], "show_tide": CONFIG["SHOW_TIDE"],
@@ -1377,19 +1374,24 @@ def show_settings_dialog():
                 "fav_btn_width": CONFIG.get("FAV_BTN_WIDTH", 30), "fav_name_len": CONFIG.get("FAV_NAME_LEN", 12),
                 "precip_y": CONFIG["DEFAULT_PRECIP_Y"], "icon_margin": CONFIG["DEFAULT_ICON_MARGIN"], "ratios": CONFIG["DEFAULT_RATIOS"]
             })
+            if "tmp_sel_dirs" in st.session_state:
+                st.session_state.tmp_sel_dirs = list(CONFIG["DEFAULT_DIRS"])
             save_settings_to_browser()
             st.cache_data.clear()
             time.sleep(0.1)
             st.rerun()
         
+        # --- 5. 実行・キャンセルボタン ---
         c_exec, c_cancel = st.columns(2)
         with c_exec:
             if st.button(lang_dict["設定を適用して更新"], key="apply_all_settings", type="primary", use_container_width=True):
+                # 一時変数の内容を本番変数に反映
                 st.session_state.update({
                     "show_wind": d_show_wind, "show_temp": d_show_temp, "show_tide": d_show_tide,
                     "show_wave": d_show_wave, "show_ocean_temp": d_show_ocean_temp,
                     "width": d_width, "base_height": d_base_h, "base_font_size": d_base_f,
-                    "label_font_size": d_label_f, "danger_v": d_danger_v, "sel_dirs": new_sel_dirs,
+                    "label_font_size": d_label_f, "danger_v": d_danger_v,
+                    "sel_dirs": list(st.session_state.tmp_sel_dirs), # ここで反映
                     "min_container_width": d_min_w, "graph_dpi": d_dpi,
                     "left_view_w": d_left_view_w, "left_shift": d_left_shift, "show_w_text": d_show_w_text,
                     "show_dir_name": d_show_dir_name, "hspace": d_hspace, "label_pad": d_label_pad,
@@ -1397,15 +1399,19 @@ def show_settings_dialog():
                     "fav_btn_width": d_fav_w, "fav_name_len": d_fav_len,
                     "precip_y": d_precip_y, "icon_margin": d_icon_margin, "ratios": d_ratios
                 })
+                
                 save_settings_to_browser()
                 st.cache_data.clear()
+                if "tmp_sel_dirs" in st.session_state: del st.session_state.tmp_sel_dirs
                 time.sleep(0.1)
                 st.rerun()
         
         with c_cancel:
             if st.button(lang_dict["キャンセルして戻る"], key="cancel_all_settings", use_container_width=True):
+                if "tmp_sel_dirs" in st.session_state: del st.session_state.tmp_sel_dirs
                 st.rerun()
                 
+    # ダイアログの実行
     settings_dialog_content()
     
 # ======================================================================================
