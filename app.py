@@ -1212,7 +1212,7 @@ def show_settings_dialog():
 
     @st.dialog(lang_dict.get("グラフ表示設定の詳細", "Graph Settings"), dismissible=False)
     def settings_dialog_content():
-        # --- 38% 制限のテスト用CSS (色付風向選択セクションのみに適用) ---
+        # --- 38% 制限のテスト用CSS (色付風向選択セクションのみに使用) ---
         st.markdown("""
             <style>
             /* 風向選択セクションの「色付ボタン」のみを38%幅に制限する */
@@ -1343,7 +1343,7 @@ def show_settings_dialog():
         
         st.markdown("---")
         
-        # --- 5. 保存・キャンセルボタン (1行ずつ縦に並ぶよう、個別に配置) ---
+        # --- 5. 保存・キャンセルボタン (間に空のwriteを挟み、物理的に分離して縦並びを強制) ---
         if st.button(lang_dict["設定をすべて初期値に戻す"], key="reset_all_settings", use_container_width=True):
             st.session_state.update({
                 "show_wind": CONFIG["SHOW_WIND"], "show_temp": CONFIG["SHOW_TEMP"], "show_tide": CONFIG["SHOW_TIDE"],
@@ -1362,6 +1362,9 @@ def show_settings_dialog():
             time.sleep(0.1)
             st.rerun()
         
+        # 物理的に分離するための空の要素
+        st.write("") 
+
         if st.button(lang_dict["設定を適用して更新"], key="apply_all_settings", use_container_width=True):
             st.session_state.update({
                 "show_wind": d_show_wind, "show_temp": d_show_temp, "show_tide": d_show_tide,
@@ -1380,7 +1383,10 @@ def show_settings_dialog():
             if "tmp_sel_dirs" in st.session_state: del st.session_state.tmp_sel_dirs
             time.sleep(0.1)
             st.rerun()
-        
+
+        # 物理的に分離するための空の要素
+        st.write("") 
+
         if st.button(lang_dict["キャンセルして戻る"], key="cancel_all_settings", use_container_width=True):
             if "tmp_sel_dirs" in st.session_state: del st.session_state.tmp_sel_dirs
             st.rerun()
