@@ -1199,9 +1199,9 @@ def generate_weather_icons_html(df, ratio_info, display_width, start_idx):
 # ======================================================================================
 def show_settings_dialog():
     """
-    保存処理の直後に微小な待機時間を入れ、JSの実行完了を待ってから再読み込みする安全版。
+    保存処理の直後に微小な待機時間を入れ、JS의実行完了を待ってから再読み込みする安全版。
     要素数が不足している古い設定データが読み込まれた場合のIndexErrorを回避する修正済み。
-    色付風向選択を、スマホでも崩れないダイヤモンド配置（1・9行目中央）に最適化。
+    スマホでの「はみ出し」を防止するため、余白と文字サイズを極限まで最適化したダイヤモンド配置版。
     """
     import streamlit as st
     import time
@@ -1212,26 +1212,46 @@ def show_settings_dialog():
 
     @st.dialog(lang_dict.get("グラフ表示設定の詳細", "Graph Settings"), dismissible=False)
     def settings_dialog_content():
-        # --- スマホでも横並びを強力に維持するためのCSS修正 ---
+        # --- スマホのはみ出しを防止し、極限まで省スペース化するCSS ---
         st.markdown("""
             <style>
-            /* ダイアログ内の全カラムコンテナを強制的に横並びにする */
+            /* 1. ダイアログ全体の左右余白を削減 */
+            [data-testid="stDialog"] [data-testid="stVerticalBlock"] {
+                padding-left: 0.2rem !important;
+                padding-right: 0.2rem !important;
+            }
+            /* 2. カラム間の隙間を最小化 */
             [data-testid="column"] {
                 flex: 1 1 0% !important;
                 min-width: 0px !important;
-                width: 100% !important;
+                padding: 0px 2px !important;
             }
-            /* 横並びを解除させない設定 */
+            /* 3. 横並びを強制 */
             [data-testid="stHorizontalBlock"] {
                 display: flex !important;
                 flex-direction: row !important;
                 flex-wrap: nowrap !important;
-                align-items: center !important;
+                gap: 0.3rem !important;
             }
-            /* チェックボックスの文字サイズ調整 */
+            /* 4. チェックボックスの文字と箱の隙間を詰め、文字を小さく */
+            .stCheckbox {
+                margin-bottom: -10px !important;
+            }
+            .stCheckbox label {
+                padding: 0px !important;
+                margin: 0px !important;
+            }
             .stCheckbox p {
-                font-size: 0.8rem !important;
+                font-size: 0.75rem !important; /* 文字をさらに少し小さく */
+                line-height: 1.2 !important;
+                overflow: visible !important;
+                text-overflow: clip !important;
                 white-space: nowrap !important;
+            }
+            /* 5. チェックボックスの箱自体を少し小さく */
+            .stCheckbox [data-testid="stWidgetLabel"] div div {
+                transform: scale(0.85);
+                margin-right: -4px !important;
             }
             </style>
         """, unsafe_allow_html=True)
@@ -1254,41 +1274,32 @@ def show_settings_dialog():
         current_sel = st.session_state.get("sel_dirs", list(CONFIG["DEFAULT_DIRS"]))
         new_sel_dirs = []
         
-        # 方角リストとインデックスの対応:
-        # 0:北, 1:北北東, 2:北東, 3:東北東, 4:東, 5:東南東, 6:南東, 7:南南東, 
-        # 8:南, 9:南南西, 10:南西, 11:西南西, 12:西, 13:西北西, 14:北西, 15:北北西
-
-        # 1行目: 北 (中央)
-        c1, c2, c3 = st.columns([1, 2, 1])
-        with c1: st.empty()
+        # 1行目: 北 (中央寄せ) - 比率を [1, 3, 1] にして中央を広く確保
+        c1, c2, c3 = st.columns([1, 3, 1])
         with c2:
             d = ALL_DIRECTIONS[0] # 北
             if st.checkbox(lang_dict["ALL_DIRECTIONS"][0], value=(d in current_sel), key=f"dlg_dir_{d}"):
                 new_sel_dirs.append(d)
-        with c3: st.empty()
 
         # 2〜8行目: 西側と東側を対面配置
-        # 配置順ペア: (西側Index, 東側Index)
         pairs = [(15, 1), (14, 2), (13, 3), (12, 4), (11, 5), (10, 6), (9, 7)]
         for w_idx, e_idx in pairs:
             cols = st.columns(2)
-            with cols[0]: # 西側（左）
+            with cols[0]:
                 d_w = ALL_DIRECTIONS[w_idx]
                 if st.checkbox(lang_dict["ALL_DIRECTIONS"][w_idx], value=(d_w in current_sel), key=f"dlg_dir_{d_w}"):
                     new_sel_dirs.append(d_w)
-            with cols[1]: # 東側（右）
+            with cols[1]:
                 d_e = ALL_DIRECTIONS[e_idx]
                 if st.checkbox(lang_dict["ALL_DIRECTIONS"][e_idx], value=(d_e in current_sel), key=f"dlg_dir_{d_e}"):
                     new_sel_dirs.append(d_e)
 
-        # 9行目: 南 (中央)
-        c1, c2, c3 = st.columns([1, 2, 1])
-        with c1: st.empty()
+        # 9行目: 南 (中央寄せ)
+        c1, c2, c3 = st.columns([1, 3, 1])
         with c2:
             d = ALL_DIRECTIONS[8] # 南
             if st.checkbox(lang_dict["ALL_DIRECTIONS"][8], value=(d in current_sel), key=f"dlg_dir_{d}"):
                 new_sel_dirs.append(d)
-        with c3: st.empty()
         
         # --- 4. 開発者用調整 ---
         is_dev_url = st.query_params.get("mode") == "dev"
@@ -1296,7 +1307,6 @@ def show_settings_dialog():
             st.markdown("---")
             st.subheader("開発用詳細設定")
 
-            # --- 2. サイズ・文字 ---
             w_cfg, h_cfg, f_cfg = CONFIG["SLIDER_WIDTH"], CONFIG["SLIDER_HEIGHT"], CONFIG["SLIDER_FONT"]
             d_width = st.number_input(lang_dict["グラフ枠横幅 (inch)"], float(w_cfg["min"]), float(w_cfg["max"]), float(st.session_state.get("width", CONFIG["GRAPH_WIDTH"])), float(w_cfg["step"]))
             d_base_h = st.number_input(lang_dict["グラフ枠縦幅 (inch)"], float(h_cfg["min"]), float(h_cfg["max"]), float(st.session_state.get("base_height", CONFIG["GRAPH_HIGHT"])), float(h_cfg["step"]))
@@ -1324,7 +1334,6 @@ def show_settings_dialog():
             d_precip_y = st.slider("降水量ラベル高さ", 0.0, 2.0, float(st.session_state.get("precip_y", CONFIG["DEFAULT_PRECIP_Y"])), 0.05)
             d_icon_margin = st.slider("天気アイコン下余白", 0, 100, int(st.session_state.get("icon_margin", CONFIG["DEFAULT_ICON_MARGIN"])), 5)
             
-            # --- 修正箇所: 要素数が足りない場合にデフォルト値を補填 ---
             st.subheader("グラフ縦比率設定")
             r = st.session_state.get("ratios", CONFIG["DEFAULT_RATIOS"])
             d_r = CONFIG["DEFAULT_RATIOS"]
@@ -1355,7 +1364,6 @@ def show_settings_dialog():
         
         st.markdown("---")
         
-        # --- 5. リセットボタン ---
         if st.button(lang_dict["設定をすべて初期値に戻す"], key="reset_all_settings", use_container_width=True):
             st.session_state.update({
                 "show_wind": CONFIG["SHOW_WIND"], "show_temp": CONFIG["SHOW_TEMP"], "show_tide": CONFIG["SHOW_TIDE"],
@@ -1371,10 +1379,9 @@ def show_settings_dialog():
             })
             save_settings_to_browser()
             st.cache_data.clear()
-            time.sleep(0.1) # JS実行のための微小な待ち時間
+            time.sleep(0.1)
             st.rerun()
         
-        # --- 6. 実行・キャンセルボタン ---
         c_exec, c_cancel = st.columns(2)
         with c_exec:
             if st.button(lang_dict["設定を適用して更新"], key="apply_all_settings", type="primary", use_container_width=True):
@@ -1390,17 +1397,15 @@ def show_settings_dialog():
                     "fav_btn_width": d_fav_w, "fav_name_len": d_fav_len,
                     "precip_y": d_precip_y, "icon_margin": d_icon_margin, "ratios": d_ratios
                 })
-                
                 save_settings_to_browser()
                 st.cache_data.clear()
-                time.sleep(0.1) # ここが重要：JSのsetItem完了を待つ
-                st.rerun() # ダイアログを閉じて設定を反映
+                time.sleep(0.1)
+                st.rerun()
         
         with c_cancel:
             if st.button(lang_dict["キャンセルして戻る"], key="cancel_all_settings", use_container_width=True):
                 st.rerun()
                 
-    # ダイアログの実行
     settings_dialog_content()
     
 # ======================================================================================
