@@ -1201,6 +1201,7 @@ def show_settings_dialog():
     """
     保存処理の直後に微小な待機時間を入れ、JSの実行完了を待ってから再読み込みする安全版。
     要素数が不足している古い設定データが読み込まれた場合のIndexErrorを回避する修正済み。
+    色付風向選択を、スマホでも崩れないダイヤモンド配置（1・9行目中央）に最適化。
     """
     import streamlit as st
     import time
@@ -1211,6 +1212,22 @@ def show_settings_dialog():
 
     @st.dialog(lang_dict.get("グラフ表示設定の詳細", "Graph Settings"), dismissible=False)
     def settings_dialog_content():
+        # --- スマホでも横並びを維持し、中央寄せやボタン風の調整をするためのCSS ---
+        st.markdown("""
+            <style>
+            /* カラムのスタック（縦並び）を防止 */
+            [data-testid="column"] {
+                flex: 1 1 0% !important;
+                min-width: 0px !important;
+            }
+            /* チェックボックスの文字サイズ調整（スマホ用） */
+            .stCheckbox p {
+                font-size: 0.85rem !important;
+                white-space: nowrap !important;
+            }
+            </style>
+        """, unsafe_allow_html=True)
+
         # --- 1. 表示設定（トグル） ---
         st.subheader(lang_dict["表示設定"])
         d_show_wind = st.toggle(lang_dict["風向・風速グラフ表示"], value=st.session_state.get("show_wind", CONFIG["SHOW_WIND"]))
@@ -1224,16 +1241,42 @@ def show_settings_dialog():
         st.markdown("---")
         d_danger_v = st.number_input(lang_dict["危険風速ライン(m/s)"], value=float(st.session_state.get("danger_v", CONFIG["DEFAULT_DANGER_V"])), step=1.0)
         
-        # --- 3. 色付風向選択 ---
+        # --- 3. 色付風向選択 (ダイヤモンド配置) ---
         st.subheader(lang_dict["色付風向選択"])
         current_sel = st.session_state.get("sel_dirs", list(CONFIG["DEFAULT_DIRS"]))
         new_sel_dirs = []
-        cols = st.columns(2)
-        for i, d in enumerate(ALL_DIRECTIONS):
-            with cols[i % 2]:
-                display_label = lang_dict["ALL_DIRECTIONS"][i]
-                if st.checkbox(display_label, value=(d in current_sel), key=f"dlg_dir_{d}"):
-                    new_sel_dirs.append(d)
+        
+        # 方角リストとインデックスの対応:
+        # 0:北, 1:北北東, 2:北東, 3:東北東, 4:東, 5:東南東, 6:南東, 7:南南東, 
+        # 8:南, 9:南南西, 10:南西, 11:西南西, 12:西, 13:西北西, 14:北西, 15:北北西
+
+        # 1行目: 北 (中央)
+        c1, c2, c3 = st.columns([1, 2, 1])
+        with c2:
+            d = ALL_DIRECTIONS[0] # 北
+            if st.checkbox(lang_dict["ALL_DIRECTIONS"][0], value=(d in current_sel), key=f"dlg_dir_{d}"):
+                new_sel_dirs.append(d)
+
+        # 2〜8行目: 西側と東側を対面配置
+        # 配置順ペア: (西側Index, 東側Index)
+        pairs = [(15, 1), (14, 2), (13, 3), (12, 4), (11, 5), (10, 6), (9, 7)]
+        for w_idx, e_idx in pairs:
+            cols = st.columns(2)
+            with cols[0]: # 西側（左）
+                d_w = ALL_DIRECTIONS[w_idx]
+                if st.checkbox(lang_dict["ALL_DIRECTIONS"][w_idx], value=(d_w in current_sel), key=f"dlg_dir_{d_w}"):
+                    new_sel_dirs.append(d_w)
+            with cols[1]: # 東側（右）
+                d_e = ALL_DIRECTIONS[e_idx]
+                if st.checkbox(lang_dict["ALL_DIRECTIONS"][e_idx], value=(d_e in current_sel), key=f"dlg_dir_{d_e}"):
+                    new_sel_dirs.append(d_e)
+
+        # 9行目: 南 (中央)
+        c1, c2, c3 = st.columns([1, 2, 1])
+        with c2:
+            d = ALL_DIRECTIONS[8] # 南
+            if st.checkbox(lang_dict["ALL_DIRECTIONS"][8], value=(d in current_sel), key=f"dlg_dir_{d}"):
+                new_sel_dirs.append(d)
         
         # --- 4. 開発者用調整 ---
         is_dev_url = st.query_params.get("mode") == "dev"
@@ -1280,6 +1323,11 @@ def show_settings_dialog():
             r4 = st.number_input("比率:潮位", 0.5, 5.0, float(r[4] if len(r) > 4 else d_r[4]), 0.1)
             d_ratios = [r0, r1, r2, r3, r4]
         else:
+            d_width = st.session_state.get("width", CONFIG["GRAPH_WIDTH"])
+            d_base_h = st.session_state.get("base_height", CONFIG["GRAPH_HIGHT"])
+            d_base_f = st.session_state.get("base_font_size", CONFIG["GRAPH_FONT_SIZE"])
+            d_label_f = st.session_state.get("label_font_size", CONFIG["LABEL_SIZE"])
+            d_hspace = st.session_state.get("hspace", CONFIG["HSPACE"])
             d_min_w = st.session_state.get("min_container_width", CONFIG["CONTENA_MIN_W"])
             d_dpi = st.session_state.get("graph_dpi", CONFIG["DPI"])
             d_label_pad = st.session_state.get("label_pad", CONFIG["LABEL_PAD"])
