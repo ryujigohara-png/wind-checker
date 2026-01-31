@@ -1201,6 +1201,10 @@ def show_settings_dialog():
     """
     保存処理の直後に微小な待機時間を入れ、JSの実行完了を待ってから再読み込みする安全版。
     要素数が不足している古い設定データが読み込まれた場合のIndexErrorを回避する修正済み。
+    【スマホ最適化最終版】:
+    - チェックボックスを廃止し、2列ボタン形式（トグルボタン）に変更。
+    - CSSでスマホでも列幅を約50%に強制固定し、1列への崩れを防止。
+    - ダイヤモンド配置（1・9行目中央、2-8行目左右）を維持し、日本語3-4文字を収める。
     """
     import streamlit as st
     import time
@@ -1211,6 +1215,52 @@ def show_settings_dialog():
 
     @st.dialog(lang_dict.get("グラフ表示設定の詳細", "Graph Settings"), dismissible=False)
     def settings_dialog_content():
+        # --- スマホで2列を死守し、ボタン幅を最適化する強力なCSS ---
+        st.markdown("""
+            <style>
+            /* 1. ダイアログ内の余白を最小化 */
+            [data-testid="stDialog"] [data-testid="stVerticalBlock"] {
+                padding-left: 0.3rem !important;
+                padding-right: 0.3rem !important;
+            }
+            /* 2. 横並びブロック（st.columns）のスタック（1列化）を強制阻止 */
+            [data-testid="stHorizontalBlock"] {
+                display: flex !important;
+                flex-direction: row !important;
+                flex-wrap: nowrap !important;
+                gap: 6px !important;
+                width: 100% !important;
+                align-items: center !important;
+            }
+            /* 3. 各カラムの幅を強制的に固定（2列時は50%弱、3列時はバランス調整） */
+            [data-testid="column"] {
+                flex: 1 1 auto !important;
+                min-width: 0px !important;
+            }
+            /* 2列構成時のカラム幅固定 */
+            [data-testid="stHorizontalBlock"]:not(:has(div[data-testid="column"]:nth-child(3))) [data-testid="column"] {
+                width: 48% !important;
+                flex: 1 1 48% !important;
+            }
+            /* 4. ボタンのスタイル：チェックボックスの代わりとして機能させる */
+            div.stButton > button {
+                width: 100% !important;
+                padding: 5px 2px !important;
+                margin: 0px !important;
+                font-size: 0.85rem !important;
+                min-height: 2.6rem !important;
+                white-space: nowrap !important;
+                border-radius: 6px !important;
+                transition: all 0.2s ease;
+            }
+            /* 5. サブヘッダーの余白調整 */
+            .stSubheader {
+                padding-top: 1rem !important;
+                margin-bottom: 0.5rem !important;
+            }
+            </style>
+        """, unsafe_allow_html=True)
+
         # --- 1. 表示設定（トグル） ---
         st.subheader(lang_dict["表示設定"])
         d_show_wind = st.toggle(lang_dict["風向・風速グラフ表示"], value=st.session_state.get("show_wind", CONFIG["SHOW_WIND"]))
@@ -1221,33 +1271,73 @@ def show_settings_dialog():
         d_show_w_text = st.toggle(lang_dict["天気文字表示"], value=st.session_state.get("show_w_text", CONFIG["SHOW_W_TEXT"]))
         d_show_dir_name = st.toggle(lang_dict["風向名表示"], value=st.session_state.get("show_dir_name", CONFIG["SHOW_DIR_NAME"]))
         
-        # --- 2. サイズ・文字 ---
-        w_cfg, h_cfg, f_cfg = CONFIG["SLIDER_WIDTH"], CONFIG["SLIDER_HEIGHT"], CONFIG["SLIDER_FONT"]
-        d_width = st.number_input(lang_dict["グラフ枠横幅 (inch)"], float(w_cfg["min"]), float(w_cfg["max"]), float(st.session_state.get("width", CONFIG["GRAPH_WIDTH"])), float(w_cfg["step"]))
-        d_base_h = st.number_input(lang_dict["グラフ枠縦幅 (inch)"], float(h_cfg["min"]), float(h_cfg["max"]), float(st.session_state.get("base_height", CONFIG["GRAPH_HIGHT"])), float(h_cfg["step"]))
-        d_base_f = st.number_input(lang_dict["グラフ内文字サイズ"], int(f_cfg["min"]), int(f_cfg["max"]), int(st.session_state.get("base_font_size", CONFIG["GRAPH_FONT_SIZE"])))
-        d_label_f = st.number_input(lang_dict["軸ラベル文字サイズ"], int(f_cfg["min"]), int(f_cfg["max"]), int(st.session_state.get("label_font_size", CONFIG["LABEL_SIZE"])))
-        d_hspace = st.number_input("グラフ間余白", -0.2, 1.5, float(st.session_state.get("hspace", CONFIG["HSPACE"])), 0.05)
-       
         st.markdown("---")
         d_danger_v = st.number_input(lang_dict["危険風速ライン(m/s)"], value=float(st.session_state.get("danger_v", CONFIG["DEFAULT_DANGER_V"])), step=1.0)
         
-        # --- 3. 色付風向選択 ---
+        # --- 2. 色付風向選択 (ボタン形式ダイヤモンド配置) ---
         st.subheader(lang_dict["色付風向選択"])
-        current_sel = st.session_state.get("sel_dirs", list(CONFIG["DEFAULT_DIRS"]))
-        new_sel_dirs = []
-        cols = st.columns(2)
-        for i, d in enumerate(ALL_DIRECTIONS):
-            with cols[i % 2]:
-                display_label = lang_dict["ALL_DIRECTIONS"][i]
-                if st.checkbox(display_label, value=(d in current_sel), key=f"dlg_dir_{d}"):
-                    new_sel_dirs.append(d)
         
+        # ダイアログ内の操作用一時ステートを作成
+        if "tmp_sel_dirs" not in st.session_state:
+            st.session_state.tmp_sel_dirs = list(st.session_state.get("sel_dirs", CONFIG["DEFAULT_DIRS"]))
+
+        def toggle_direction(d_name):
+            if d_name in st.session_state.tmp_sel_dirs:
+                st.session_state.tmp_sel_dirs.remove(d_name)
+            else:
+                st.session_state.tmp_sel_dirs.append(d_name)
+
+        # --- 配置ロジック ---
+        # 1行目: 北 (中央寄せ)
+        c1, c2, c3 = st.columns([1, 2, 1])
+        with c2:
+            d = ALL_DIRECTIONS[0]
+            is_sel = d in st.session_state.tmp_sel_dirs
+            if st.button(lang_dict["ALL_DIRECTIONS"][0], key=f"btn_{d}", type="primary" if is_sel else "secondary"):
+                toggle_direction(d)
+                st.rerun()
+
+        # 2〜8行目: 西側と東側を左右に並べる
+        pairs = [(15, 1), (14, 2), (13, 3), (12, 4), (11, 5), (10, 6), (9, 7)]
+        for w_idx, e_idx in pairs:
+            cols = st.columns(2)
+            # 左カラム（西側）
+            with cols[0]:
+                d_w = ALL_DIRECTIONS[w_idx]
+                is_sel_w = d_w in st.session_state.tmp_sel_dirs
+                if st.button(lang_dict["ALL_DIRECTIONS"][w_idx], key=f"btn_{d_w}", type="primary" if is_sel_w else "secondary"):
+                    toggle_direction(d_w)
+                    st.rerun()
+            # 右カラム（東側）
+            with cols[1]:
+                d_e = ALL_DIRECTIONS[e_idx]
+                is_sel_e = d_e in st.session_state.tmp_sel_dirs
+                if st.button(lang_dict["ALL_DIRECTIONS"][e_idx], key=f"btn_{d_e}", type="primary" if is_sel_e else "secondary"):
+                    toggle_direction(d_e)
+                    st.rerun()
+
+        # 9行目: 南 (中央寄せ)
+        c1, c2, c3 = st.columns([1, 2, 1])
+        with c2:
+            d = ALL_DIRECTIONS[8]
+            is_sel = d in st.session_state.tmp_sel_dirs
+            if st.button(lang_dict["ALL_DIRECTIONS"][8], key=f"btn_{d}", type="primary" if is_sel else "secondary"):
+                toggle_direction(d)
+                st.rerun()
+
         # --- 4. 開発者用調整 ---
         is_dev_url = st.query_params.get("mode") == "dev"
         if is_dev_url:
             st.markdown("---")
             st.subheader("開発用詳細設定")
+
+            w_cfg, h_cfg, f_cfg = CONFIG["SLIDER_WIDTH"], CONFIG["SLIDER_HEIGHT"], CONFIG["SLIDER_FONT"]
+            d_width = st.number_input(lang_dict["グラフ枠横幅 (inch)"], float(w_cfg["min"]), float(w_cfg["max"]), float(st.session_state.get("width", CONFIG["GRAPH_WIDTH"])), float(w_cfg["step"]))
+            d_base_h = st.number_input(lang_dict["グラフ枠縦幅 (inch)"], float(h_cfg["min"]), float(h_cfg["max"]), float(st.session_state.get("base_height", CONFIG["GRAPH_HIGHT"])), float(h_cfg["step"]))
+            d_base_f = st.number_input(lang_dict["グラフ内文字サイズ"], int(f_cfg["min"]), int(f_cfg["max"]), int(st.session_state.get("base_font_size", CONFIG["GRAPH_FONT_SIZE"])))
+            d_label_f = st.number_input(lang_dict["軸ラベル文字サイズ"], int(f_cfg["min"]), int(f_cfg["max"]), int(st.session_state.get("label_font_size", CONFIG["LABEL_SIZE"])))
+            d_hspace = st.number_input("グラフ間余白", -0.2, 1.5, float(st.session_state.get("hspace", CONFIG["HSPACE"])), 0.05)
+       
             d_min_w = st.slider("コンテナ最小幅 (px)", 500, 5000, int(st.session_state.get("min_container_width", CONFIG["CONTENA_MIN_W"])), 100)
             d_dpi = st.radio("解像度 (DPI)", [200, 300], index=0 if st.session_state.get("graph_dpi", 200) == 200 else 1, horizontal=True)
             d_label_pad = st.slider("ラベル距離", -5, 10, int(st.session_state.get("label_pad", CONFIG["LABEL_PAD"])))
@@ -1268,7 +1358,6 @@ def show_settings_dialog():
             d_precip_y = st.slider("降水量ラベル高さ", 0.0, 2.0, float(st.session_state.get("precip_y", CONFIG["DEFAULT_PRECIP_Y"])), 0.05)
             d_icon_margin = st.slider("天気アイコン下余白", 0, 100, int(st.session_state.get("icon_margin", CONFIG["DEFAULT_ICON_MARGIN"])), 5)
             
-            # --- 修正箇所: 要素数が足りない場合にデフォルト値を補填 ---
             st.subheader("グラフ縦比率設定")
             r = st.session_state.get("ratios", CONFIG["DEFAULT_RATIOS"])
             d_r = CONFIG["DEFAULT_RATIOS"]
@@ -1279,6 +1368,12 @@ def show_settings_dialog():
             r4 = st.number_input("比率:潮位", 0.5, 5.0, float(r[4] if len(r) > 4 else d_r[4]), 0.1)
             d_ratios = [r0, r1, r2, r3, r4]
         else:
+            # 通常モード時は既存のセッション値を使用
+            d_width = st.session_state.get("width", CONFIG["GRAPH_WIDTH"])
+            d_base_h = st.session_state.get("base_height", CONFIG["GRAPH_HIGHT"])
+            d_base_f = st.session_state.get("base_font_size", CONFIG["GRAPH_FONT_SIZE"])
+            d_label_f = st.session_state.get("label_font_size", CONFIG["LABEL_SIZE"])
+            d_hspace = st.session_state.get("hspace", CONFIG["HSPACE"])
             d_min_w = st.session_state.get("min_container_width", CONFIG["CONTENA_MIN_W"])
             d_dpi = st.session_state.get("graph_dpi", CONFIG["DPI"])
             d_label_pad = st.session_state.get("label_pad", CONFIG["LABEL_PAD"])
@@ -1308,9 +1403,11 @@ def show_settings_dialog():
                 "fav_btn_width": CONFIG.get("FAV_BTN_WIDTH", 30), "fav_name_len": CONFIG.get("FAV_NAME_LEN", 12),
                 "precip_y": CONFIG["DEFAULT_PRECIP_Y"], "icon_margin": CONFIG["DEFAULT_ICON_MARGIN"], "ratios": CONFIG["DEFAULT_RATIOS"]
             })
+            if "tmp_sel_dirs" in st.session_state:
+                st.session_state.tmp_sel_dirs = list(CONFIG["DEFAULT_DIRS"])
             save_settings_to_browser()
             st.cache_data.clear()
-            time.sleep(0.1) # JS実行のための微小な待ち時間
+            time.sleep(0.1)
             st.rerun()
         
         # --- 6. 実行・キャンセルボタン ---
@@ -1321,7 +1418,7 @@ def show_settings_dialog():
                     "show_wind": d_show_wind, "show_temp": d_show_temp, "show_tide": d_show_tide,
                     "show_wave": d_show_wave, "show_ocean_temp": d_show_ocean_temp,
                     "width": d_width, "base_height": d_base_h, "base_font_size": d_base_f,
-                    "label_font_size": d_label_f, "danger_v": d_danger_v, "sel_dirs": new_sel_dirs,
+                    "label_font_size": d_label_f, "danger_v": d_danger_v, "sel_dirs": list(st.session_state.tmp_sel_dirs),
                     "min_container_width": d_min_w, "graph_dpi": d_dpi,
                     "left_view_w": d_left_view_w, "left_shift": d_left_shift, "show_w_text": d_show_w_text,
                     "show_dir_name": d_show_dir_name, "hspace": d_hspace, "label_pad": d_label_pad,
@@ -1332,11 +1429,13 @@ def show_settings_dialog():
                 
                 save_settings_to_browser()
                 st.cache_data.clear()
-                time.sleep(0.1) # ここが重要：JSのsetItem完了を待つ
-                st.rerun() # ダイアログを閉じて設定を反映
+                if "tmp_sel_dirs" in st.session_state: del st.session_state.tmp_sel_dirs
+                time.sleep(0.1)
+                st.rerun()
         
         with c_cancel:
             if st.button(lang_dict["キャンセルして戻る"], key="cancel_all_settings", use_container_width=True):
+                if "tmp_sel_dirs" in st.session_state: del st.session_state.tmp_sel_dirs
                 st.rerun()
                 
     # ダイアログの実行
