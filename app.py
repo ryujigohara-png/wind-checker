@@ -1212,24 +1212,27 @@ def show_settings_dialog():
 
     @st.dialog(lang_dict.get("グラフ表示設定の詳細", "Graph Settings"), dismissible=False)
     def settings_dialog_content():
-        # --- 38% 制限のテスト用CSS（修正版） ---
+        # --- 38% 制限のテスト用CSS ---
         st.markdown("""
             <style>
-            /* 1. 風向選択ボタン（3列・2列配置内）の幅を38%に制限 */
+            /* 1. 風向選択セクションの「色付ボタン」のみを38%幅に制限するテスト */
             /* カラム(st.columns)の中にあるボタンのみを対象にする */
             [data-testid="column"] div.stButton > button {
                 width: 38% !important;
+                margin-left: auto !important;
+                margin-right: auto !important;
+                display: block !important;
             }
             
-            /* 2. 下部の「初期値」「更新」「キャンセル」ボタンは幅100%を維持 */
+            /* 2. 下部の「更新」「キャンセル」ボタン等は100%幅を維持し、干渉を防ぐ */
             /* カラム外（ダイアログ直下の垂直ブロック）にあるボタンを対象にする */
-            [data-testid="stDialog"] > div > div > div > div.stButton > button {
+            [data-testid="stDialog"] [data-testid="vertical-block"] > div.stButton > button {
                 width: 100% !important;
             }
             </style>
         """, unsafe_allow_html=True)
 
-        # --- 1. 表示設定（トグル） ---
+        # --- 1. 表示設定 ---
         st.subheader(lang_dict["表示設定"])
         d_show_wind = st.toggle(lang_dict["風向・風速グラフ表示"], value=st.session_state.get("show_wind", CONFIG["SHOW_WIND"]))
         d_show_temp = st.toggle(lang_dict["気温グラフ表示"], value=st.session_state.get("show_temp", CONFIG["SHOW_TEMP"]))
@@ -1242,7 +1245,7 @@ def show_settings_dialog():
         st.markdown("---")
         d_danger_v = st.number_input(lang_dict["危険風速ライン(m/s)"], value=float(st.session_state.get("danger_v", CONFIG["DEFAULT_DANGER_V"])), step=1.0)
         
-        # --- 3. 色付風向選択 (トグルボタン形式ダイヤモンド配置) ---
+        # --- 3. 色付風向選択 (指示通り：北・南は1列、他は2列) ---
         st.subheader(lang_dict["色付風向選択"])
         
         if "tmp_sel_dirs" not in st.session_state:
@@ -1254,7 +1257,7 @@ def show_settings_dialog():
             else:
                 st.session_state.tmp_sel_dirs.append(dir_name)
 
-        # 1行目: 北 (c2のカラム内にあるのでCSSで38%が適用されるはず)
+        # 1行目: 北
         c1, c2, c3 = st.columns([1, 2, 1])
         with c2:
             d = ALL_DIRECTIONS[0]
@@ -1347,9 +1350,7 @@ def show_settings_dialog():
         
         st.markdown("---")
         
-        # --- 5. 保存・キャンセルボタン (st.columnsを使わず1列ずつ配置) ---
-        
-        # 初期値に戻すボタン
+        # --- 5. 保存・キャンセルボタン (1列2行) ---
         if st.button(lang_dict["設定をすべて初期値に戻す"], key="reset_all_settings", use_container_width=True):
             st.session_state.update({
                 "show_wind": CONFIG["SHOW_WIND"], "show_temp": CONFIG["SHOW_TEMP"], "show_tide": CONFIG["SHOW_TIDE"],
@@ -1368,7 +1369,6 @@ def show_settings_dialog():
             time.sleep(0.1)
             st.rerun()
         
-        # 適用ボタン
         if st.button(lang_dict["設定を適用して更新"], key="apply_all_settings", type="primary", use_container_width=True):
             st.session_state.update({
                 "show_wind": d_show_wind, "show_temp": d_show_temp, "show_tide": d_show_tide,
@@ -1388,7 +1388,6 @@ def show_settings_dialog():
             time.sleep(0.1)
             st.rerun()
         
-        # キャンセルボタン
         if st.button(lang_dict["キャンセルして戻る"], key="cancel_all_settings", use_container_width=True):
             if "tmp_sel_dirs" in st.session_state: del st.session_state.tmp_sel_dirs
             st.rerun()
