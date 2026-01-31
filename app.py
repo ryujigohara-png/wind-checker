@@ -1369,7 +1369,7 @@ def show_settings_dialog():
             time.sleep(0.1)
             st.rerun()
         
-        if st.button(lang_dict["設定を適用して更新"], key="apply_all_settings", type="primary", use_container_width=True):
+        if st.button(lang_dict["設定を適用して更新"], key="apply_all_settings", use_container_width=True):
             st.session_state.update({
                 "show_wind": d_show_wind, "show_temp": d_show_temp, "show_tide": d_show_tide,
                 "show_wave": d_show_wave, "show_ocean_temp": d_show_ocean_temp,
