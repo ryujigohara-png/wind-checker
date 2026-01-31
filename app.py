@@ -1212,17 +1212,25 @@ def show_settings_dialog():
 
     @st.dialog(lang_dict.get("グラフ表示設定の詳細", "Graph Settings"), dismissible=False)
     def settings_dialog_content():
-        # --- スマホでも横並びを維持し、中央寄せやボタン風の調整をするためのCSS ---
+        # --- スマホでも横並びを強力に維持するためのCSS修正 ---
         st.markdown("""
             <style>
-            /* カラムのスタック（縦並び）を防止 */
+            /* ダイアログ内の全カラムコンテナを強制的に横並びにする */
             [data-testid="column"] {
                 flex: 1 1 0% !important;
                 min-width: 0px !important;
+                width: 100% !important;
             }
-            /* チェックボックスの文字サイズ調整（スマホ用） */
+            /* 横並びを解除させない設定 */
+            [data-testid="stHorizontalBlock"] {
+                display: flex !important;
+                flex-direction: row !important;
+                flex-wrap: nowrap !important;
+                align-items: center !important;
+            }
+            /* チェックボックスの文字サイズ調整 */
             .stCheckbox p {
-                font-size: 0.85rem !important;
+                font-size: 0.8rem !important;
                 white-space: nowrap !important;
             }
             </style>
@@ -1252,10 +1260,12 @@ def show_settings_dialog():
 
         # 1行目: 北 (中央)
         c1, c2, c3 = st.columns([1, 2, 1])
+        with c1: st.empty()
         with c2:
             d = ALL_DIRECTIONS[0] # 北
             if st.checkbox(lang_dict["ALL_DIRECTIONS"][0], value=(d in current_sel), key=f"dlg_dir_{d}"):
                 new_sel_dirs.append(d)
+        with c3: st.empty()
 
         # 2〜8行目: 西側と東側を対面配置
         # 配置順ペア: (西側Index, 東側Index)
@@ -1273,10 +1283,12 @@ def show_settings_dialog():
 
         # 9行目: 南 (中央)
         c1, c2, c3 = st.columns([1, 2, 1])
+        with c1: st.empty()
         with c2:
             d = ALL_DIRECTIONS[8] # 南
             if st.checkbox(lang_dict["ALL_DIRECTIONS"][8], value=(d in current_sel), key=f"dlg_dir_{d}"):
                 new_sel_dirs.append(d)
+        with c3: st.empty()
         
         # --- 4. 開発者用調整 ---
         is_dev_url = st.query_params.get("mode") == "dev"
