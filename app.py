@@ -2590,22 +2590,23 @@ def render_footer_info(danger_v):
 # 100. メイン処理 (再構築版・スクロール対応)
 # ======================================================================================
 def main():
-    import os 
+    import os
     # --- 0. アプリ初期化 (最優先で実行) ---
     initialize_app()
-    
+
     if 'lang' not in st.session_state:
         st.session_state.lang = "ja"
     
     translations = get_language_dict()
     lang_dict = translations[st.session_state.lang]
-    
+
     # --- 1. 時刻の丸め処理 (10分単位) ---
-    # 判定の確実性を期すため、タイムゾーンを含まない(naive)形式で計算します
-    from datetime import datetime, timedelta
-    now_raw = datetime.now() # システム時刻(JST想定)
+    # 世界中どこでも 30 分判定をミスしないよう、基準を UTC に統一します
+    from datetime import datetime, timezone, timedelta
+    now_raw = datetime.now(timezone.utc)
+    # 比較・表示用に10分単位で丸める
     now_rounded = now_raw.replace(minute=(now_raw.minute // 10) * 10, second=0, microsecond=0)
-    
+
     # --- 2. 状態の初期化 ---
     if "mode" in st.query_params and st.query_params["mode"] == "dev":
         st.session_state.is_dev_mode = True
@@ -2618,12 +2619,13 @@ def main():
     
     if 'needs_graph_update' not in st.session_state:
         st.session_state.needs_graph_update = True
-    
-    # 記録用変数の初期化（1/01 00:00 防止のため now_rounded を使用）
-    if 'last_graph_time' not in st.session_state: st.session_state.last_graph_time = now_rounded
+
+    # 初回起動時に現在時刻(UTC)を記録
+    if 'last_graph_time' not in st.session_state: 
+        st.session_state.last_graph_time = now_rounded
     if 'last_update_lat' not in st.session_state: st.session_state.last_update_lat = 0.0
     if 'last_update_lon' not in st.session_state: st.session_state.last_update_lon = 0.0
-    
+
     sync_all_settings()
     render_custom_css()
     setup_font(st.session_state.get("base_font_size", CONFIG["GRAPH_FONT_SIZE"]))
@@ -2640,26 +2642,27 @@ def main():
     location_changed = (abs(st.session_state.lat - st.session_state.last_update_lat) > 0.0001 or 
                         abs(st.session_state.lon - st.session_state.last_update_lon) > 0.0001)
     
-    # 前回の丸め時刻（naive）との単純比較。30分以上経過でフラグを立てる
-    time_diff = now_rounded - st.session_state.last_graph_time
-    time_over = time_diff >= timedelta(minutes=30)
+    # 30分経過判定（UTC同士の正確な比較）
+    time_over = (now_rounded - st.session_state.last_graph_time) >= timedelta(minutes=30)
     
     if location_changed or time_over:
         st.session_state.needs_graph_update = True
-    
+
     # --- 4. 各モジュールの描画 ---
     render_compact_control_panel(st.session_state.last_basho)
-    # 引数には丸めた時刻を渡す
+    
+    # 描画用サブルーチンへ現在時刻を渡す
+    # (内部サブルーチン 12 で fetch_weather_data(lat, lon, 9) が呼ばれ、195時間分が描画されます)
     render_graph_area_module(danger_v, sel_dirs, design_params, now_rounded)
     
     # クレジット表示
     render_footer_info(danger_v)
     
-    # --- [追加] APIリンクの表示 ---
+    # --- APIリンクの表示 ---
     lat, lon = st.session_state.lat, st.session_state.lon
-    w_url = f"[https://api.open-meteo.com/v1/forecast?latitude=](https://api.open-meteo.com/v1/forecast?latitude=){lat}&longitude={lon}&hourly=temperature_2m,windspeed_10m,winddirection_10m,precipitation&timezone=auto"
-    m_url = f"[https://marine-api.open-meteo.com/v1/marine?latitude=](https://marine-api.open-meteo.com/v1/marine?latitude=){lat}&longitude={lon}&hourly=wave_height,sea_surface_temperature,sea_level_height_msl&timezone=auto"
-    
+    w_url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&hourly=temperature_2m,windspeed_10m,winddirection_10m,precipitation&timezone=auto"
+    m_url = f"https://marine-api.open-meteo.com/v1/marine?latitude={lat}&longitude={lon}&hourly=wave_height,sea_surface_temperature,sea_level_height_msl&timezone=auto"
+
     st.markdown(
         f"""
         <div style="text-align: right; font-size: 0.8rem; color: gray; margin-top: -10px;">
@@ -2671,10 +2674,10 @@ def main():
         unsafe_allow_html=True
     )
     
-    # --- フッター：免責事項の表示 ---
+    # --- フッター：免責事項 ---
     st.markdown("---")
     st.caption(lang_dict["DISCLAIMER"])
-    
+
     # URLのホスト名に "-beta-" が含まれているか判定
     host_name = st.context.headers.get("host", "").lower()
     if "-beta-" in host_name:
@@ -2685,8 +2688,9 @@ def main():
     
     if st.session_state.get("is_dev_mode"):
         st.divider()
-        st.write("Debug: Session State", st.session_state)     
+        st.write("Debug: Session State", st.session_state)
         
 if __name__ == "__main__":
     main()
+    
     
