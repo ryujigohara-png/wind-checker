@@ -2623,7 +2623,7 @@ def get_local_now_by_coords(lat, lon):
     
     
 # ======================================================================================
-# 100. メイン処理 (重複エラー回避・後方書き換え対応版)
+# 100. メイン処理 (再構築版・スクロール対応)
 # ======================================================================================
 def main():
     import os
@@ -2631,6 +2631,7 @@ def main():
     
     # --- 0. アプリ初期化 ---
     initialize_app()
+    # localStorageから設定（座標や前回の時差）を復元
     sync_all_settings()
 
     if 'lang' not in st.session_state:
@@ -2639,19 +2640,22 @@ def main():
     translations = get_language_dict()
     lang_dict = translations[st.session_state.lang]
 
-    # 最初は既存の（あるいはデフォルトの）時差で時刻を取得
+    # --- 1. 現地時刻の取得 ---
+    # sync_all_settingsで復元された時差、または get_local_now_by_coords で取得した時差を使用
     now_local = get_local_now_by_coords(st.session_state.lat, st.session_state.lon)
     
-    # --- 1. 状態の初期化 ---
+    # --- 2. 状態の初期化 ---
     if "mode" in st.query_params and st.query_params["mode"] == "dev":
         st.session_state.is_dev_mode = True
     else:
         st.session_state.is_dev_mode = False
     
+    # 初回起動（リロード）判定
     is_reload = 'needs_graph_update' not in st.session_state
     if is_reload:
         st.session_state.needs_graph_update = True
 
+    # 30分判定用の基準
     if 'last_update_time' not in st.session_state:
         st.session_state.last_update_time = now_local
     
@@ -2669,48 +2673,39 @@ def main():
     else:
         st.title(lang_dict["⛵Pin_Weather!"])            
          
-    # --- 2. 更新判定ロジック ---
+    # --- 3. 更新判定ロジック ---
     location_changed = (abs(st.session_state.lat - st.session_state.last_update_lat) > 0.0001 or 
                         abs(st.session_state.lon - st.session_state.last_update_lon) > 0.0001)
     
     time_elapsed = now_local - st.session_state.last_update_time
     time_over = time_elapsed >= timedelta(minutes=30)
     
-    if is_reload or location_changed or time_over:
-        st.session_state.needs_graph_update = True
-        st.session_state.last_update_time = now_local
+    # 描画が必要な条件の判定
+    must_update = is_reload or location_changed or time_over
 
-    # --- 3. コントロールパネルの描画（1回目） ---
-    panel_placeholder = st.empty()
-    with panel_placeholder:
-        # 1回目の描画では通常のキー（またはキーなし）で描画
-        render_compact_control_panel(st.session_state.last_basho)
+    # --- 4. コントロールパネルの描画 ---
+    # ここでは1回だけ呼び出す（重複エラーを回避）
+    render_compact_control_panel(st.session_state.last_basho)
     
-    # --- 4. グラフエリアの描画 ---
-    # ここでAPI取得が行われ、正確な現地時差が確定する
+    # --- 5. グラフエリアの描画 ---
+    # ここでAPIが走り、正しい時差（st.session_state.utc_offset_hours）が確定する
     render_graph_area_module(danger_v, sel_dirs, design_params, now_local)
     
-    # --- 5. コントロールパネルの「書き換え」 ---
-    # グラフ描画後の最新の時差を適用
-    current_offset = st.session_state.get("utc_offset_hours", 9.0)
-    now_final = datetime.now(timezone(timedelta(hours=current_offset)))
-    
-    # 重複エラーを避けるため、プレースホルダをクリアした上で、
-    # 2回目の描画であることを引数等で伝える（サブルーチン側でのkey重複を避けるため）
-    panel_placeholder.empty()
-    with panel_placeholder:
-        # ここで st.rerun() を使うのが最も安全ですが、UIのチラつきを抑えるために
-        # API確定後の情報を反映した2回目の描画を行います。
-        # ※もし selectbox に固定の key を指定している場合は、ここで key="second" 等に変える必要があります。
-        # エラーが続く場合は st.rerun() を推奨します。
-        if is_reload or location_changed:
-             st.rerun()
-        else:
-             render_compact_control_panel(st.session_state.last_basho)
+    # --- 6. 書き換えのための再実行制御 ---
+    # グラフ描画（API取得）によって、もし時差情報が更新されていたら、
+    # 正しい時刻でボタンを出し直すために1回だけ rerun する
+    if must_update:
+        # 描画フラグをリセットし、API取得後の正確な時差で再描画
+        st.session_state.needs_graph_update = False
+        st.session_state.last_update_time = now_local
+        st.session_state.last_update_lat = st.session_state.lat
+        st.session_state.last_update_lon = st.session_state.lon
+        st.rerun()
 
-    # --- 6. 残りの描画 ---
+    # --- 7. 残りの描画 ---
     render_footer_info(danger_v)
     
+    # APIソースリンク
     lat, lon = st.session_state.lat, st.session_state.lon
     w_url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&hourly=temperature_2m,windspeed_10m,winddirection_10m,precipitation&timezone=auto"
     m_url = f"https://marine-api.open-meteo.com/v1/marine?latitude={lat}&longitude={lon}&hourly=wave_height,sea_surface_temperature,sea_level_height_msl&timezone=auto"
@@ -2736,9 +2731,8 @@ def main():
     if st.session_state.get("is_dev_mode"):
         st.divider()
         st.write("Debug: Session State", st.session_state)
-        
+
 if __name__ == "__main__":
     main()
-    
     
     
