@@ -2602,7 +2602,7 @@ def get_local_now_by_coords(lat, lon):
     
     # Open-Meteoの軽量なエンドポイントを使用して時差(utc_offset_seconds)のみを取得
     # forecast_days=0 とすることでデータ取得を最小限にし、レスポンスを高速化
-    url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&timezone=auto&forecast_days=0"
+    url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&timezone=auto&forecast_days=1"
     
     try:
         res = requests.get(url, timeout=3).json()
