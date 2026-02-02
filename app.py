@@ -2572,7 +2572,11 @@ def main():
     translations = get_language_dict()
     lang_dict = translations[st.session_state.lang]
     
-    # --- 1. 状態の初期化 ---
+    # --- 1. 【修正箇所①】時刻の丸め処理 (10分単位) を先に計算し、初期値に使えるようにする ---
+    now_raw = datetime.now(timezone(timedelta(hours=9)))
+    now_rounded = now_raw.replace(minute=(now_raw.minute // 10) * 10, second=0, microsecond=0)
+    
+    # --- 2. 状態の初期化 ---
     if "mode" in st.query_params and st.query_params["mode"] == "dev":
         st.session_state.is_dev_mode = True
     else:
@@ -2585,8 +2589,8 @@ def main():
     if 'needs_graph_update' not in st.session_state:
         st.session_state.needs_graph_update = True
     
-    # 記録用変数の初期化
-    if 'last_graph_time' not in st.session_state: st.session_state.last_graph_time = datetime.min
+    # --- 【修正箇所②】記録用変数の初期値を datetime.min から now_rounded に変更 ---
+    if 'last_graph_time' not in st.session_state: st.session_state.last_graph_time = now_rounded
     if 'last_update_lat' not in st.session_state: st.session_state.last_update_lat = 0.0
     if 'last_update_lon' not in st.session_state: st.session_state.last_update_lon = 0.0
     
@@ -2602,22 +2606,18 @@ def main():
     else:
         st.title(lang_dict["⛵Pin_Weather!"])            
          
-    # --- 2. 時刻の丸め処理 (10分単位) と 更新判定 ---
-    now_raw = datetime.now(timezone(timedelta(hours=9)))
-    now_rounded = now_raw.replace(minute=(now_raw.minute // 10) * 10, second=0, microsecond=0)
-    
-    # 更新判定ロジック
+    # --- 3. 更新判定ロジック ---
     location_changed = (abs(st.session_state.lat - st.session_state.last_update_lat) > 0.0001 or 
                         abs(st.session_state.lon - st.session_state.last_update_lon) > 0.0001)
     
     # 前回の丸め時刻との比較
-    last_t = st.session_state.last_graph_time.replace(tzinfo=now_rounded.tzinfo) if st.session_state.last_graph_time != datetime.min else datetime.min.replace(tzinfo=now_rounded.tzinfo)
+    last_t = st.session_state.last_graph_time.replace(tzinfo=now_rounded.tzinfo)
     time_over = (now_rounded - last_t) >= timedelta(minutes=30)
     
     if location_changed or time_over:
         st.session_state.needs_graph_update = True
     
-    # --- 3. 各モジュールの描画 ---
+    # --- 4. 各モジュールの描画 ---
     render_compact_control_panel(st.session_state.last_basho)
     # 引数には丸めた時刻を渡す
     render_graph_area_module(danger_v, sel_dirs, design_params, now_rounded)
@@ -2647,7 +2647,7 @@ def main():
     
     # URLのホスト名に "-beta-" が含まれているか判定
     host_name = st.context.headers.get("host", "").lower()
-    if "-beta-" in host_name:        # 右寄せで薄く表示し、全体のデザインを邪魔しないように配置
+    if "-beta-" in host_name:
         st.markdown(
             f'<div style="text-align: left; color: gray; font-size: 0.8em;">- Beta Version -</div>', 
             unsafe_allow_html=True
