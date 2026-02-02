@@ -2639,7 +2639,7 @@ def main():
     translations = get_language_dict()
     lang_dict = translations[st.session_state.lang]
 
-    # 暫定の現在時刻（同期された座標に基づくが、まだAPI確定前）
+    # 最初は既存の（あるいはデフォルトの）時差で時刻を持っておく
     now_local = get_local_now_by_coords(st.session_state.lat, st.session_state.lon)
     
     # --- 1. 状態の初期化 ---
@@ -2680,24 +2680,29 @@ def main():
         st.session_state.needs_graph_update = True
         st.session_state.last_update_time = now_local
 
-    # --- 3. プレースホルダの確保 (書き換えの準備) ---
-    # ボタンを表示する場所を予約しておく
-    control_panel_placeholder = st.empty()
+    # --- 3. コントロールパネル用プレースホルダの確保 ---
+    # ここに空の領域を確保し、後で「書き換え」ができるようにする
+    panel_placeholder = st.empty()
 
+    # 一旦、現在の暫定時刻でボタンを表示しておく
+    with panel_placeholder:
+        render_compact_control_panel(st.session_state.last_basho)
+    
     # --- 4. グラフエリアの描画 ---
-    # ここでAPIが走り、内部で正確な時差が確定する
+    # この内部のAPI取得により、st.session_state.utc_offset_hours が正確に更新される
     render_graph_area_module(danger_v, sel_dirs, design_params, now_local)
     
-    # --- 5. コントロールパネルの描画（書き換え実行） ---
-    # グラフ描画が完了した後に実行されるため、APIで確定した「最新の現地時間」を反映できる
-    # 最新の時差で時刻を再計算
+    # --- 5. コントロールパネルの「書き換え」 ---
+    # グラフ描画が完了し、APIから最新の時差が確定した後に、
+    # 確保しておいた領域（panel_placeholder）を最新情報で上書きする。
     current_offset = st.session_state.get("utc_offset_hours", 9.0)
     now_final = datetime.now(timezone(timedelta(hours=current_offset)))
     
-    with control_panel_placeholder:
-        # 予約しておいた場所に、最新時刻のボタン一式を描画する
+    with panel_placeholder:
+        # 同じ場所（panel_placeholder）を最新の時刻で再描画する
+        # ※render_compact_control_panel内で now_final 等を参照するよう構成されていることが前提
         render_compact_control_panel(st.session_state.last_basho)
-    
+
     # --- 6. 残りの描画 ---
     render_footer_info(danger_v)
     
