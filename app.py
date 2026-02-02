@@ -2247,28 +2247,11 @@ def manage_favorites_dialog():
     # ダイアログの実行
     manage_favorites_dialog_content()
 
-# ======================================================================================
-# 93. 【main機能分離】②地図表示モジュール
-# ======================================================================================
-def render_map_module():
-    if st.button("🗺️地図", use_container_width=True):
-        show_location_map_dialog()
-        
-# ======================================================================================
-# 94. 【main機能分離】④グラフ更新・設定モジュール
-# ======================================================================================
-def render_update_control_module(basho):
-    """
-    現在地ボタンと、グラフ更新・時刻情報表示ボタンを1行に並べて表示する。
-    """
-    col1, col2 = st.columns([1, 1])
-    with col1:
-        handle_current_location_update_integrated()
-    with col2:
-        render_header_info(basho)
+
+
 
 # ==========================================================================================
-# 94_1. 現在地を取得し、状態を保存するサブルーチン
+# 93. 現在地を取得し、状態を保存するサブルーチン
 # ==========================================================================================
 def handle_current_location_update_integrated():
     """
@@ -2347,110 +2330,9 @@ def handle_current_location_update_integrated():
             cancel_label = lang_dict.get("BTN_CANCEL", "キャンセル")
             if st.button(cancel_label):
                 st.rerun()
+
 # ======================================================================================
-# 94_2. グラフ更新ボタンと日時情報を描画するサブルーチン
-# ======================================================================================
-def render_header_info(current_basho_name):
-    """
-    グラフ更新ボタンと日時情報を描画する。
-    表示内容および日時フォーマットを st.session_state.lang に基づき多言語化します。
-    """
-    import streamlit as st
-    from datetime import datetime, timedelta
-
-    # 辞書の取得
-    translations = get_language_dict()
-    lang_dict = translations[st.session_state.lang]
-
-    # 1. 描画フラグの確認とクリア
-    if st.session_state.get("needs_graph_update", True):
-        st.session_state.needs_graph_update = False
-        
-    # 基準となるブラウザ時刻
-    now_jst = st.session_state.get('now_jst', datetime.now())
-
-    try:
-        # 現地の時差情報を取得
-        df_tmp = fetch_weather_data(st.session_state.lat, st.session_state.lon, 1)
-        browser_offset = now_jst.utcoffset()
-        browser_offset_s = browser_offset.total_seconds() if browser_offset else 0
-        local_offset_s = df_tmp.attrs.get('local_offset_seconds', 0)
-        
-        # 計算：[ブラウザ時刻] - [ブラウザ時差] + [現地時差]
-        now_local = now_jst.replace(tzinfo=None) - timedelta(seconds=browser_offset_s) + timedelta(seconds=local_offset_s)
-        
-    except Exception:
-        now_local = now_jst.replace(tzinfo=None)
-
-    # --- 多言語対応：日時フォーマットとボタンラベル ---
-    # 辞書からフォーマットを取得（例: JPなら '%Y/%m/%d %H:%M:%S', ENなら '%m/%d/%Y %H:%M:%S'）
-    dt_format = lang_dict.get('DATETIME_FORMAT', '%Y/%m/%d %H:%M:%S')
-    date_time_str = now_local.strftime(dt_format)
-    
-    # 辞書から「更新」ラベルを取得
-    update_text = lang_dict.get('BTN_UPDATE', '更新')
-    update_label = f"🔄📊{update_text} ({date_time_str})"
-    
-    if st.button(update_label, use_container_width=True):
-        st.cache_data.clear()
-        st.session_state.needs_graph_update = True
-        st.rerun()
-        
-# ======================================================================================
-# 95. 【main機能分離】⑤グラフ描画エリアモジュール
-# ======================================================================================
-def render_graph_area_module(danger_v, sel_dirs, design_params, now_jst):
-    import streamlit as st
-    translations = get_language_dict()
-    lang_dict = translations[st.session_state.lang]
-
-    # --- 1. グラフ生成（辞書に基づいたスピナーを表示） ---
-    msg_gen = lang_dict.get("MSG_GEN_GRAPH", "グラフを生成中...")
-    with st.spinner(msg_gen):
-        # サブルーチン12を呼び出し
-        res = generate_high_res_graph(
-            st.session_state.lat, st.session_state.lon, danger_v, tuple(sel_dirs), design_params, now_jst
-        )
-    
-    if not res or res[0] is None: return
-    left_b64, right_b64, ratio_info, start_idx, df_graph = res
-    
-    # --- 2. パラメータ取得（CONFIGおよびsession_stateから） ---
-    dpi = design_params.get("graph_dpi", CONFIG.get("DPI", 200))
-    fig_h_px = int(design_params.get("height", CONFIG["GRAPH_HIGHT"]) * dpi)
-    total_w = int(design_params.get("width", CONFIG["GRAPH_WIDTH"]) * dpi)
-    
-    # ユーザーが特定した最適値 (116px, -185px) を使用
-    v_width = st.session_state.get("left_view_w", CONFIG.get("LEFT_VIEW_W", 116))
-    v_shift = st.session_state.get("left_shift", CONFIG.get("LEFT_SHIFT", -185))
-    
-    # 12番の生成画像の本来の幅（10%分）
-    orig_left_w = int(total_w * 0.10)
-    w_right_px = int(total_w * 0.90)
-    
-    # --- 3. アイコン・ラベルHTMLの取得 ---
-    header_h, body_h = generate_weather_icons_html(df_graph, ratio_info, w_right_px, start_idx)
-
-    # --- 4. HTML構築（確実にレンダリング） ---
-    html_str = (
-        f'<div style="display:flex; width:100%; background:white; border:1px solid #ddd; overflow:hidden;">'
-        f'  <div style="width:{v_width}px; min-width:{v_width}px; flex-shrink:0; overflow:hidden; border-right:1px solid #eee; z-index:10; background:white;">'
-        f'    <div style="width:{v_width}px; overflow:hidden;">{header_h}</div>'
-        f'    <img src="data:image/png;base64,{left_b64}" style="width:{orig_left_w}px; height:{fig_h_px}px; max-width:none; margin-left:{v_shift}px; display:block;">'
-        f'  </div>'
-        f'  <div style="flex-grow:1; overflow-x:auto; background:white;">'
-        f'    <div style="width:{w_right_px}px; position:relative;">'
-        f'      {body_h}'
-        f'      <img src="data:image/png;base64,{right_b64}" style="width:100%; height:{fig_h_px}px; display:block;">'
-        f'    </div>'
-        f'  </div>'
-        f'</div>'
-    )
-
-    st.markdown(html_str, unsafe_allow_html=True)
-    
-# ======================================================================================
-# 96. 【修正版】操作コントロールパネル
+# 95. 【修正版】操作コントロールパネル
 # ======================================================================================
 def render_compact_control_panel(basho_name):
     """
@@ -2575,9 +2457,62 @@ def render_compact_control_panel(basho_name):
     if st.session_state.get("waiting_loc"):
         handle_current_location_update_integrated()
         
+# ======================================================================================
+# 96. 【main機能分離】⑤グラフ描画エリアモジュール
+# ======================================================================================
+def render_graph_area_module(danger_v, sel_dirs, design_params, now_jst):
+    import streamlit as st
+    translations = get_language_dict()
+    lang_dict = translations[st.session_state.lang]
+
+    # --- 1. グラフ生成（辞書に基づいたスピナーを表示） ---
+    msg_gen = lang_dict.get("MSG_GEN_GRAPH", "グラフを生成中...")
+    with st.spinner(msg_gen):
+        # サブルーチン12を呼び出し
+        res = generate_high_res_graph(
+            st.session_state.lat, st.session_state.lon, danger_v, tuple(sel_dirs), design_params, now_jst
+        )
+    
+    if not res or res[0] is None: return
+    left_b64, right_b64, ratio_info, start_idx, df_graph = res
+    
+    # --- 2. パラメータ取得（CONFIGおよびsession_stateから） ---
+    dpi = design_params.get("graph_dpi", CONFIG.get("DPI", 200))
+    fig_h_px = int(design_params.get("height", CONFIG["GRAPH_HIGHT"]) * dpi)
+    total_w = int(design_params.get("width", CONFIG["GRAPH_WIDTH"]) * dpi)
+    
+    # ユーザーが特定した最適値 (116px, -185px) を使用
+    v_width = st.session_state.get("left_view_w", CONFIG.get("LEFT_VIEW_W", 116))
+    v_shift = st.session_state.get("left_shift", CONFIG.get("LEFT_SHIFT", -185))
+    
+    # 12番の生成画像の本来の幅（10%分）
+    orig_left_w = int(total_w * 0.10)
+    w_right_px = int(total_w * 0.90)
+    
+    # --- 3. アイコン・ラベルHTMLの取得 ---
+    header_h, body_h = generate_weather_icons_html(df_graph, ratio_info, w_right_px, start_idx)
+
+    # --- 4. HTML構築（確実にレンダリング） ---
+    html_str = (
+        f'<div style="display:flex; width:100%; background:white; border:1px solid #ddd; overflow:hidden;">'
+        f'  <div style="width:{v_width}px; min-width:{v_width}px; flex-shrink:0; overflow:hidden; border-right:1px solid #eee; z-index:10; background:white;">'
+        f'    <div style="width:{v_width}px; overflow:hidden;">{header_h}</div>'
+        f'    <img src="data:image/png;base64,{left_b64}" style="width:{orig_left_w}px; height:{fig_h_px}px; max-width:none; margin-left:{v_shift}px; display:block;">'
+        f'  </div>'
+        f'  <div style="flex-grow:1; overflow-x:auto; background:white;">'
+        f'    <div style="width:{w_right_px}px; position:relative;">'
+        f'      {body_h}'
+        f'      <img src="data:image/png;base64,{right_b64}" style="width:100%; height:{fig_h_px}px; display:block;">'
+        f'    </div>'
+        f'  </div>'
+        f'</div>'
+    )
+
+    st.markdown(html_str, unsafe_allow_html=True)
+    
         
 # ======================================================================================
-# 99. フッター情報表示 (凡例およびクレジット表記)
+# 97. フッター情報表示 (凡例およびクレジット表記)
 # ======================================================================================
 def render_footer_info(danger_v):
     """
