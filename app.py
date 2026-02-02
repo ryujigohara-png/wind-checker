@@ -2629,11 +2629,8 @@ def main():
     import os
     from datetime import datetime, timezone, timedelta
     
-    # --- 0. アプリ初期化 (最優先) ---
+    # --- 0. アプリ初期化 ---
     initialize_app()
-
-    # --- 1. 設定の同期 (localStorageからの復元) ---
-    # ここで st.stop() が入る可能性があるため、この後に時刻確定を配置する
     sync_all_settings()
 
     if 'lang' not in st.session_state:
@@ -2642,68 +2639,68 @@ def main():
     translations = get_language_dict()
     lang_dict = translations[st.session_state.lang]
 
-    # --- 2. 座標に基づく現地時刻の確定 (ボタン表示・グラフ共通の基準) ---
-    # sync_all_settingsで復元された直後の座標(lat/lon)を使い、
-    # グラフ描画APIを叩く前に「時差」と「現在時刻」を完全に特定する。
+    # 暫定の現在時刻（同期された座標に基づくが、まだAPI確定前）
     now_local = get_local_now_by_coords(st.session_state.lat, st.session_state.lon)
     
-    # --- 3. 状態の初期化 ---
+    # --- 1. 状態の初期化 ---
     if "mode" in st.query_params and st.query_params["mode"] == "dev":
         st.session_state.is_dev_mode = True
     else:
         st.session_state.is_dev_mode = False
     
-    # リロード判定：セッション変数が存在しない場合にのみTrue
     is_reload = 'needs_graph_update' not in st.session_state
     if is_reload:
         st.session_state.needs_graph_update = True
 
-    # 30分判定用の最終更新時刻を保持（現地時間で初期化）
     if 'last_update_time' not in st.session_state:
         st.session_state.last_update_time = now_local
     
     if 'last_update_lat' not in st.session_state: st.session_state.last_update_lat = 0.0
     if 'last_update_lon' not in st.session_state: st.session_state.last_update_lon = 0.0
 
-    # スタイルとフォントの適用
     render_custom_css()
     setup_font(st.session_state.get("base_font_size", CONFIG["GRAPH_FONT_SIZE"]))
     
-    # サイドバー（ここでdanger_vなどが確定）
     danger_v, sel_dirs, design_params = show_sidebar_controls()
     
-    # ヘッダーロゴまたはタイトル表示
     icon_path = "pin_weather_03.png"
     if os.path.exists(icon_path):
         st.image(icon_path, width=800) 
     else:
         st.title(lang_dict["⛵Pin_Weather!"])            
          
-    # --- 4. 更新判定ロジック ---
-    # 地点変更の有無を確認（微小な差は無視）
+    # --- 2. 更新判定ロジック ---
     location_changed = (abs(st.session_state.lat - st.session_state.last_update_lat) > 0.0001 or 
                         abs(st.session_state.lon - st.session_state.last_update_lon) > 0.0001)
     
-    # 前回の更新から30分以上経過しているかを確認
     time_elapsed = now_local - st.session_state.last_update_time
     time_over = time_elapsed >= timedelta(minutes=30)
     
-    # 【鉄則】リロード時、地点変更時、30分経過時は必ずグラフを再描画する
     if is_reload or location_changed or time_over:
         st.session_state.needs_graph_update = True
         st.session_state.last_update_time = now_local
 
-    # --- 5. 各モジュールの描画 ---
-    # 確定した「now_local」を渡すことで、ボタン横の時刻も現地時間に固定される
-    render_compact_control_panel(st.session_state.last_basho)
-    
-    # グラフエリアの描画
+    # --- 3. プレースホルダの確保 (書き換えの準備) ---
+    # ボタンを表示する場所を予約しておく
+    control_panel_placeholder = st.empty()
+
+    # --- 4. グラフエリアの描画 ---
+    # ここでAPIが走り、内部で正確な時差が確定する
     render_graph_area_module(danger_v, sel_dirs, design_params, now_local)
     
-    # フッター等の付随情報
+    # --- 5. コントロールパネルの描画（書き換え実行） ---
+    # グラフ描画が完了した後に実行されるため、APIで確定した「最新の現地時間」を反映できる
+    # 最新の時差で時刻を再計算
+    current_offset = st.session_state.get("utc_offset_hours", 9.0)
+    now_final = datetime.now(timezone(timedelta(hours=current_offset)))
+    
+    with control_panel_placeholder:
+        # 予約しておいた場所に、最新時刻のボタン一式を描画する
+        render_compact_control_panel(st.session_state.last_basho)
+    
+    # --- 6. 残りの描画 ---
     render_footer_info(danger_v)
     
-    # APIソースリンクの表示
     lat, lon = st.session_state.lat, st.session_state.lon
     w_url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&hourly=temperature_2m,windspeed_10m,winddirection_10m,precipitation&timezone=auto"
     m_url = f"https://marine-api.open-meteo.com/v1/marine?latitude={lat}&longitude={lon}&hourly=wave_height,sea_surface_temperature,sea_level_height_msl&timezone=auto"
@@ -2722,12 +2719,10 @@ def main():
     st.markdown("---")
     st.caption(lang_dict["DISCLAIMER"])
 
-    # ベータ版表示
     host_name = st.context.headers.get("host", "").lower()
     if "-beta-" in host_name:
         st.markdown(f'<div style="text-align: left; color: gray; font-size: 0.8em;">- Beta Version -</div>', unsafe_allow_html=True)
     
-    # デバッグ情報
     if st.session_state.get("is_dev_mode"):
         st.divider()
         st.write("Debug: Session State", st.session_state)
