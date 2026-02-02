@@ -2603,10 +2603,12 @@ def main():
     lang_dict = translations[st.session_state.lang]
 
     # --- 1. 時刻の丸め処理 (10分単位) ---
-    # 世界中どこでも 30 分判定をミスしないよう、基準を UTC に統一します
+    # 30分経過の判定用にUTCを取得しますが、描画には「現地時間」を使用します
     from datetime import datetime, timezone, timedelta
-    now_raw = datetime.now(timezone.utc)
-    # 比較・表示用に10分単位で丸める
+    now_utc = datetime.now(timezone.utc)
+    
+    # 【修正】以前の仕様通り、システムのローカル時刻（ブラウザ/サーバーの現地時間）を取得
+    now_raw = datetime.now() 
     now_rounded = now_raw.replace(minute=(now_raw.minute // 10) * 10, second=0, microsecond=0)
 
     # --- 2. 状態の初期化 ---
@@ -2622,9 +2624,10 @@ def main():
     if 'needs_graph_update' not in st.session_state:
         st.session_state.needs_graph_update = True
 
-    # 初回起動時に現在時刻(UTC)を記録
-    if 'last_graph_time' not in st.session_state: 
-        st.session_state.last_graph_time = now_rounded
+    # 30分判定用の記録（ここだけはタイムゾーンに左右されないUTCで記録し、TypeErrorを防ぐ）
+    if 'last_graph_time_utc' not in st.session_state: 
+        st.session_state.last_graph_time_utc = now_utc
+    
     if 'last_update_lat' not in st.session_state: st.session_state.last_update_lat = 0.0
     if 'last_update_lon' not in st.session_state: st.session_state.last_update_lon = 0.0
 
@@ -2644,17 +2647,18 @@ def main():
     location_changed = (abs(st.session_state.lat - st.session_state.last_update_lat) > 0.0001 or 
                         abs(st.session_state.lon - st.session_state.last_update_lon) > 0.0001)
     
-    # 30分経過判定（UTC同士の正確な比較）
-    time_over = (now_rounded - st.session_state.last_graph_time) >= timedelta(minutes=30)
+    # 30分経過判定（内部的な判定のみUTCで実施し、確実性を担保）
+    time_over = (now_utc - st.session_state.last_graph_time_utc) >= timedelta(minutes=30)
     
     if location_changed or time_over:
         st.session_state.needs_graph_update = True
+        # 更新時にUTC時刻を保存
+        st.session_state.last_graph_time_utc = now_utc
 
     # --- 4. 各モジュールの描画 ---
     render_compact_control_panel(st.session_state.last_basho)
     
-    # 描画用サブルーチンへ現在時刻を渡す
-    # (内部サブルーチン 12 で fetch_weather_data(lat, lon, 9) が呼ばれ、195時間分が描画されます)
+    # 【重要】描画モジュールには、以前の仕様通り「現地時間（now_rounded）」を渡します
     render_graph_area_module(danger_v, sel_dirs, design_params, now_rounded)
     
     # クレジット表示
@@ -2694,5 +2698,6 @@ def main():
         
 if __name__ == "__main__":
     main()
+    
     
     
