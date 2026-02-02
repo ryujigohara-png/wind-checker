@@ -2680,27 +2680,26 @@ def main():
         st.session_state.needs_graph_update = True
         st.session_state.last_update_time = now_local
 
-    # --- 3. コントロールパネル用プレースホルダの確保 ---
-    # ここに空の領域を確保し、後で「書き換え」ができるようにする
+    # --- 3. コントロールパネルの描画（1回目：暫定時刻） ---
+    # プレースホルダを確保し、その中でボタン一式を描画する
     panel_placeholder = st.empty()
-
-    # 一旦、現在の暫定時刻でボタンを表示しておく
     with panel_placeholder:
         render_compact_control_panel(st.session_state.last_basho)
     
     # --- 4. グラフエリアの描画 ---
-    # この内部のAPI取得により、st.session_state.utc_offset_hours が正確に更新される
+    # ここでAPIから最新の時差(st.session_state.utc_offset_hours)が返ってくる
     render_graph_area_module(danger_v, sel_dirs, design_params, now_local)
     
     # --- 5. コントロールパネルの「書き換え」 ---
-    # グラフ描画が完了し、APIから最新の時差が確定した後に、
-    # 確保しておいた領域（panel_placeholder）を最新情報で上書きする。
+    # グラフ描画後、確定した最新の時差を反映させる
     current_offset = st.session_state.get("utc_offset_hours", 9.0)
     now_final = datetime.now(timezone(timedelta(hours=current_offset)))
     
+    # 【重要】DuplicateElementIdエラーを防ぐため、一度プレースホルダを空にする
+    panel_placeholder.empty()
+    
     with panel_placeholder:
-        # 同じ場所（panel_placeholder）を最新の時刻で再描画する
-        # ※render_compact_control_panel内で now_final 等を参照するよう構成されていることが前提
+        # 完全に消去した後に、最新時刻で再描画する
         render_compact_control_panel(st.session_state.last_basho)
 
     # --- 6. 残りの描画 ---
