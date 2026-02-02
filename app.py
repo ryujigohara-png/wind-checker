@@ -173,7 +173,7 @@ def get_language_dict():
             "「My Spots 編集」から不要な地点を削除してください。": "「My Spots 編集」から不要な地点を削除してください。",
             "この地点を My Spots に保存します。": "この地点を My Spots に保存します。",
             "現在": "現在",
-            "My Spots の名称確認", "My Spots の名称確認"
+            "My Spots の名称確認": "My Spots の名称確認",
             "登録名（修正可）": "登録名（修正可）",
             "OK（保存実行）": "OK (保存実行)",
             "登録されている地点はありません。": "登録されている地点はありません。",
@@ -292,7 +292,7 @@ def get_language_dict():
             "「My Spots 編集」から不要な地点を削除してください。": "Please delete unnecessary spots from 'My Spots Editor'.",
             "この地点を My Spots に保存します。": "Save this location to My Spots.",
             "現在": "Current",
-            "My Spots の名称確認", "Confirm Favorite Name"
+            "My Spots の名称確認": "Confirm Favorite Name",
             "登録名（修正可）": "Registration Name",
             "OK（保存実行）": "OK (Save)",
             "登録されている地点はありません。": "No locations registered.",
