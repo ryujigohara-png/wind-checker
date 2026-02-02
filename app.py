@@ -2590,18 +2590,20 @@ def render_footer_info(danger_v):
 # 100. メイン処理 (再構築版・スクロール対応)
 # ======================================================================================
 def main():
-    import os
+    import os 
     # --- 0. アプリ初期化 (最優先で実行) ---
     initialize_app()
-
+    
     if 'lang' not in st.session_state:
         st.session_state.lang = "ja"
     
     translations = get_language_dict()
     lang_dict = translations[st.session_state.lang]
     
-    # --- 1. 【修正箇所①】時刻の丸め処理 (10分単位) を先に計算し、初期値に使えるようにする ---
-    now_raw = datetime.now(timezone(timedelta(hours=9)))
+    # --- 1. 時刻の丸め処理 (10分単位) ---
+    # 判定の確実性を期すため、タイムゾーンを含まない(naive)形式で計算します
+    from datetime import datetime, timedelta
+    now_raw = datetime.now() # システム時刻(JST想定)
     now_rounded = now_raw.replace(minute=(now_raw.minute // 10) * 10, second=0, microsecond=0)
     
     # --- 2. 状態の初期化 ---
@@ -2617,7 +2619,7 @@ def main():
     if 'needs_graph_update' not in st.session_state:
         st.session_state.needs_graph_update = True
     
-    # --- 【修正箇所②】記録用変数の初期値を datetime.min から now_rounded に変更 ---
+    # 記録用変数の初期化（1/01 00:00 防止のため now_rounded を使用）
     if 'last_graph_time' not in st.session_state: st.session_state.last_graph_time = now_rounded
     if 'last_update_lat' not in st.session_state: st.session_state.last_update_lat = 0.0
     if 'last_update_lon' not in st.session_state: st.session_state.last_update_lon = 0.0
@@ -2638,9 +2640,9 @@ def main():
     location_changed = (abs(st.session_state.lat - st.session_state.last_update_lat) > 0.0001 or 
                         abs(st.session_state.lon - st.session_state.last_update_lon) > 0.0001)
     
-    # 前回の丸め時刻との比較
-    last_t = st.session_state.last_graph_time.replace(tzinfo=now_rounded.tzinfo)
-    time_over = (now_rounded - last_t) >= timedelta(minutes=30)
+    # 前回の丸め時刻（naive）との単純比較。30分以上経過でフラグを立てる
+    time_diff = now_rounded - st.session_state.last_graph_time
+    time_over = time_diff >= timedelta(minutes=30)
     
     if location_changed or time_over:
         st.session_state.needs_graph_update = True
@@ -2683,7 +2685,7 @@ def main():
     
     if st.session_state.get("is_dev_mode"):
         st.divider()
-        st.write("Debug: Session State", st.session_state)
+        st.write("Debug: Session State", st.session_state)     
         
 if __name__ == "__main__":
     main()
