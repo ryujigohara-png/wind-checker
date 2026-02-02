@@ -27,7 +27,7 @@ Pin_Weather! 機能仕様書 2026改訂版
 　• 天気アイコン: グラフの時間軸に合わせ、☀️や☔などの絵文字アイコンをHTMLレイヤーで正確に重ね合わせます [17-19]。
 3. 地点管理・操作仕様
 　• コンパクト・操作パネル: スマホ閲覧に最適化されたUIで、地点選択、地図、現在地取得、更新を3行に集約しています [17, 20]。
-　• My Spot（お気に入り）管理:
+　• My Spots（お気に入り）管理:
     ◦ スター（⭐）登録: 現在地を名称指定して最大10件まで保存可能 [17, 21, 22]。
     ◦ エディタ機能: 名称変更、並べ替え、削除が可能な専用ダイアログを搭載 [23, 24]。
 　• 高度な位置特定: GPSによる現在地取得、Nominatim APIによる詳細な地名の特定、Folium地図でのピン指定に対応しています [17, 25-27]。
@@ -152,8 +152,8 @@ def get_language_dict():
         "ja": {
             "表示設定": "表示設定",
             "⛵Pin_Weather!": "⛵Pin_Weather!",
-            "LABEL_FAV_ADD": "⭐ My Spot 追加",
-            "LABEL_FAV_OK": "✅ My Spot 登録済",
+            "LABEL_FAV_ADD": "⭐ My Spots 追加",
+            "LABEL_FAV_OK": "✅ My Spots 登録済",
             "FAV_PREFIX": "📍 ",
             "MAP_SELECT_LABEL": "地図で指定",
             "BTN_CURRENT_LOC": "🔄📍現在地　　　　　　　　　　",
@@ -168,7 +168,21 @@ def get_language_dict():
             "HELP_FAV_SAVE": "この場所をお気に入りに登録",
             "MSG_GEN_GRAPH": "グラフを生成中...",
             "⚙ 詳細設定": "⚙ 詳細設定",
-            "📍 My Spot 編集": "📍 My Spot 編集",
+            "📍 My Spots 編集": "📍 My Spots 編集",
+            "🚨 My Spots の登録制限（10件）に達しています。": "🚨 My Spots の登録制限（10件）に達しています。",
+            "「My Spots 編集」から不要な地点を削除してください。": "「My Spots 編集」から不要な地点を削除してください。",
+            "この地点を My Spots に保存します。": "この地点を My Spots に保存します。",
+            "現在": "現在",
+            "登録名（修正可）": "R録名（修正可）",
+            "OK（保存実行）": "OK (保存実行)",
+            "登録されている地点はありません。": "登録されている地点はありません。",
+            "登録済": "登録済",
+            "名前を変更": "名前を変更",
+            "保存": "保存",
+            "戻る": "戻る",
+            "削除しますか？": "削除しますか？",
+            "削除": "削除",
+            "中止": "中止",
             "グラフ表示設定の詳細": "グラフ表示設定の詳細",
             "風向・風速グラフ表示": "風向・風速グラフ表示",
             "気温グラフ表示": "気温グラフ表示",
@@ -256,8 +270,8 @@ def get_language_dict():
         "en": {
             "表示設定": "Display Settings",
             "⛵Pin_Weather!": "⛵Pin_Weather!",
-            "LABEL_FAV_ADD": "⭐ Add My Spot",
-            "LABEL_FAV_OK": "✅ My Spot Registered",
+            "LABEL_FAV_ADD": "⭐ Add My Spots",
+            "LABEL_FAV_OK": "✅ My Spots Registered",
             "FAV_PREFIX": "📍 ",
             "MAP_SELECT_LABEL": "Select on Map",
             "BTN_CURRENT_LOC": "🔄📍GPS          ",
@@ -272,7 +286,21 @@ def get_language_dict():
             "HELP_FAV_SAVE": "Add to Favorites",
             "MSG_GEN_GRAPH": "Generating graphs...",
             "⚙ 詳細設定": "⚙ Advanced Settings",
-            "📍 My Spot 編集": "📍 Edit My Spot",
+            "📍 My Spots 編集": "📍 Edit My Spots",
+            "🚨 My Spots の登録制限（10件）に達しています。": "🚨 My Spots limit (10 items) reached.",
+            "「My Spots 編集」から不要な地点を削除してください。": "Please delete unnecessary spots from 'My Spots Editor'.",
+            "この地点を My Spots に保存します。": "Save this location to My Spots.",
+            "現在": "Current",
+            "登録名（修正可）": "Registration Name",
+            "OK（保存実行）": "OK (Save)",
+            "登録されている地点はありません。": "No locations registered.",
+            "登録済": "Registered",
+            "名前を変更": "Edit Name",
+            "保存": "Save",
+            "戻る": "Back",
+            "削除しますか？": "Delete this?",
+            "削除": "Delete",
+            "中止": "Cancel",
             "グラフ表示設定の詳細": "Detailed Display Settings",
             "風向・風速グラフ表示": "Show Wind Speed/Dir",
             "気温グラフ表示": "Show Temperature",
@@ -1412,7 +1440,7 @@ def show_sidebar_controls():
     if st.sidebar.button(lang_dict["⚙ 詳細設定"], use_container_width=True):
         show_settings_dialog()
 
-    if st.sidebar.button(lang_dict["📍 My Spot 編集"], use_container_width=True):
+    if st.sidebar.button(lang_dict["📍 My Spots 編集"], use_container_width=True):
         manage_favorites_dialog()
 
     # --- 今回追加：言語設定ダイアログの呼び出しボタン ---
@@ -2069,12 +2097,12 @@ def show_favorite_registration_dialog(default_name, lat, lon):
         favorites = st.session_state.get("user_locations", [])
         if len(favorites) >= 10:
             st.error(lang_dict.get("🚨 お気に入りの登録制限（10件）に達しています。", "🚨 Favorite limit (10 items) reached."))
-            st.write(lang_dict.get("「My Spot 編集」から不要な地点を削除してください。", "Please delete unnecessary spots from 'My Spot Editor'."))
+            st.write(lang_dict.get("「My Spots 編集」から不要な地点を削除してください。", "Please delete unnecessary spots from 'My Spots Editor'."))
             if st.button(lang_dict.get("閉じる", "Close"), use_container_width=True):
                 st.rerun()
             return
 
-        msg_body = lang_dict.get("この地点を「お気に入り」に保存します。", "Save this location to favorites.")
+        msg_body = lang_dict.get("この地点を My Spots に保存します。", "Save this location to My Spots.")
         st.write(f"{msg_body} ({lang_dict.get('現在', 'Current')}: {len(favorites)}/10)")
         
         # 📍をデフォルトで付与 (内部処理は維持)
@@ -2121,14 +2149,14 @@ def show_favorite_registration_dialog(default_name, lat, lon):
                 st.rerun()
                 
         with col2:
-            if st.button(lang_dict.get("キャンセルして戻る", "Cancel"), use_container_width=True):
+            if st.button(lang_dict.get("キャンセル", "Cancel"), use_container_width=True):
                 st.rerun()
 
     # ダイアログの実行
     favorite_registration_dialog_content()
     
 # ======================================================================================
-# 92_4. My Spot（お気に入り）管理ダイアログ（2段構成・多言語対応）
+# 92_4. My Spots（お気に入り）管理ダイアログ（2段構成・多言語対応）
 # ======================================================================================
 def manage_favorites_dialog():
     """
@@ -2140,7 +2168,7 @@ def manage_favorites_dialog():
     translations = get_language_dict()
     lang_dict = translations[st.session_state.lang]
 
-    @st.dialog(lang_dict.get("My Spot（お気に入り）の編集", "My Spot Editor"), dismissible=False)
+    @st.dialog(lang_dict.get("📍 My Spots 編集", "📍 My Spots Editor"), dismissible=False)
     def manage_favorites_dialog_content():
         # CSSは維持
         st.markdown("""
@@ -2166,7 +2194,7 @@ def manage_favorites_dialog():
             if not current_favs:
                 st.info(lang_dict.get("登録されている地点はありません。", "No locations registered."))
             else:
-                st.caption(f"{lang_dict.get('登録', 'Registered')}: {len(current_favs)} / 10")
+                st.caption(f"{lang_dict.get('登録済', 'Registered')}: {len(current_favs)} / 10")
         
                 action_idx = None
                 direction = 0 
@@ -2225,7 +2253,7 @@ def manage_favorites_dialog():
                 # 削除確認 (メッセージとボタンを辞書化)
                 del_target = st.session_state.get("pending_del_idx")
                 if del_target is not None:
-                    del_msg = lang_dict.get("を削除しますか？", "Delete this?")
+                    del_msg = lang_dict.get("削除しますか？", "Delete this?")
                     st.warning(f"「{current_favs[del_target]['name']}」 {del_msg}")
                     y, n = st.columns(2)
                     if y.button(lang_dict.get("削除", "Delete"), key="del_y", type="primary", use_container_width=True):
