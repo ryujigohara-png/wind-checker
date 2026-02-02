@@ -2592,6 +2592,35 @@ def render_footer_info(danger_v):
     
     # --- 2. クレジット表記 (Open-Meteo) ---
     st.caption("Weather data by [Open-Meteo.com](https://open-meteo.com/) (CC BY 4.0)")
+
+# ==========================================================================================
+# 座標から現地の現在時刻（datetimeオブジェクト）を取得するサブルーチン
+# ==========================================================================================
+def get_local_now_by_coords(lat, lon):
+    import requests
+    from datetime import datetime, timezone, timedelta
+    
+    # Open-Meteoの軽量なエンドポイントを使用して時差(utc_offset_seconds)のみを取得
+    # forecast_days=0 とすることでデータ取得を最小限にし、レスポンスを高速化
+    url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&timezone=auto&forecast_days=0"
+    
+    try:
+        res = requests.get(url, timeout=3).json()
+        # APIから時差（秒）を取得。取得失敗時はJST(32400秒)をデフォルトとする
+        offset_sec = res.get("utc_offset_seconds", 32400)
+        
+        # 取得した時差をセッションに保存（リロード時の復元および他サブルーチンでの再利用のため）
+        st.session_state.utc_offset_hours = offset_sec / 3600.0
+        
+        # 現在のUTC時刻に時差を適用して現地時刻を生成
+        tz_local = timezone(timedelta(seconds=offset_sec))
+        return datetime.now(tz_local)
+        
+    except Exception:
+        # 通信エラー等の場合は、セッションに保存されている既存の時差、またはJSTを使用
+        current_offset = st.session_state.get("utc_offset_hours", 9.0)
+        return datetime.now(timezone(timedelta(hours=current_offset)))
+    
     
 # ======================================================================================
 # 100. メイン処理 (再構築版・スクロール対応)
@@ -2609,27 +2638,27 @@ def main():
     translations = get_language_dict()
     lang_dict = translations[st.session_state.lang]
 
-    # --- 1. 状態の初期化 ---
+    # --- 1. 時刻の取得 (指定地点の現地時間に即時対応) ---
+    # グラフ描画を待たずに、座標から直接現地時刻を取得する
+    if 'lat' not in st.session_state: st.session_state.lat = CONFIG["DEFAULT_LAT"]
+    if 'lon' not in st.session_state: st.session_state.lon = CONFIG["DEFAULT_LON"]
+    
+    now_local = get_local_now_by_coords(st.session_state.lat, st.session_state.lon)
+    
+    # --- 2. 状態の初期化 ---
     if "mode" in st.query_params and st.query_params["mode"] == "dev":
         st.session_state.is_dev_mode = True
     else:
         st.session_state.is_dev_mode = False
     
-    if 'lat' not in st.session_state: st.session_state.lat = CONFIG["DEFAULT_LAT"]
-    if 'lon' not in st.session_state: st.session_state.lon = CONFIG["DEFAULT_LON"]
     if 'last_basho' not in st.session_state: st.session_state.last_basho = CONFIG["DEFAULT_BASHO"]
     
-    # 【重要】リロード判定と情報の保持
+    # リロード判定：セッション変数が存在しない場合に更新フラグを立てる
     is_reload = 'needs_graph_update' not in st.session_state
     if is_reload:
         st.session_state.needs_graph_update = True
 
-    # --- 2. 時刻の復元 (ブラウザに記録されている情報を優先) ---
-    # 以前の描画で保存した「地点の時差」があればそれを使う
-    current_offset = st.session_state.get("utc_offset_hours", 9.0)
-    now_local = datetime.now(timezone(timedelta(hours=current_offset)))
-
-    # 30分判定用の最終更新時刻を保持（リロード時は前回の記録を極力維持）
+    # 30分判定用の最終更新時刻を保持
     if 'last_update_time' not in st.session_state:
         st.session_state.last_update_time = now_local
     
@@ -2648,29 +2677,30 @@ def main():
     else:
         st.title(lang_dict["⛵Pin_Weather!"])            
          
-    # --- 3. 更新判定ロジック ---
+    # --- 3. 更新判定ロジック (30分経過判定) ---
     location_changed = (abs(st.session_state.lat - st.session_state.last_update_lat) > 0.0001 or 
                         abs(st.session_state.lon - st.session_state.last_update_lon) > 0.0001)
     
+    # 前回の更新から30分以上経過しているかを確認
     time_elapsed = now_local - st.session_state.last_update_time
     time_over = time_elapsed >= timedelta(minutes=30)
     
-    # リロード時、地点変更時、30分経過時のいずれかで描画を実行
+    # リロード時、地点変更時、30分経過時のいずれかで更新を実行
     if is_reload or location_changed or time_over:
         st.session_state.needs_graph_update = True
-        # ここで更新時刻を「現地時間」で上書き記録
+        # 更新時刻を記録（現地時間）
         st.session_state.last_update_time = now_local
 
     # --- 4. 各モジュールの描画 ---
     render_compact_control_panel(st.session_state.last_basho)
     
-    # 描画地点の現地時間（now_local）を渡してグラフエリアを表示
+    # 描画地点の現地時間（now_local）を渡して描画
     render_graph_area_module(danger_v, sel_dirs, design_params, now_local)
     
     # クレジット表示
     render_footer_info(danger_v)
     
-    # APIリンク表示
+    # --- [追加] APIリンクの表示 ---
     lat, lon = st.session_state.lat, st.session_state.lon
     w_url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&hourly=temperature_2m,windspeed_10m,winddirection_10m,precipitation&timezone=auto"
     m_url = f"https://marine-api.open-meteo.com/v1/marine?latitude={lat}&longitude={lon}&hourly=wave_height,sea_surface_temperature,sea_level_height_msl&timezone=auto"
@@ -2686,17 +2716,22 @@ def main():
         unsafe_allow_html=True
     )
     
+    # --- フッター：免責事項の表示 ---
     st.markdown("---")
     st.caption(lang_dict["DISCLAIMER"])
 
+    # URLのホスト名に "-beta-" が含まれているか判定
     host_name = st.context.headers.get("host", "").lower()
     if "-beta-" in host_name:
-        st.markdown(f'<div style="text-align: left; color: gray; font-size: 0.8em;">- Beta Version -</div>', unsafe_allow_html=True)
+        st.markdown(
+            f'<div style="text-align: left; color: gray; font-size: 0.8em;">- Beta Version -</div>', 
+            unsafe_allow_html=True
+        )
     
     if st.session_state.get("is_dev_mode"):
         st.divider()
         st.write("Debug: Session State", st.session_state)
-
+        
 if __name__ == "__main__":
     main()
     
