@@ -2604,9 +2604,10 @@ def main():
     translations = get_language_dict()
     lang_dict = translations[st.session_state.lang]
 
-    # --- 1. 時刻の取得 (現地時間/JST) ---
-    # グラフ描画および更新判定の基準として使用
-    now_jst = datetime.now(timezone(timedelta(hours=9)))
+    # --- 1. 時刻の取得 (指定地点の現地時間に対応) ---
+    # セッションに保存された当該地点の時差（utc_offset_hours）を取得。未設定時は暫定でJST(9.0)
+    current_offset = st.session_state.get("utc_offset_hours", 9.0)
+    now_local = datetime.now(timezone(timedelta(hours=current_offset)))
     
     # --- 2. 状態の初期化 ---
     if "mode" in st.query_params and st.query_params["mode"] == "dev":
@@ -2618,13 +2619,13 @@ def main():
     if 'lon' not in st.session_state: st.session_state.lon = CONFIG["DEFAULT_LON"]
     if 'last_basho' not in st.session_state: st.session_state.last_basho = CONFIG["DEFAULT_BASHO"]
     
-    # 【修正箇所】リロード時（初回）に必ず描画を走らせるためのフラグ設定
+    # リロード判定：セッション変数が存在しない場合に更新フラグを立てる
     if 'needs_graph_update' not in st.session_state:
         st.session_state.needs_graph_update = True
 
-    # 30分判定用の最終更新時刻を保持（初回は現在時刻をセット）
+    # 30分判定用の最終更新時刻を保持（初回は現在地点の時刻をセット）
     if 'last_update_time' not in st.session_state:
-        st.session_state.last_update_time = now_jst
+        st.session_state.last_update_time = now_local
     
     if 'last_update_lat' not in st.session_state: st.session_state.last_update_lat = 0.0
     if 'last_update_lon' not in st.session_state: st.session_state.last_update_lon = 0.0
@@ -2642,26 +2643,24 @@ def main():
         st.title(lang_dict["⛵Pin_Weather!"])            
          
     # --- 3. 更新判定ロジック (30分経過判定) ---
-    # 地点変更の有無を確認
     location_changed = (abs(st.session_state.lat - st.session_state.last_update_lat) > 0.0001 or 
                         abs(st.session_state.lon - st.session_state.last_update_lon) > 0.0001)
     
     # 前回の更新から30分以上経過しているかを確認
-    time_elapsed = now_jst - st.session_state.last_update_time
+    time_elapsed = now_local - st.session_state.last_update_time
     time_over = time_elapsed >= timedelta(minutes=30)
     
-    # 地点が変わったか、30分過ぎていれば更新フラグを立てる
-    # 【修正箇所】needs_graph_updateがTrue（リロード時含む）の場合も判定に含める
+    # リロード時、地点変更時、30分経過時のいずれかで更新を実行
     if location_changed or time_over or st.session_state.needs_graph_update:
         st.session_state.needs_graph_update = True
-        # 更新時刻を記録（JST）
-        st.session_state.last_update_time = now_jst
+        # 更新時刻を記録（現地時間）
+        st.session_state.last_update_time = now_local
 
     # --- 4. 各モジュールの描画 ---
     render_compact_control_panel(st.session_state.last_basho)
     
-    # 描画地点の現地時間（JST）を渡して描画
-    render_graph_area_module(danger_v, sel_dirs, design_params, now_jst)
+    # 描画地点の現地時間（now_local）を渡して描画
+    render_graph_area_module(danger_v, sel_dirs, design_params, now_local)
     
     # クレジット表示
     render_footer_info(danger_v)
@@ -2686,7 +2685,6 @@ def main():
     st.markdown("---")
     st.caption(lang_dict["DISCLAIMER"])
 
-    # URLのホスト名に "-beta-" が含まれているか判定
     host_name = st.context.headers.get("host", "").lower()
     if "-beta-" in host_name:
         st.markdown(
@@ -2697,7 +2695,6 @@ def main():
     if st.session_state.get("is_dev_mode"):
         st.divider()
         st.write("Debug: Session State", st.session_state)
-
         
 if __name__ == "__main__":
     main()
