@@ -2593,7 +2593,7 @@ def render_footer_info(danger_v):
 # ======================================================================================
 def main():
     import os
-    from datetime import datetime, timedelta
+    from datetime import datetime, timezone, timedelta
     
     # --- 0. アプリ初期化 (最優先で実行) ---
     initialize_app()
@@ -2604,11 +2604,10 @@ def main():
     translations = get_language_dict()
     lang_dict = translations[st.session_state.lang]
 
-    # --- 1. 時刻の丸め処理 (10分単位) ---
-    # 余計な timezone 指定を排除し、環境（現地）の現在時刻を取得します
-    now_raw = datetime.now() 
-    now_rounded = now_raw.replace(minute=(now_raw.minute // 10) * 10, second=0, microsecond=0)
-
+    # --- 1. 時刻の取得 (現地時間/JST) ---
+    # グラフ描画および更新判定の基準として使用
+    now_jst = datetime.now(timezone(timedelta(hours=9)))
+    
     # --- 2. 状態の初期化 ---
     if "mode" in st.query_params and st.query_params["mode"] == "dev":
         st.session_state.is_dev_mode = True
@@ -2619,12 +2618,13 @@ def main():
     if 'lon' not in st.session_state: st.session_state.lon = CONFIG["DEFAULT_LON"]
     if 'last_basho' not in st.session_state: st.session_state.last_basho = CONFIG["DEFAULT_BASHO"]
     
+    # 初回起動時のフラグ設定
     if 'needs_graph_update' not in st.session_state:
         st.session_state.needs_graph_update = True
 
-    # 30分判定用の記録（TypeErrorを避けるため、naiveな現在時刻で統一）
-    if 'last_graph_time' not in st.session_state: 
-        st.session_state.last_graph_time = now_rounded
+    # 30分判定用の最終更新時刻を保持（初回は現在時刻をセット）
+    if 'last_update_time' not in st.session_state:
+        st.session_state.last_update_time = now_jst
     
     if 'last_update_lat' not in st.session_state: st.session_state.last_update_lat = 0.0
     if 'last_update_lon' not in st.session_state: st.session_state.last_update_lon = 0.0
@@ -2641,27 +2641,31 @@ def main():
     else:
         st.title(lang_dict["⛵Pin_Weather!"])            
          
-    # --- 3. 更新判定ロジック ---
+    # --- 3. 更新判定ロジック (30分経過判定) ---
+    # 地点変更の有無を確認
     location_changed = (abs(st.session_state.lat - st.session_state.last_update_lat) > 0.0001 or 
                         abs(st.session_state.lon - st.session_state.last_update_lon) > 0.0001)
     
-    # 30分経過判定（同じ naive オブジェクト同士で計算）
-    time_over = (now_rounded - st.session_state.last_graph_time) >= timedelta(minutes=30)
+    # 前回の更新から30分以上経過しているかを確認
+    time_elapsed = now_jst - st.session_state.last_update_time
+    time_over = time_elapsed >= timedelta(minutes=30)
     
+    # 地点が変わったか、30分過ぎていれば更新フラグを立てる
     if location_changed or time_over:
         st.session_state.needs_graph_update = True
-        st.session_state.last_graph_time = now_rounded
+        # 更新時刻を記録（JST）
+        st.session_state.last_update_time = now_jst
 
     # --- 4. 各モジュールの描画 ---
     render_compact_control_panel(st.session_state.last_basho)
     
-    # 本来の仕様どおり、現地時刻（now_rounded）を渡します
-    render_graph_area_module(danger_v, sel_dirs, design_params, now_rounded)
+    # 描画地点の現地時間（JST）を渡して描画
+    render_graph_area_module(danger_v, sel_dirs, design_params, now_jst)
     
     # クレジット表示
     render_footer_info(danger_v)
     
-    # --- APIリンクの表示 ---
+    # --- [追加] APIリンクの表示 ---
     lat, lon = st.session_state.lat, st.session_state.lon
     w_url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&hourly=temperature_2m,windspeed_10m,winddirection_10m,precipitation&timezone=auto"
     m_url = f"https://marine-api.open-meteo.com/v1/marine?latitude={lat}&longitude={lon}&hourly=wave_height,sea_surface_temperature,sea_level_height_msl&timezone=auto"
@@ -2677,7 +2681,7 @@ def main():
         unsafe_allow_html=True
     )
     
-    # --- フッター：免責事項 ---
+    # --- フッター：免責事項の表示 ---
     st.markdown("---")
     st.caption(lang_dict["DISCLAIMER"])
 
