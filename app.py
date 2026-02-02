@@ -2629,8 +2629,12 @@ def main():
     import os
     from datetime import datetime, timezone, timedelta
     
-    # --- 0. アプリ初期化 (最優先で実行) ---
+    # --- 0. アプリ初期化 (最優先) ---
     initialize_app()
+
+    # --- 1. 設定の同期 (localStorageからの復元) ---
+    # ここで st.stop() が入る可能性があるため、この後に時刻確定を配置する
+    sync_all_settings()
 
     if 'lang' not in st.session_state:
         st.session_state.lang = "ja"
@@ -2638,46 +2642,45 @@ def main():
     translations = get_language_dict()
     lang_dict = translations[st.session_state.lang]
 
-    # --- 1. 時刻の取得 (指定地点の現地時間に即時対応) ---
-    # グラフ描画を待たずに、座標から直接現地時刻を取得する
-    if 'lat' not in st.session_state: st.session_state.lat = CONFIG["DEFAULT_LAT"]
-    if 'lon' not in st.session_state: st.session_state.lon = CONFIG["DEFAULT_LON"]
-    
+    # --- 2. 座標に基づく現地時刻の確定 (ボタン表示・グラフ共通の基準) ---
+    # sync_all_settingsで復元された直後の座標(lat/lon)を使い、
+    # グラフ描画APIを叩く前に「時差」と「現在時刻」を完全に特定する。
     now_local = get_local_now_by_coords(st.session_state.lat, st.session_state.lon)
     
-    # --- 2. 状態の初期化 ---
+    # --- 3. 状態の初期化 ---
     if "mode" in st.query_params and st.query_params["mode"] == "dev":
         st.session_state.is_dev_mode = True
     else:
         st.session_state.is_dev_mode = False
     
-    if 'last_basho' not in st.session_state: st.session_state.last_basho = CONFIG["DEFAULT_BASHO"]
-    
-    # リロード判定：セッション変数が存在しない場合に更新フラグを立てる
+    # リロード判定：セッション変数が存在しない場合にのみTrue
     is_reload = 'needs_graph_update' not in st.session_state
     if is_reload:
         st.session_state.needs_graph_update = True
 
-    # 30分判定用の最終更新時刻を保持
+    # 30分判定用の最終更新時刻を保持（現地時間で初期化）
     if 'last_update_time' not in st.session_state:
         st.session_state.last_update_time = now_local
     
     if 'last_update_lat' not in st.session_state: st.session_state.last_update_lat = 0.0
     if 'last_update_lon' not in st.session_state: st.session_state.last_update_lon = 0.0
 
-    sync_all_settings()
+    # スタイルとフォントの適用
     render_custom_css()
     setup_font(st.session_state.get("base_font_size", CONFIG["GRAPH_FONT_SIZE"]))
     
+    # サイドバー（ここでdanger_vなどが確定）
     danger_v, sel_dirs, design_params = show_sidebar_controls()
     
+    # ヘッダーロゴまたはタイトル表示
     icon_path = "pin_weather_03.png"
     if os.path.exists(icon_path):
         st.image(icon_path, width=800) 
     else:
         st.title(lang_dict["⛵Pin_Weather!"])            
          
-    # --- 3. 更新判定ロジック (30分経過判定) ---
+    # --- 4. 更新判定ロジック ---
+    # 地点変更の有無を確認（微小な差は無視）
     location_changed = (abs(st.session_state.lat - st.session_state.last_update_lat) > 0.0001 or 
                         abs(st.session_state.lon - st.session_state.last_update_lon) > 0.0001)
     
@@ -2685,22 +2688,22 @@ def main():
     time_elapsed = now_local - st.session_state.last_update_time
     time_over = time_elapsed >= timedelta(minutes=30)
     
-    # リロード時、地点変更時、30分経過時のいずれかで更新を実行
+    # 【鉄則】リロード時、地点変更時、30分経過時は必ずグラフを再描画する
     if is_reload or location_changed or time_over:
         st.session_state.needs_graph_update = True
-        # 更新時刻を記録（現地時間）
         st.session_state.last_update_time = now_local
 
-    # --- 4. 各モジュールの描画 ---
+    # --- 5. 各モジュールの描画 ---
+    # 確定した「now_local」を渡すことで、ボタン横の時刻も現地時間に固定される
     render_compact_control_panel(st.session_state.last_basho)
     
-    # 描画地点の現地時間（now_local）を渡して描画
+    # グラフエリアの描画
     render_graph_area_module(danger_v, sel_dirs, design_params, now_local)
     
-    # クレジット表示
+    # フッター等の付随情報
     render_footer_info(danger_v)
     
-    # --- [追加] APIリンクの表示 ---
+    # APIソースリンクの表示
     lat, lon = st.session_state.lat, st.session_state.lon
     w_url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&hourly=temperature_2m,windspeed_10m,winddirection_10m,precipitation&timezone=auto"
     m_url = f"https://marine-api.open-meteo.com/v1/marine?latitude={lat}&longitude={lon}&hourly=wave_height,sea_surface_temperature,sea_level_height_msl&timezone=auto"
@@ -2716,18 +2719,15 @@ def main():
         unsafe_allow_html=True
     )
     
-    # --- フッター：免責事項の表示 ---
     st.markdown("---")
     st.caption(lang_dict["DISCLAIMER"])
 
-    # URLのホスト名に "-beta-" が含まれているか判定
+    # ベータ版表示
     host_name = st.context.headers.get("host", "").lower()
     if "-beta-" in host_name:
-        st.markdown(
-            f'<div style="text-align: left; color: gray; font-size: 0.8em;">- Beta Version -</div>', 
-            unsafe_allow_html=True
-        )
+        st.markdown(f'<div style="text-align: left; color: gray; font-size: 0.8em;">- Beta Version -</div>', unsafe_allow_html=True)
     
+    # デバッグ情報
     if st.session_state.get("is_dev_mode"):
         st.divider()
         st.write("Debug: Session State", st.session_state)
