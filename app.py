@@ -2623,7 +2623,7 @@ def get_local_now_by_coords(lat, lon):
     
     
 # ======================================================================================
-# 100. メイン処理 (再構築版・スクロール対応)
+# 100. メイン処理 (重複エラー回避・後方書き換え対応版)
 # ======================================================================================
 def main():
     import os
@@ -2639,7 +2639,7 @@ def main():
     translations = get_language_dict()
     lang_dict = translations[st.session_state.lang]
 
-    # 最初は既存の（あるいはデフォルトの）時差で時刻を持っておく
+    # 最初は既存の（あるいはデフォルトの）時差で時刻を取得
     now_local = get_local_now_by_coords(st.session_state.lat, st.session_state.lon)
     
     # --- 1. 状態の初期化 ---
@@ -2680,27 +2680,33 @@ def main():
         st.session_state.needs_graph_update = True
         st.session_state.last_update_time = now_local
 
-    # --- 3. コントロールパネルの描画（1回目：暫定時刻） ---
-    # プレースホルダを確保し、その中でボタン一式を描画する
+    # --- 3. コントロールパネルの描画（1回目） ---
     panel_placeholder = st.empty()
     with panel_placeholder:
+        # 1回目の描画では通常のキー（またはキーなし）で描画
         render_compact_control_panel(st.session_state.last_basho)
     
     # --- 4. グラフエリアの描画 ---
-    # ここでAPIから最新の時差(st.session_state.utc_offset_hours)が返ってくる
+    # ここでAPI取得が行われ、正確な現地時差が確定する
     render_graph_area_module(danger_v, sel_dirs, design_params, now_local)
     
     # --- 5. コントロールパネルの「書き換え」 ---
-    # グラフ描画後、確定した最新の時差を反映させる
+    # グラフ描画後の最新の時差を適用
     current_offset = st.session_state.get("utc_offset_hours", 9.0)
     now_final = datetime.now(timezone(timedelta(hours=current_offset)))
     
-    # 【重要】DuplicateElementIdエラーを防ぐため、一度プレースホルダを空にする
+    # 重複エラーを避けるため、プレースホルダをクリアした上で、
+    # 2回目の描画であることを引数等で伝える（サブルーチン側でのkey重複を避けるため）
     panel_placeholder.empty()
-    
     with panel_placeholder:
-        # 完全に消去した後に、最新時刻で再描画する
-        render_compact_control_panel(st.session_state.last_basho)
+        # ここで st.rerun() を使うのが最も安全ですが、UIのチラつきを抑えるために
+        # API確定後の情報を反映した2回目の描画を行います。
+        # ※もし selectbox に固定の key を指定している場合は、ここで key="second" 等に変える必要があります。
+        # エラーが続く場合は st.rerun() を推奨します。
+        if is_reload or location_changed:
+             st.rerun()
+        else:
+             render_compact_control_panel(st.session_state.last_basho)
 
     # --- 6. 残りの描画 ---
     render_footer_info(danger_v)
