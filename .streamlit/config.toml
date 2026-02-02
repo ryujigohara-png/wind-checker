@@ -1,0 +1,8 @@
+[server]
+# 通信の安定性を高める設定
+enableCORS = false
+enableXsrfProtection = false
+
+[browser]
+# 統計収集をオフにし、オーバーヘッドを減らす
+gatherUsageStats = false
