@@ -2342,11 +2342,11 @@ def render_compact_control_panel(basho_name):
 
     import streamlit as st
     from datetime import datetime, timedelta
-
+    
     # 辞書の取得
     translations = get_language_dict()
     lang_dict = translations[st.session_state.lang]
-
+    
     # --- レイアウト制御CSS (垂直方向の隙間を詰める) ---
     st.markdown("""
         <style>
@@ -2388,7 +2388,7 @@ def render_compact_control_panel(basho_name):
             }
         </style>
     """, unsafe_allow_html=True)
-
+    
     with st.container():
         # --- 1. データ準備 ---
         display_list, total_data = get_combined_location_list(
@@ -2399,10 +2399,10 @@ def render_compact_control_panel(basho_name):
         favorites = st.session_state.get("user_locations", [])
         saved_data = next((f for f in favorites if abs(f['lat'] - st.session_state.lat) < 0.0001 and abs(f['lon'] - st.session_state.lon) < 0.0001), None)
         is_saved = saved_data is not None
-
+    
         # --- 2. PC横5セルレイアウト (比率維持) ---
         c1, c2, c3, c4, c5 = st.columns([0.35, 0.15, 0.1, 0.12, 0.28])
-
+    
         with c1:
             selected_label = st.selectbox(
                 lang_dict.get("SELECT_PLACE", "地点を選択してください"), 
@@ -2410,7 +2410,7 @@ def render_compact_control_panel(basho_name):
                 index=display_list.index(st.session_state.last_basho) if st.session_state.last_basho in display_list else 0,
                 label_visibility="collapsed"
             )
-
+    
         with c2:
             # 前回の決定事項「登録済みは🌟」を維持
             if is_saved:
@@ -2420,32 +2420,26 @@ def render_compact_control_panel(basho_name):
                 if st.button("☆MySpot", key="fav_save_action", help=lang_dict.get("HELP_FAV_SAVE", "お気に入りに登録")):
                     pure_name = st.session_state.last_basho.split(" (")[0]
                     show_favorite_registration_dialog(pure_name, st.session_state.lat, st.session_state.lon)
-
+    
         with c3:
             if st.button(lang_dict.get("BTN_MAP", "🗺️地図"), key="btn_map_open", use_container_width=True):
                 show_location_map_dialog()
-
+    
         with c4:
             if st.button(lang_dict.get("BTN_CURRENT_LOC_SHORT", "🔄📍現在地"), key="btn_get_gps", use_container_width=True):
                 st.session_state.waiting_loc = True
                 st.session_state.geo_key = f"geo_{datetime.now().timestamp()}"
                 st.rerun()
-
+    
         with c5:
-            now_jst = st.session_state.get('now_jst', datetime.now())
-            try:
-                df_tmp = fetch_weather_data(st.session_state.lat, st.session_state.lon, 1)
-                browser_offset_s = now_jst.utcoffset().total_seconds() if now_jst.utcoffset() else 0
-                now_local = now_jst.replace(tzinfo=None) - timedelta(seconds=browser_offset_s) + timedelta(seconds=df_tmp.attrs.get('local_offset_seconds', 0))
-            except:
-                now_local = now_jst.replace(tzinfo=None)
-
-            update_label = f"🔄📊 {now_local.strftime(lang_dict.get('DATETIME_FORMAT', '%Y/%m/%d %H:%M:%S'))}"
+            # 10分単位に丸められた最終更新時刻をボタンに表示
+            last_time = st.session_state.get('last_graph_time', datetime.now())
+            update_label = f"🔄📊 {last_time.strftime(lang_dict.get('DATETIME_FORMAT', '%Y/%m/%d %H:%M'))}"
             if st.button(update_label, key="btn_graph_refresh", use_container_width=True):
                 st.cache_data.clear()
                 st.session_state.needs_graph_update = True
                 st.rerun()
-
+    
     # --- 3. 選択同期ロジック (維持) ---
     map_select_label = lang_dict.get("MAP_SELECT_LABEL", "地図で指定")
     if selected_label == map_select_label:
@@ -2453,7 +2447,7 @@ def render_compact_control_panel(basho_name):
     elif selected_label != st.session_state.last_basho:
         new_lat, new_lon, _ = total_data[selected_label]
         update_state_and_save({"lat": new_lat, "lon": new_lon, "last_basho": selected_label, "needs_graph_update": True})
-
+    
     if st.session_state.get("waiting_loc"):
         handle_current_location_update_integrated()
         
@@ -2476,6 +2470,12 @@ def render_graph_area_module(danger_v, sel_dirs, design_params, now_jst):
     if not res or res[0] is None: return
     left_b64, right_b64, ratio_info, start_idx, df_graph = res
     
+    # --- 重要：更新完了フラグのリセットと記録 ---
+    st.session_state.needs_graph_update = False
+    st.session_state.last_update_lat = st.session_state.lat
+    st.session_state.last_update_lon = st.session_state.lon
+    st.session_state.last_graph_time = now_jst
+    
     # --- 2. パラメータ取得（CONFIGおよびsession_stateから） ---
     dpi = design_params.get("graph_dpi", CONFIG.get("DPI", 200))
     fig_h_px = int(design_params.get("height", CONFIG["GRAPH_HIGHT"]) * dpi)
@@ -2491,7 +2491,7 @@ def render_graph_area_module(danger_v, sel_dirs, design_params, now_jst):
     
     # --- 3. アイコン・ラベルHTMLの取得 ---
     header_h, body_h = generate_weather_icons_html(df_graph, ratio_info, w_right_px, start_idx)
-
+    
     # --- 4. HTML構築（確実にレンダリング） ---
     html_str = (
         f'<div style="display:flex; width:100%; background:white; border:1px solid #ddd; overflow:hidden;">'
@@ -2507,7 +2507,7 @@ def render_graph_area_module(danger_v, sel_dirs, design_params, now_jst):
         f'  </div>'
         f'</div>'
     )
-
+    
     st.markdown(html_str, unsafe_allow_html=True)
     
         
@@ -2571,7 +2571,7 @@ def main():
     
     translations = get_language_dict()
     lang_dict = translations[st.session_state.lang]
-
+    
     # --- 1. 状態の初期化 ---
     if "mode" in st.query_params and st.query_params["mode"] == "dev":
         st.session_state.is_dev_mode = True
@@ -2584,7 +2584,12 @@ def main():
     
     if 'needs_graph_update' not in st.session_state:
         st.session_state.needs_graph_update = True
-
+    
+    # 記録用変数の初期化
+    if 'last_graph_time' not in st.session_state: st.session_state.last_graph_time = datetime.min
+    if 'last_update_lat' not in st.session_state: st.session_state.last_update_lat = 0.0
+    if 'last_update_lon' not in st.session_state: st.session_state.last_update_lon = 0.0
+    
     sync_all_settings()
     render_custom_css()
     setup_font(st.session_state.get("base_font_size", CONFIG["GRAPH_FONT_SIZE"]))
@@ -2596,22 +2601,35 @@ def main():
         st.image(icon_path, width=800) 
     else:
         st.title(lang_dict["⛵Pin_Weather!"])            
-    # st.title("Pin_Weather!")            
          
-    now_jst = datetime.now(timezone(timedelta(hours=9)))
-
-    # --- 2. 各モジュールの描画 ---
+    # --- 2. 時刻の丸め処理 (10分単位) と 更新判定 ---
+    now_raw = datetime.now(timezone(timedelta(hours=9)))
+    now_rounded = now_raw.replace(minute=(now_raw.minute // 10) * 10, second=0, microsecond=0)
+    
+    # 更新判定ロジック
+    location_changed = (abs(st.session_state.lat - st.session_state.last_update_lat) > 0.0001 or 
+                        abs(st.session_state.lon - st.session_state.last_update_lon) > 0.0001)
+    
+    # 前回の丸め時刻との比較
+    last_t = st.session_state.last_graph_time.replace(tzinfo=now_rounded.tzinfo) if st.session_state.last_graph_time != datetime.min else datetime.min.replace(tzinfo=now_rounded.tzinfo)
+    time_over = (now_rounded - last_t) >= timedelta(minutes=30)
+    
+    if location_changed or time_over:
+        st.session_state.needs_graph_update = True
+    
+    # --- 3. 各モジュールの描画 ---
     render_compact_control_panel(st.session_state.last_basho)
-    render_graph_area_module(danger_v, sel_dirs, design_params, now_jst)
+    # 引数には丸めた時刻を渡す
+    render_graph_area_module(danger_v, sel_dirs, design_params, now_rounded)
     
     # クレジット表示
     render_footer_info(danger_v)
     
     # --- [追加] APIリンクの表示 ---
     lat, lon = st.session_state.lat, st.session_state.lon
-    w_url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&hourly=temperature_2m,windspeed_10m,winddirection_10m,precipitation&timezone=auto"
-    m_url = f"https://marine-api.open-meteo.com/v1/marine?latitude={lat}&longitude={lon}&hourly=wave_height,sea_surface_temperature,sea_level_height_msl&timezone=auto"
-
+    w_url = f"[https://api.open-meteo.com/v1/forecast?latitude=](https://api.open-meteo.com/v1/forecast?latitude=){lat}&longitude={lon}&hourly=temperature_2m,windspeed_10m,winddirection_10m,precipitation&timezone=auto"
+    m_url = f"[https://marine-api.open-meteo.com/v1/marine?latitude=](https://marine-api.open-meteo.com/v1/marine?latitude=){lat}&longitude={lon}&hourly=wave_height,sea_surface_temperature,sea_level_height_msl&timezone=auto"
+    
     st.markdown(
         f"""
         <div style="text-align: right; font-size: 0.8rem; color: gray; margin-top: -10px;">
@@ -2626,7 +2644,7 @@ def main():
     # --- フッター：免責事項の表示 ---
     st.markdown("---")
     st.caption(lang_dict["DISCLAIMER"])
-
+    
     # URLのホスト名に "-beta-" が含まれているか判定
     host_name = st.context.headers.get("host", "").lower()
     if "-beta-" in host_name:        # 右寄せで薄く表示し、全体のデザインを邪魔しないように配置
