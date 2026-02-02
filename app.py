@@ -2593,6 +2593,8 @@ def render_footer_info(danger_v):
 # ======================================================================================
 def main():
     import os
+    from datetime import datetime, timedelta
+    
     # --- 0. アプリ初期化 (最優先で実行) ---
     initialize_app()
 
@@ -2603,11 +2605,7 @@ def main():
     lang_dict = translations[st.session_state.lang]
 
     # --- 1. 時刻の丸め処理 (10分単位) ---
-    # 30分経過の判定用にUTCを取得しますが、描画には「現地時間」を使用します
-    from datetime import datetime, timezone, timedelta
-    now_utc = datetime.now(timezone.utc)
-    
-    # 【修正】以前の仕様通り、システムのローカル時刻（ブラウザ/サーバーの現地時間）を取得
+    # 余計な timezone 指定を排除し、環境（現地）の現在時刻を取得します
     now_raw = datetime.now() 
     now_rounded = now_raw.replace(minute=(now_raw.minute // 10) * 10, second=0, microsecond=0)
 
@@ -2624,9 +2622,9 @@ def main():
     if 'needs_graph_update' not in st.session_state:
         st.session_state.needs_graph_update = True
 
-    # 30分判定用の記録（ここだけはタイムゾーンに左右されないUTCで記録し、TypeErrorを防ぐ）
-    if 'last_graph_time_utc' not in st.session_state: 
-        st.session_state.last_graph_time_utc = now_utc
+    # 30分判定用の記録（TypeErrorを避けるため、naiveな現在時刻で統一）
+    if 'last_graph_time' not in st.session_state: 
+        st.session_state.last_graph_time = now_rounded
     
     if 'last_update_lat' not in st.session_state: st.session_state.last_update_lat = 0.0
     if 'last_update_lon' not in st.session_state: st.session_state.last_update_lon = 0.0
@@ -2647,18 +2645,17 @@ def main():
     location_changed = (abs(st.session_state.lat - st.session_state.last_update_lat) > 0.0001 or 
                         abs(st.session_state.lon - st.session_state.last_update_lon) > 0.0001)
     
-    # 30分経過判定（内部的な判定のみUTCで実施し、確実性を担保）
-    time_over = (now_utc - st.session_state.last_graph_time_utc) >= timedelta(minutes=30)
+    # 30分経過判定（同じ naive オブジェクト同士で計算）
+    time_over = (now_rounded - st.session_state.last_graph_time) >= timedelta(minutes=30)
     
     if location_changed or time_over:
         st.session_state.needs_graph_update = True
-        # 更新時にUTC時刻を保存
-        st.session_state.last_graph_time_utc = now_utc
+        st.session_state.last_graph_time = now_rounded
 
     # --- 4. 各モジュールの描画 ---
     render_compact_control_panel(st.session_state.last_basho)
     
-    # 【重要】描画モジュールには、以前の仕様通り「現地時間（now_rounded）」を渡します
+    # 本来の仕様どおり、現地時刻（now_rounded）を渡します
     render_graph_area_module(danger_v, sel_dirs, design_params, now_rounded)
     
     # クレジット表示
