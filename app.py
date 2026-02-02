@@ -2618,7 +2618,7 @@ def main():
     if 'lon' not in st.session_state: st.session_state.lon = CONFIG["DEFAULT_LON"]
     if 'last_basho' not in st.session_state: st.session_state.last_basho = CONFIG["DEFAULT_BASHO"]
     
-    # 初回起動時のフラグ設定
+    # 【修正箇所】リロード時（初回）に必ず描画を走らせるためのフラグ設定
     if 'needs_graph_update' not in st.session_state:
         st.session_state.needs_graph_update = True
 
@@ -2651,7 +2651,8 @@ def main():
     time_over = time_elapsed >= timedelta(minutes=30)
     
     # 地点が変わったか、30分過ぎていれば更新フラグを立てる
-    if location_changed or time_over:
+    # 【修正箇所】needs_graph_updateがTrue（リロード時含む）の場合も判定に含める
+    if location_changed or time_over or st.session_state.needs_graph_update:
         st.session_state.needs_graph_update = True
         # 更新時刻を記録（JST）
         st.session_state.last_update_time = now_jst
@@ -2696,6 +2697,7 @@ def main():
     if st.session_state.get("is_dev_mode"):
         st.divider()
         st.write("Debug: Session State", st.session_state)
+
         
 if __name__ == "__main__":
     main()
