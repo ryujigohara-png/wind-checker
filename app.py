@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# 正規版　更新 2026.1.29 1900 raciosエラートラップ　コンプリート版
+# 正規版　更新 2026.2.2 2200 Sub整理　コンプリート版
 """
 Pin_Weather! 機能仕様書 2026改訂版
 提供された最新のソースコード（2026.1.22 0100 波高、海面水温 コンプリート版）に基づき、波高および海面水温グラフの追加を反映した最新の機能仕様書を作成しました。
@@ -1348,7 +1348,7 @@ def show_settings_dialog():
         st.markdown("---")
         
         # --- 5. 保存・キャンセルボタン (CSS干渉から除外されているため、確実に縦並びになる) ---
-        if st.button(lang_dict["設定をすべて初期値に戻す"], key="reset_all_settings", use_container_width=True):
+        if st.button(lang_dict["初期設定に戻す"], key="reset_all_settings", use_container_width=True):
             st.session_state.update({
                 "show_wind": CONFIG["SHOW_WIND"], "show_temp": CONFIG["SHOW_TEMP"], "show_tide": CONFIG["SHOW_TIDE"],
                 "show_wave": CONFIG["SHOW_WAVE"], "show_ocean_temp": CONFIG["SHOW_OCEAN_TEMP"],
@@ -1366,7 +1366,7 @@ def show_settings_dialog():
             time.sleep(0.1)
             st.rerun()
         
-        if st.button(lang_dict["設定を適用して更新"], key="apply_all_settings", use_container_width=True):
+        if st.button(lang_dict["更新"], key="apply_all_settings", use_container_width=True):
             st.session_state.update({
                 "show_wind": d_show_wind, "show_temp": d_show_temp, "show_tide": d_show_tide,
                 "show_wave": d_show_wave, "show_ocean_temp": d_show_ocean_temp,
@@ -1385,7 +1385,7 @@ def show_settings_dialog():
             time.sleep(0.1)
             st.rerun()
         
-        if st.button(lang_dict["キャンセルして戻る"], key="cancel_all_settings", use_container_width=True):
+        if st.button(lang_dict["キャンセル"], key="cancel_all_settings", use_container_width=True):
             if "tmp_sel_dirs" in st.session_state: del st.session_state.tmp_sel_dirs
             st.rerun()
                 
