@@ -2631,8 +2631,25 @@ def main():
     
     # --- 0. アプリ初期化 ---
     initialize_app()
-    # localStorageから設定（座標や前回の時差）を復元
     sync_all_settings()
+
+    # --- 1. 描画前の「時差」先行確定ロジック ---
+    # グラフを描く前に、座標から現在の正確な時差(UTC Offset)をチェックする
+    if 'lat' not in st.session_state: st.session_state.lat = CONFIG["DEFAULT_LAT"]
+    if 'lon' not in st.session_state: st.session_state.lon = CONFIG["DEFAULT_LON"]
+    
+    # 軽量APIで時差を確認
+    # (内部で st.session_state.utc_offset_hours を更新する)
+    target_now = get_local_now_by_coords(st.session_state.lat, st.session_state.lon)
+    
+    # 前回のAPI取得時の時差と食い違っている場合（またはリロード初回）、
+    # 描画を始める前に一度だけリランして状態を確定させる
+    if st.session_state.get('last_verified_offset') != st.session_state.utc_offset_hours:
+        st.session_state.last_verified_offset = st.session_state.utc_offset_hours
+        st.rerun()
+
+    # 以降、now_local は確実に現地時間として固定される
+    now_local = target_now
 
     if 'lang' not in st.session_state:
         st.session_state.lang = "ja"
@@ -2640,22 +2657,16 @@ def main():
     translations = get_language_dict()
     lang_dict = translations[st.session_state.lang]
 
-    # --- 1. 現地時刻の取得 ---
-    # sync_all_settingsで復元された時差、または get_local_now_by_coords で取得した時差を使用
-    now_local = get_local_now_by_coords(st.session_state.lat, st.session_state.lon)
-    
     # --- 2. 状態の初期化 ---
     if "mode" in st.query_params and st.query_params["mode"] == "dev":
         st.session_state.is_dev_mode = True
     else:
         st.session_state.is_dev_mode = False
     
-    # 初回起動（リロード）判定
     is_reload = 'needs_graph_update' not in st.session_state
     if is_reload:
         st.session_state.needs_graph_update = True
 
-    # 30分判定用の基準
     if 'last_update_time' not in st.session_state:
         st.session_state.last_update_time = now_local
     
@@ -2680,32 +2691,26 @@ def main():
     time_elapsed = now_local - st.session_state.last_update_time
     time_over = time_elapsed >= timedelta(minutes=30)
     
-    # 描画が必要な条件の判定
-    must_update = is_reload or location_changed or time_over
+    if is_reload or location_changed or time_over:
+        st.session_state.needs_graph_update = True
 
-    # --- 4. コントロールパネルの描画 ---
-    # ここでは1回だけ呼び出す（重複エラーを回避）
+    # --- 4. 各モジュールの描画 ---
+    # ここに到達した時点で時差は確定しているため、1回で正しく描画される
     render_compact_control_panel(st.session_state.last_basho)
     
-    # --- 5. グラフエリアの描画 ---
-    # ここでAPIが走り、正しい時差（st.session_state.utc_offset_hours）が確定する
+    # グラフエリア描画
     render_graph_area_module(danger_v, sel_dirs, design_params, now_local)
     
-    # --- 6. 書き換えのための再実行制御 ---
-    # グラフ描画（API取得）によって、もし時差情報が更新されていたら、
-    # 正しい時刻でボタンを出し直すために1回だけ rerun する
-    if must_update:
-        # 描画フラグをリセットし、API取得後の正確な時差で再描画
+    # 描画が終わったらフラグを更新（ここでのrerunは不要になる）
+    if st.session_state.needs_graph_update:
         st.session_state.needs_graph_update = False
         st.session_state.last_update_time = now_local
         st.session_state.last_update_lat = st.session_state.lat
         st.session_state.last_update_lon = st.session_state.lon
-        st.rerun()
 
-    # --- 7. 残りの描画 ---
+    # --- 5. 付随情報 ---
     render_footer_info(danger_v)
     
-    # APIソースリンク
     lat, lon = st.session_state.lat, st.session_state.lon
     w_url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&hourly=temperature_2m,windspeed_10m,winddirection_10m,precipitation&timezone=auto"
     m_url = f"https://marine-api.open-meteo.com/v1/marine?latitude={lat}&longitude={lon}&hourly=wave_height,sea_surface_temperature,sea_level_height_msl&timezone=auto"
