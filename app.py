@@ -2535,7 +2535,7 @@ def render_footer_info(danger_v):
 
     
 # ======================================================================================
-# 100. メイン処理 (正規版を完全維持し、判定ロジックのみを正しく組み込み)
+# 100. メイン処理 (サブルーチン96との連携を最適化)
 # ======================================================================================
 def main():
     import os
@@ -2564,12 +2564,12 @@ def main():
     # 現在時刻の取得 (判定用)
     now_jst = datetime.now(timezone(timedelta(hours=9)))
     
-    # --- 2. 更新判定ロジック ---
-    if 'last_update_time' not in st.session_state:
+    # --- 2. 更新判定ロジック (サブルーチン96の変数名 last_graph_time に合わせる) ---
+    if 'last_graph_time' not in st.session_state:
         st.session_state.needs_graph_update = True
     else:
-        # 30分経過していれば更新を許可
-        if now_jst - st.session_state.last_update_time >= timedelta(minutes=30):
+        # 30分経過していれば更新
+        if now_jst - st.session_state.last_graph_time >= timedelta(minutes=30):
             st.session_state.needs_graph_update = True
 
     render_custom_css()
@@ -2587,13 +2587,13 @@ def main():
     # 1. パネル描画
     render_compact_control_panel(st.session_state.last_basho)
     
-    # 2. グラフ描画 (フラグがTrueの時のみ実行)
+    # 2. グラフ描画 (サブルーチン96内でフラグ解除・時刻保存が完結)
     if st.session_state.get('needs_graph_update', False):
         render_graph_area_module(danger_v, sel_dirs, design_params, now_jst)
         
     render_footer_info(danger_v)
     
-    # --- [復元] APIリンクおよびBeta表示 ---
+    # APIリンク表示・Beta表示
     lat, lon = st.session_state.lat, st.session_state.lon
     w_url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&hourly=temperature_2m,windspeed_10m,winddirection_10m,precipitation&timezone=auto"
     m_url = f"https://marine-api.open-meteo.com/v1/marine?latitude={lat}&longitude={lon}&hourly=wave_height,sea_surface_temperature,sea_level_height_msl&timezone=auto"
@@ -2612,7 +2612,6 @@ def main():
     st.markdown("---")
     st.caption(lang_dict["DISCLAIMER"])
 
-    # Beta Version 表示の復元
     host_name = st.context.headers.get("host", "").lower()
     if "-beta-" in host_name:
         st.markdown(f'<div style="text-align: left; color: gray; font-size: 0.8em;">- Beta Version -</div>', unsafe_allow_html=True)
