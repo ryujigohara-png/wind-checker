@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# 正規版　更新 2026.1.29 1900 raciosエラートラップ　コンプリート版
+# 正規版　更新 2026.2.3 2215 グラフ描画制限 コンプリート版
 """
 Pin_Weather! 機能仕様書 2026改訂版
 提供された最新のソースコード（2026.1.22 0100 波高、海面水温 コンプリート版）に基づき、波高および海面水温グラフの追加を反映した最新の機能仕様書を作成しました。
@@ -27,7 +27,7 @@ Pin_Weather! 機能仕様書 2026改訂版
 　• 天気アイコン: グラフの時間軸に合わせ、☀️や☔などの絵文字アイコンをHTMLレイヤーで正確に重ね合わせます [17-19]。
 3. 地点管理・操作仕様
 　• コンパクト・操作パネル: スマホ閲覧に最適化されたUIで、地点選択、地図、現在地取得、更新を3行に集約しています [17, 20]。
-　• My Spot（お気に入り）管理:
+　• My Spots（お気に入り）管理:
     ◦ スター（⭐）登録: 現在地を名称指定して最大10件まで保存可能 [17, 21, 22]。
     ◦ エディタ機能: 名称変更、並べ替え、削除が可能な専用ダイアログを搭載 [23, 24]。
 　• 高度な位置特定: GPSによる現在地取得、Nominatim APIによる詳細な地名の特定、Folium地図でのピン指定に対応しています [17, 25-27]。
@@ -88,10 +88,10 @@ CONFIG = {
     "LABEL_PAD": 0,                     # ラベル距離
     "DIAL_H_GAP": 0,                    # 地図ダイアログ横余白 (H-Gap)
     "DIAL_V_GAP": 0,                    # 地図ダイアログ縦余白（V-Gap）
-    "FAV_BTN_WIDTH": 30,                # MySpot編集ダイアログ ボタン幅(%)
-    "FAV_NAME_LEN": 12,                 # MySpot編集ダイアログ 地名表示制限（文字）
-    "LEFT_VIEW_W": 116,                  # 左軸窓の幅 (px)
-    "LEFT_SHIFT": -185,                  # 左軸画像のズレ (px)
+    "FAV_BTN_WIDTH": 30,                # My Spots 編集ダイアログ ボタン幅(%)
+    "FAV_NAME_LEN": 12,                 # My Spots 編集ダイアログ 地名表示制限（文字）
+    "LEFT_VIEW_W": 116,                 # 左軸窓の幅 (px)
+    "LEFT_SHIFT": -185,                 # 左軸画像のズレ (px)
     "DEFAULT_PRECIP_Y": 1.05,           # 降水量ラベル高さ（グラフ枠を1.0とした相対値）
     "DEFAULT_ICON_MARGIN": 0,           # 天気アイコン下余白(px)
     "DEFAULT_RATIOS": [4.0, 1.0, 1.0, 1.0, 1.0],  # グラフ比率設定
@@ -152,8 +152,8 @@ def get_language_dict():
         "ja": {
             "表示設定": "表示設定",
             "⛵Pin_Weather!": "⛵Pin_Weather!",
-            "LABEL_FAV_ADD": "⭐ My Spot 追加",
-            "LABEL_FAV_OK": "✅ My Spot 登録済",
+            "LABEL_FAV_ADD": "⭐ My Spots 追加",
+            "LABEL_FAV_OK": "✅ My Spots 登録済",
             "FAV_PREFIX": "📍 ",
             "MAP_SELECT_LABEL": "地図で指定",
             "BTN_CURRENT_LOC": "🔄📍現在地　　　　　　　　　　",
@@ -168,7 +168,22 @@ def get_language_dict():
             "HELP_FAV_SAVE": "この場所をお気に入りに登録",
             "MSG_GEN_GRAPH": "グラフを生成中...",
             "⚙ 詳細設定": "⚙ 詳細設定",
-            "📍 My Spot 編集": "📍 My Spot 編集",
+            "📍 My Spots 編集": "📍 My Spots 編集",
+            "🚨 My Spots の登録制限（10件）に達しています。": "🚨 My Spots の登録制限（10件）に達しています。",
+            "「My Spots 編集」から不要な地点を削除してください。": "「My Spots 編集」から不要な地点を削除してください。",
+            "この地点を My Spots に保存します。": "この地点を My Spots に保存します。",
+            "現在": "現在",
+            "My Spots の名称確認": "My Spots の名称確認",
+            "登録名（修正可）": "登録名（修正可）",
+            "OK（保存実行）": "OK (保存実行)",
+            "登録されている地点はありません。": "登録されている地点はありません。",
+            "登録済": "登録済",
+            "名前を変更": "名前を変更",
+            "保存": "保存",
+            "戻る": "戻る",
+            "削除しますか？": "削除しますか？",
+            "削除": "削除",
+            "中止": "中止",
             "グラフ表示設定の詳細": "グラフ表示設定の詳細",
             "風向・風速グラフ表示": "風向・風速グラフ表示",
             "気温グラフ表示": "気温グラフ表示",
@@ -191,7 +206,7 @@ def get_language_dict():
             "地図ダイアログ調整": "地図ダイアログ調整",
             "地図ダイアログ横余白 (H-Gap)": "地図ダイアログ横余白 (H-Gap)",
             "地図ダイアログ縦余白 (V-Gap)": "地図ダイアログ縦余白 (V-Gap)",
-            "MySpot編集ダイアログ調整": "MySpot編集ダイアログ調整",
+            "My Spots 編集ダイアログ調整": "My Spots 編集ダイアログ調整",
             "ボタン幅 (%)": "ボタン幅 (%)",
             "地名表示制限 (文字)": "地名表示制限 (文字)",
             "降水量・アイコン位置調整": "降水量・アイコン位置調整",
@@ -201,9 +216,9 @@ def get_language_dict():
             "比率:風向": "比率:風向",
             "比率:気温": "比率:気温",
             "比率:潮位": "比率:潮位",
-            "設定をすべて初期値に戻す": "設定をすべて初期値に戻す",
-            "設定を適用して更新": "設定を適用して更新",
-            "キャンセルして戻る": "キャンセルして戻る",
+            "初期設定に戻す": "初期設定に戻す",
+            "更新": "更新",
+            "キャンセル": "キャンセル",
             "現在の登録地点 (クリックで削除)": "現在の登録地点 (クリックで削除)",
             "--- 地点の追加 ---": "--- 地点の追加 ---",
             "地名を入力": "地名を入力",
@@ -256,8 +271,8 @@ def get_language_dict():
         "en": {
             "表示設定": "Display Settings",
             "⛵Pin_Weather!": "⛵Pin_Weather!",
-            "LABEL_FAV_ADD": "⭐ Add My Spot",
-            "LABEL_FAV_OK": "✅ My Spot Registered",
+            "LABEL_FAV_ADD": "⭐ Add My Spots",
+            "LABEL_FAV_OK": "✅ My Spots Registered",
             "FAV_PREFIX": "📍 ",
             "MAP_SELECT_LABEL": "Select on Map",
             "BTN_CURRENT_LOC": "🔄📍GPS          ",
@@ -272,7 +287,22 @@ def get_language_dict():
             "HELP_FAV_SAVE": "Add to Favorites",
             "MSG_GEN_GRAPH": "Generating graphs...",
             "⚙ 詳細設定": "⚙ Advanced Settings",
-            "📍 My Spot 編集": "📍 Edit My Spot",
+            "📍 My Spots 編集": "📍 Edit My Spots",
+            "🚨 My Spots の登録制限（10件）に達しています。": "🚨 My Spots limit (10 items) reached.",
+            "「My Spots 編集」から不要な地点を削除してください。": "Please delete unnecessary spots from 'My Spots Editor'.",
+            "この地点を My Spots に保存します。": "Save this location to My Spots.",
+            "現在": "Current",
+            "My Spots の名称確認": "Confirm Favorite Name",
+            "登録名（修正可）": "Registration Name",
+            "OK（保存実行）": "OK (Save)",
+            "登録されている地点はありません。": "No locations registered.",
+            "登録済": "Registered",
+            "名前を変更": "Edit Name",
+            "保存": "Save",
+            "戻る": "Back",
+            "削除しますか？": "Delete this?",
+            "削除": "Delete",
+            "中止": "Cancel",
             "グラフ表示設定の詳細": "Detailed Display Settings",
             "風向・風速グラフ表示": "Show Wind Speed/Dir",
             "気温グラフ表示": "Show Temperature",
@@ -295,7 +325,7 @@ def get_language_dict():
             "地図ダイアログ調整": "Map Dialog Adjust",
             "地図ダイアログ横余白 (H-Gap)": "Map H-Gap",
             "地図ダイアログ縦余白 (V-Gap)": "Map V-Gap",
-            "MySpot編集ダイアログ調整": "MySpot Edit Adjust",
+            "My Spots 編集ダイアログ調整": "My Spots Edit Adjust",
             "ボタン幅 (%)": "Button Width (%)",
             "地名表示制限 (文字)": "Name Length Limit",
             "降水量・アイコン位置調整": "Precip/Icon Adjust",
@@ -305,9 +335,9 @@ def get_language_dict():
             "比率:風向": "Ratio: Wind",
             "比率:気温": "Ratio: Temp",
             "比率:潮位": "Ratio: Tide",
-            "設定をすべて初期値に戻す": "Reset All to Default",
-            "設定を適用して更新": "Apply and Update", 
-            "キャンセルして戻る": "Cancel",
+            "初期設定に戻す": "Reset to Default",
+            "更新": "Update", 
+            "キャンセル": "Cancel",
             "現在の登録地点 (クリックで削除)": "Current My Spots (Click to delete)",
             "--- 地点の追加 ---": "--- Add New Spot ---",
             "地名を入力": "Enter Name",
@@ -1195,13 +1225,12 @@ def generate_weather_icons_html(df, ratio_info, display_width, start_idx):
     return header_html, body_html
 
 # ======================================================================================
-# 20. サイドバーからグラフ表示設定を詳細ダイアログで一括変更するサブルーチン
+# 20. サイドバーからグラフ表示設定を詳細ダイアログで一括変更するサブルーチン (改善版)
 # ======================================================================================
 def show_settings_dialog():
     """
-    保存処理の直後に微小な待機時間を入れ、JS의実行完了を待ってから再読み込みする安全版。
-    要素数が不足している古い設定データが読み込まれた場合のIndexErrorを回避する修正済み。
-    スマホでの「はみ出し」を防止するため、余白と文字サイズを極限まで最適化したダイヤモンド配置版。
+    色付風向選択をボタンからチェックボックスに変更。
+    各項目選択時の即時リランを廃止し、最後に一括で反映する構造に修正。
     """
     import streamlit as st
     import time
@@ -1212,17 +1241,14 @@ def show_settings_dialog():
 
     @st.dialog(lang_dict.get("グラフ表示設定の詳細", "Graph Settings"), dismissible=False)
     def settings_dialog_content():
-        # --- 色付風向選択セクションのみを狙い撃ちするCSS ---
-        # カラム(st.columns)の中にあるボタンだけを38%にし、外にある下部ボタンは無視する設定
+        # --- レイアウト調整CSS ---
         st.markdown("""
             <style>
-            /* st.columnsの中に配置されたボタンのみを対象にする */
-            [data-testid="column"] [data-testid="stButton"] button {
-                width: 38% !important;
-                margin: 0 auto !important;
-                display: block !important;
+            /* チェックボックスの配置を調整 */
+            [data-testid="stCheckbox"] {
+                margin-bottom: 5px !important;
             }
-            /* ダイアログ直下（カラム外）にある下部ボタンは100%幅を維持 */
+            /* 下部一括ボタンの幅 */
             [data-testid="stDialog"] > [data-testid="vertical-block"] > [data-testid="stButton"] button {
                 width: 100% !important;
             }
@@ -1242,51 +1268,40 @@ def show_settings_dialog():
         st.markdown("---")
         d_danger_v = st.number_input(lang_dict["危険風速ライン(m/s)"], value=float(st.session_state.get("danger_v", CONFIG["DEFAULT_DANGER_V"])), step=1.0)
         
-        # --- 3. 色付風向選択 (指示通り：北・南は1列、他は2列) ---
+        # --- 3. 色付風向選択 (チェックボックス形式) ---
         st.subheader(lang_dict["色付風向選択"])
         
-        if "tmp_sel_dirs" not in st.session_state:
-            st.session_state.tmp_sel_dirs = list(st.session_state.get("sel_dirs", CONFIG["DEFAULT_DIRS"]))
-
-        def toggle_dir(dir_name):
-            if dir_name in st.session_state.tmp_sel_dirs:
-                st.session_state.tmp_sel_dirs.remove(dir_name)
-            else:
-                st.session_state.tmp_sel_dirs.append(dir_name)
+        # 現在の選択状態を初期値として取得
+        current_sel = st.session_state.get("sel_dirs", CONFIG["DEFAULT_DIRS"])
+        new_sel_dirs = []
 
         # 1行目: 北
         c1, c2, c3 = st.columns([1, 2, 1])
         with c2:
             d = ALL_DIRECTIONS[0]
-            is_sel = d in st.session_state.tmp_sel_dirs
-            if st.button(lang_dict["ALL_DIRECTIONS"][0], key=f"btn_{d}", type="primary" if is_sel else "secondary"):
-                toggle_dir(d)
-                st.rerun()
+            if st.checkbox(lang_dict["ALL_DIRECTIONS"][0], value=(d in current_sel), key=f"chk_{d}"):
+                new_sel_dirs.append(d)
 
         # 2〜8行目: 西側と東側 (2列)
         pairs = [(15, 1), (14, 2), (13, 3), (12, 4), (11, 5), (10, 6), (9, 7)]
         for w_idx, e_idx in pairs:
             cols = st.columns(2)
-            for i, side_idx in enumerate([w_idx, e_idx]):
+            for i, idx in enumerate([w_idx, e_idx]):
                 with cols[i]:
-                    d = ALL_DIRECTIONS[side_idx]
-                    is_sel = d in st.session_state.tmp_sel_dirs
-                    if st.button(lang_dict["ALL_DIRECTIONS"][side_idx], key=f"btn_{d}", type="primary" if is_sel else "secondary"):
-                        toggle_dir(d)
-                        st.rerun()
+                    d = ALL_DIRECTIONS[idx]
+                    if st.checkbox(lang_dict["ALL_DIRECTIONS"][idx], value=(d in current_sel), key=f"chk_{d}"):
+                        new_sel_dirs.append(d)
 
         # 9行目: 南
         c1, c2, c3 = st.columns([1, 2, 1])
         with c2:
             d = ALL_DIRECTIONS[8]
-            is_sel = d in st.session_state.tmp_sel_dirs
-            if st.button(lang_dict["ALL_DIRECTIONS"][8], key=f"btn_{d}", type="primary" if is_sel else "secondary"):
-                toggle_dir(d)
-                st.rerun()
+            if st.checkbox(lang_dict["ALL_DIRECTIONS"][8], value=(d in current_sel), key=f"chk_{d}"):
+                new_sel_dirs.append(d)
 
         st.markdown("---")
         
-        # --- 4. 開発者用調整 ---
+        # --- 4. 開発者用調整 (省略せず正規版のロジックを維持) ---
         is_dev_url = st.query_params.get("mode") == "dev"
         if is_dev_url:
             st.subheader("開発用詳細設定")
@@ -1296,37 +1311,26 @@ def show_settings_dialog():
             d_base_f = st.number_input(lang_dict["グラフ内文字サイズ"], int(f_cfg["min"]), int(f_cfg["max"]), int(st.session_state.get("base_font_size", CONFIG["GRAPH_FONT_SIZE"])))
             d_label_f = st.number_input(lang_dict["軸ラベル文字サイズ"], int(f_cfg["min"]), int(f_cfg["max"]), int(st.session_state.get("label_font_size", CONFIG["LABEL_SIZE"])))
             d_hspace = st.number_input("グラフ間余白", -0.2, 1.5, float(st.session_state.get("hspace", CONFIG["HSPACE"])), 0.05)
-       
             d_min_w = st.slider("コンテナ最小幅 (px)", 500, 5000, int(st.session_state.get("min_container_width", CONFIG["CONTENA_MIN_W"])), 100)
             d_dpi = st.radio("解像度 (DPI)", [200, 300], index=0 if st.session_state.get("graph_dpi", 200) == 200 else 1, horizontal=True)
             d_label_pad = st.slider("ラベル距離", -5, 10, int(st.session_state.get("label_pad", CONFIG["LABEL_PAD"])))
-            
-            st.subheader("左軸（Y軸）余白追い出し調整")
             d_left_view_w = st.slider("左軸窓の幅 (px)", 30, 200, int(st.session_state.get("left_view_w", CONFIG.get("LEFT_VIEW_W", 116))))
             d_left_shift = st.slider("左軸画像のズレ (px)", -300, -0, int(st.session_state.get("left_shift", CONFIG.get("LEFT_SHIFT", -185))))
-            
-            st.subheader("地図ダイアログ調整")
             d_dial_h = st.slider("地図ダイアログ横余白 (H-Gap)", 0, 20, int(st.session_state.get("dial_h_gap", CONFIG["DIAL_H_GAP"])))
             d_dial_v = st.slider("地図ダイアログ縦余白 (V-Gap)", 0, 20, int(st.session_state.get("dial_v_gap", CONFIG["DIAL_V_GAP"])))
-            
-            st.subheader("MySpot編集ダイアログ調整")
             d_fav_w = st.slider("ボタン幅 (%)", 10, 45, int(st.session_state.get("fav_btn_width", CONFIG.get("FAV_BTN_WIDTH", 30))), 1)
             d_fav_len = st.slider("地名表示制限 (文字)", 5, 25, int(st.session_state.get("fav_name_len", CONFIG.get("FAV_NAME_LEN", 12))), 1)
-                       
-            st.subheader("降水量・アイコン位置調整")
             d_precip_y = st.slider("降水量ラベル高さ", 0.0, 2.0, float(st.session_state.get("precip_y", CONFIG["DEFAULT_PRECIP_Y"])), 0.05)
             d_icon_margin = st.slider("天気アイコン下余白", 0, 100, int(st.session_state.get("icon_margin", CONFIG["DEFAULT_ICON_MARGIN"])), 5)
-            
-            st.subheader("グラフ縦比率設定")
             r = st.session_state.get("ratios", CONFIG["DEFAULT_RATIOS"])
-            d_r = CONFIG["DEFAULT_RATIOS"]
-            r0 = st.number_input("比率:風向", 0.5, 10.0, float(r[0] if len(r) > 0 else d_r[0]), 0.1)
-            r1 = st.number_input("比率:気温", 0.5, 5.0, float(r[1] if len(r) > 1 else d_r[1]), 0.1)
-            r2 = st.number_input("比率:波高", 0.5, 10.0, float(r[2] if len(r) > 2 else d_r[2]), 0.1)
-            r3 = st.number_input("比率:海面水温", 0.5, 5.0, float(r[3] if len(r) > 3 else d_r[3]), 0.1)
-            r4 = st.number_input("比率:潮位", 0.5, 5.0, float(r[4] if len(r) > 4 else d_r[4]), 0.1)
+            r0 = st.number_input("比率:風向", 0.5, 10.0, float(r[0]), 0.1)
+            r1 = st.number_input("比率:気温", 0.5, 5.0, float(r[1]), 0.1)
+            r2 = st.number_input("比率:波高", 0.5, 10.0, float(r[2]), 0.1)
+            r3 = st.number_input("比率:海面水温", 0.5, 5.0, float(r[3]), 0.1)
+            r4 = st.number_input("比率:潮位", 0.5, 5.0, float(r[4]), 0.1)
             d_ratios = [r0, r1, r2, r3, r4]
         else:
+            # 非開発モード時は現在の値を維持
             d_width = st.session_state.get("width", CONFIG["GRAPH_WIDTH"])
             d_base_h = st.session_state.get("base_height", CONFIG["GRAPH_HIGHT"])
             d_base_f = st.session_state.get("base_font_size", CONFIG["GRAPH_FONT_SIZE"])
@@ -1347,8 +1351,8 @@ def show_settings_dialog():
         
         st.markdown("---")
         
-        # --- 5. 保存・キャンセルボタン (CSS干渉から除外されているため、確実に縦並びになる) ---
-        if st.button(lang_dict["設定をすべて初期値に戻す"], key="reset_all_settings", use_container_width=True):
+        # --- 5. 保存・キャンセル ---
+        if st.button(lang_dict["初期設定に戻す"], key="reset_all_settings"):
             st.session_state.update({
                 "show_wind": CONFIG["SHOW_WIND"], "show_temp": CONFIG["SHOW_TEMP"], "show_tide": CONFIG["SHOW_TIDE"],
                 "show_wave": CONFIG["SHOW_WAVE"], "show_ocean_temp": CONFIG["SHOW_OCEAN_TEMP"],
@@ -1363,30 +1367,28 @@ def show_settings_dialog():
             })
             save_settings_to_browser()
             st.cache_data.clear()
-            time.sleep(0.1)
+            st.session_state.needs_graph_update = True
             st.rerun()
         
-        if st.button(lang_dict["設定を適用して更新"], key="apply_all_settings", use_container_width=True):
+        if st.button(lang_dict["更新"], key="apply_all_settings"):
             st.session_state.update({
                 "show_wind": d_show_wind, "show_temp": d_show_temp, "show_tide": d_show_tide,
                 "show_wave": d_show_wave, "show_ocean_temp": d_show_ocean_temp,
                 "width": d_width, "base_height": d_base_h, "base_font_size": d_base_f,
-                "label_font_size": d_label_f, "danger_v": d_danger_v, "sel_dirs": list(st.session_state.tmp_sel_dirs),
+                "label_font_size": d_label_f, "danger_v": d_danger_v, "sel_dirs": new_sel_dirs,
                 "min_container_width": d_min_w, "graph_dpi": d_dpi,
                 "left_view_w": d_left_view_w, "left_shift": d_left_shift, "show_w_text": d_show_w_text,
                 "show_dir_name": d_show_dir_name, "hspace": d_hspace, "label_pad": d_label_pad,
                 "dial_h_gap": d_dial_h, "dial_v_gap": d_dial_v,
                 "fav_btn_width": d_fav_w, "fav_name_len": d_fav_len,
-                "precip_y": d_precip_y, "icon_margin": d_icon_margin, "ratios": d_ratios
+                "precip_y": d_precip_y, "icon_margin": d_icon_margin, "ratios": d_ratios,
+                "needs_graph_update": True
             })
             save_settings_to_browser()
             st.cache_data.clear()
-            if "tmp_sel_dirs" in st.session_state: del st.session_state.tmp_sel_dirs
-            time.sleep(0.1)
             st.rerun()
         
-        if st.button(lang_dict["キャンセルして戻る"], key="cancel_all_settings", use_container_width=True):
-            if "tmp_sel_dirs" in st.session_state: del st.session_state.tmp_sel_dirs
+        if st.button(lang_dict["キャンセル"], key="cancel_all_settings"):
             st.rerun()
                 
     settings_dialog_content()
@@ -1412,7 +1414,7 @@ def show_sidebar_controls():
     if st.sidebar.button(lang_dict["⚙ 詳細設定"], use_container_width=True):
         show_settings_dialog()
 
-    if st.sidebar.button(lang_dict["📍 My Spot 編集"], use_container_width=True):
+    if st.sidebar.button(lang_dict["📍 My Spots 編集"], use_container_width=True):
         manage_favorites_dialog()
 
     # --- 今回追加：言語設定ダイアログの呼び出しボタン ---
@@ -1803,6 +1805,8 @@ def update_state_and_save(updates_dict):
 # 90. ブラウザのlocalStorageと設定を同期するサブルーチン
 # ==========================================================================================
 def sync_all_settings():
+    import json
+    from streamlit_js_eval import streamlit_js_eval
     STORAGE_KEY = CONFIG['STORAGE_KEY']
     
     # 初期化回避
@@ -1823,8 +1827,8 @@ def sync_all_settings():
         "label_font_size": CONFIG["LABEL_SIZE"],
         "danger_v": CONFIG["DEFAULT_DANGER_V"],
         "sel_dirs": CONFIG["DEFAULT_DIRS"],
-        # --- 今回追加：初期化リストに lang を追加 ---
-        "lang": "ja"
+        "lang": "ja",
+        "utc_offset_hours": 9.0  # リロード時の現地時間維持のため追加
     }
     
     for var_name, default_val in init_vars.items():
@@ -1869,16 +1873,19 @@ def sync_all_settings():
             st.session_state.label_pad = data.get("label_pad", CONFIG["LABEL_PAD"])
             st.session_state.hspace = data.get("hspace", CONFIG["HSPACE"])
             st.session_state.ratios = data.get("ratios", CONFIG["DEFAULT_RATIOS"])
-            # 【重要】お気に入りリストの復元
-            st.session_state.user_locations = data.get("user_locations", [])
             
-            # --- 今回追加：言語設定の復元 ---
+            # 言語設定の復元
             if "lang" in data:
                 st.session_state.lang = data["lang"]
+            
+            # 時差情報の復元 (リロード時に現地時間で開始するために必要)
+            if "utc_offset_hours" in data:
+                st.session_state.utc_offset_hours = float(data["utc_offset_hours"])
                 
             st.session_state.initialized = True
             st.rerun()
-        except Exception:
+        except Exception as e:
+            # エラー発生時は初期状態で続行
             st.session_state.initialized = True
 
 # ======================================================================================
@@ -2063,18 +2070,18 @@ def show_favorite_registration_dialog(default_name, lat, lon):
     translations = get_language_dict()
     lang_dict = translations[st.session_state.lang]
 
-    @st.dialog(lang_dict.get("お気に入り地点の名称確認", "Confirm Favorite Name"), dismissible=False)
+    @st.dialog(lang_dict.get("My Spots の名称確認", "Confirm Favorite Name"), dismissible=False)
     def favorite_registration_dialog_content():
         # 現在の登録件数を確認
         favorites = st.session_state.get("user_locations", [])
         if len(favorites) >= 10:
             st.error(lang_dict.get("🚨 お気に入りの登録制限（10件）に達しています。", "🚨 Favorite limit (10 items) reached."))
-            st.write(lang_dict.get("「My Spot 編集」から不要な地点を削除してください。", "Please delete unnecessary spots from 'My Spot Editor'."))
+            st.write(lang_dict.get("「My Spots 編集」から不要な地点を削除してください。", "Please delete unnecessary spots from 'My Spots Editor'."))
             if st.button(lang_dict.get("閉じる", "Close"), use_container_width=True):
                 st.rerun()
             return
 
-        msg_body = lang_dict.get("この地点を「お気に入り」に保存します。", "Save this location to favorites.")
+        msg_body = lang_dict.get("この地点を My Spots に保存します。", "Save this location to My Spots.")
         st.write(f"{msg_body} ({lang_dict.get('現在', 'Current')}: {len(favorites)}/10)")
         
         # 📍をデフォルトで付与 (内部処理は維持)
@@ -2121,14 +2128,14 @@ def show_favorite_registration_dialog(default_name, lat, lon):
                 st.rerun()
                 
         with col2:
-            if st.button(lang_dict.get("キャンセルして戻る", "Cancel"), use_container_width=True):
+            if st.button(lang_dict.get("キャンセル", "Cancel"), use_container_width=True):
                 st.rerun()
 
     # ダイアログの実行
     favorite_registration_dialog_content()
     
 # ======================================================================================
-# 92_4. My Spot（お気に入り）管理ダイアログ（2段構成・多言語対応）
+# 92_4. My Spots（お気に入り）管理ダイアログ（2段構成・多言語対応）
 # ======================================================================================
 def manage_favorites_dialog():
     """
@@ -2140,7 +2147,7 @@ def manage_favorites_dialog():
     translations = get_language_dict()
     lang_dict = translations[st.session_state.lang]
 
-    @st.dialog(lang_dict.get("My Spot（お気に入り）の編集", "My Spot Editor"), dismissible=False)
+    @st.dialog(lang_dict.get("📍 My Spots 編集", "📍 My Spots Editor"), dismissible=False)
     def manage_favorites_dialog_content():
         # CSSは維持
         st.markdown("""
@@ -2166,7 +2173,7 @@ def manage_favorites_dialog():
             if not current_favs:
                 st.info(lang_dict.get("登録されている地点はありません。", "No locations registered."))
             else:
-                st.caption(f"{lang_dict.get('登録', 'Registered')}: {len(current_favs)} / 10")
+                st.caption(f"{lang_dict.get('登録済', 'Registered')}: {len(current_favs)} / 10")
         
                 action_idx = None
                 direction = 0 
@@ -2225,7 +2232,7 @@ def manage_favorites_dialog():
                 # 削除確認 (メッセージとボタンを辞書化)
                 del_target = st.session_state.get("pending_del_idx")
                 if del_target is not None:
-                    del_msg = lang_dict.get("を削除しますか？", "Delete this?")
+                    del_msg = lang_dict.get("削除しますか？", "Delete this?")
                     st.warning(f"「{current_favs[del_target]['name']}」 {del_msg}")
                     y, n = st.columns(2)
                     if y.button(lang_dict.get("削除", "Delete"), key="del_y", type="primary", use_container_width=True):
@@ -2239,7 +2246,7 @@ def manage_favorites_dialog():
                         st.rerun(scope="fragment")
         
             st.markdown("---")
-            if st.button(lang_dict.get("編集を終了して閉じる", "Finish and Close"), key="close_fav", type="secondary", use_container_width=True):
+            if st.button(lang_dict.get("閉じる", "Close"), key="close_fav", type="secondary", use_container_width=True):
                 st.rerun()
         
         internal_manager()
@@ -2247,28 +2254,11 @@ def manage_favorites_dialog():
     # ダイアログの実行
     manage_favorites_dialog_content()
 
-# ======================================================================================
-# 93. 【main機能分離】②地図表示モジュール
-# ======================================================================================
-def render_map_module():
-    if st.button("🗺️地図", use_container_width=True):
-        show_location_map_dialog()
-        
-# ======================================================================================
-# 94. 【main機能分離】④グラフ更新・設定モジュール
-# ======================================================================================
-def render_update_control_module(basho):
-    """
-    現在地ボタンと、グラフ更新・時刻情報表示ボタンを1行に並べて表示する。
-    """
-    col1, col2 = st.columns([1, 1])
-    with col1:
-        handle_current_location_update_integrated()
-    with col2:
-        render_header_info(basho)
+
+
 
 # ==========================================================================================
-# 94_1. 現在地を取得し、状態を保存するサブルーチン
+# 93. 現在地を取得し、状態を保存するサブルーチン
 # ==========================================================================================
 def handle_current_location_update_integrated():
     """
@@ -2347,57 +2337,97 @@ def handle_current_location_update_integrated():
             cancel_label = lang_dict.get("BTN_CANCEL", "キャンセル")
             if st.button(cancel_label):
                 st.rerun()
+
 # ======================================================================================
-# 94_2. グラフ更新ボタンと日時情報を描画するサブルーチン
+# 95. 【修正版】操作コントロールパネル
 # ======================================================================================
-def render_header_info(current_basho_name):
+def render_compact_control_panel(basho_name):
     """
-    グラフ更新ボタンと日時情報を描画する。
-    表示内容および日時フォーマットを st.session_state.lang に基づき多言語化します。
+    正規版のロジック、比率 [0.35, 0.15, 0.1, 0.12, 0.28] を完全に維持。
     """
     import streamlit as st
     from datetime import datetime, timedelta
 
-    # 辞書の取得
     translations = get_language_dict()
     lang_dict = translations[st.session_state.lang]
 
-    # 1. 描画フラグの確認とクリア
-    if st.session_state.get("needs_graph_update", True):
-        st.session_state.needs_graph_update = False
-        
-    # 基準となるブラウザ時刻
-    now_jst = st.session_state.get('now_jst', datetime.now())
+    st.markdown("""
+        <style>
+            [data-testid="column"] { flex-direction: row !important; min-width: 0px !important; flex-grow: 1 !important; }
+            [data-testid="stVerticalBlock"] > div { padding: 0px !important; margin-top: -1px !important; margin-bottom: -2px !important; }
+            [data-testid="stHorizontalBlock"] { gap: 2px !important; }
+            .stButton > button { width: 100% !important; padding: 0px 5px !important; min-height: 36px !important; height: 36px !important; margin-bottom: 2px !important; display: flex !important; align-items: center !important; justify-content: center !important; line-height: 1.2 !important; }
+            div[data-testid="stSelectbox"] { margin-bottom: 2px !important; }
+            div[data-testid="stSelectbox"] div[data-baseweb="select"] { min-height: 36px !important; height: 36px !important; }
+        </style>
+    """, unsafe_allow_html=True)
 
-    try:
-        # 現地の時差情報を取得
-        df_tmp = fetch_weather_data(st.session_state.lat, st.session_state.lon, 1)
-        browser_offset = now_jst.utcoffset()
-        browser_offset_s = browser_offset.total_seconds() if browser_offset else 0
-        local_offset_s = df_tmp.attrs.get('local_offset_seconds', 0)
-        
-        # 計算：[ブラウザ時刻] - [ブラウザ時差] + [現地時差]
-        now_local = now_jst.replace(tzinfo=None) - timedelta(seconds=browser_offset_s) + timedelta(seconds=local_offset_s)
-        
-    except Exception:
-        now_local = now_jst.replace(tzinfo=None)
+    with st.container():
+        display_list, total_data = get_combined_location_list(CONFIG["LOCATION_MASTER"], st.session_state.lat, st.session_state.lon)
+        favorites = st.session_state.get("user_locations", [])
+        saved_data = next((f for f in favorites if abs(f['lat'] - st.session_state.lat) < 0.0001 and abs(f['lon'] - st.session_state.lon) < 0.0001), None)
+        is_saved = saved_data is not None
 
-    # --- 多言語対応：日時フォーマットとボタンラベル ---
-    # 辞書からフォーマットを取得（例: JPなら '%Y/%m/%d %H:%M:%S', ENなら '%m/%d/%Y %H:%M:%S'）
-    dt_format = lang_dict.get('DATETIME_FORMAT', '%Y/%m/%d %H:%M:%S')
-    date_time_str = now_local.strftime(dt_format)
-    
-    # 辞書から「更新」ラベルを取得
-    update_text = lang_dict.get('BTN_UPDATE', '更新')
-    update_label = f"🔄📊{update_text} ({date_time_str})"
-    
-    if st.button(update_label, use_container_width=True):
-        st.cache_data.clear()
-        st.session_state.needs_graph_update = True
-        st.rerun()
+        c1, c2, c3, c4, c5 = st.columns([0.35, 0.15, 0.1, 0.12, 0.28])
+
+        with c1:
+            selected_label = st.selectbox(
+                lang_dict.get("SELECT_PLACE", "地点を選択してください"), 
+                options=display_list, 
+                index=display_list.index(st.session_state.last_basho) if st.session_state.last_basho in display_list else 0,
+                label_visibility="collapsed"
+            )
+
+        with c2:
+            if is_saved:
+                if st.button("🌟 My Spots", key="fav_manage_call"): manage_favorites_dialog()
+            else:
+                if st.button("☆ My Spots", key="fav_save_action"):
+                    pure_name = st.session_state.last_basho.split(" (")[0]
+                    show_favorite_registration_dialog(pure_name, st.session_state.lat, st.session_state.lon)
+
+        with c3:
+            if st.button(lang_dict.get("BTN_MAP", "🗺️地図"), key="btn_map_open", use_container_width=True):
+                show_location_map_dialog()
+
+        with c4:
+            if st.button(lang_dict.get("BTN_CURRENT_LOC_SHORT", "🔄📍現在地"), key="btn_get_gps", use_container_width=True):
+                st.session_state.waiting_loc = True
+                st.session_state.geo_key = f"geo_{datetime.now().timestamp()}"
+                st.rerun()
+
+        with c5:
+            # --- ここを正規版ロジックのまま生かします ---
+            now_jst = st.session_state.get('now_jst', datetime.now(timezone(timedelta(hours=9))))
+            try:
+                # 最小限のデータ取得で時差を取得（fetch_weather_dataは既存のものを利用）
+                df_tmp = fetch_weather_data(st.session_state.lat, st.session_state.lon, 1)
+                browser_offset_s = now_jst.utcoffset().total_seconds() if now_jst.utcoffset() else 0
+                now_local = now_jst.replace(tzinfo=None) - timedelta(seconds=browser_offset_s) + timedelta(seconds=df_tmp.attrs.get('local_offset_seconds', 0))
+                # 確定した現地時間をセッションに保持（グラフ描画用）
+                st.session_state.current_now_local = now_local
+            except:
+                now_local = now_jst.replace(tzinfo=None)
+                st.session_state.current_now_local = now_local
+
+            update_label = f"🔄📊 {now_local.strftime(lang_dict.get('DATETIME_FORMAT', '%Y/%m/%d %H:%M:%S'))}"
+            if st.button(update_label, key="btn_graph_refresh", use_container_width=True):
+                st.cache_data.clear()
+                st.session_state.needs_graph_update = True
+                st.rerun()
+
+    map_select_label = lang_dict.get("MAP_SELECT_LABEL", "地図で指定")
+    if selected_label == map_select_label:
+        show_location_map_dialog()
+    elif selected_label != st.session_state.last_basho:
+        new_lat, new_lon, _ = total_data[selected_label]
+        update_state_and_save({"lat": new_lat, "lon": new_lon, "last_basho": selected_label, "needs_graph_update": True})
+
+    if st.session_state.get("waiting_loc"):
+        handle_current_location_update_integrated()
         
 # ======================================================================================
-# 95. 【main機能分離】⑤グラフ描画エリアモジュール
+# 96. 【main機能分離】⑤グラフ描画エリアモジュール
 # ======================================================================================
 def render_graph_area_module(danger_v, sel_dirs, design_params, now_jst):
     import streamlit as st
@@ -2415,6 +2445,12 @@ def render_graph_area_module(danger_v, sel_dirs, design_params, now_jst):
     if not res or res[0] is None: return
     left_b64, right_b64, ratio_info, start_idx, df_graph = res
     
+    # --- 重要：更新完了フラグのリセットと記録 ---
+    st.session_state.needs_graph_update = False
+    st.session_state.last_update_lat = st.session_state.lat
+    st.session_state.last_update_lon = st.session_state.lon
+    st.session_state.last_graph_time = now_jst
+    
     # --- 2. パラメータ取得（CONFIGおよびsession_stateから） ---
     dpi = design_params.get("graph_dpi", CONFIG.get("DPI", 200))
     fig_h_px = int(design_params.get("height", CONFIG["GRAPH_HIGHT"]) * dpi)
@@ -2430,7 +2466,7 @@ def render_graph_area_module(danger_v, sel_dirs, design_params, now_jst):
     
     # --- 3. アイコン・ラベルHTMLの取得 ---
     header_h, body_h = generate_weather_icons_html(df_graph, ratio_info, w_right_px, start_idx)
-
+    
     # --- 4. HTML構築（確実にレンダリング） ---
     html_str = (
         f'<div style="display:flex; width:100%; background:white; border:1px solid #ddd; overflow:hidden;">'
@@ -2446,138 +2482,12 @@ def render_graph_area_module(danger_v, sel_dirs, design_params, now_jst):
         f'  </div>'
         f'</div>'
     )
-
+    
     st.markdown(html_str, unsafe_allow_html=True)
     
-# ======================================================================================
-# 96. 【修正版】操作コントロールパネル
-# ======================================================================================
-def render_compact_control_panel(basho_name):
-    """
-    正規版のロジック、比率 [0.35, 0.15, 0.1, 0.12, 0.28] を完全に維持。
-    CSSを調整し、スマホで各要素が縦に並んだ際の垂直方向の隙間を最小限に詰めました。
-    """
-
-    import streamlit as st
-    from datetime import datetime, timedelta
-
-    # 辞書の取得
-    translations = get_language_dict()
-    lang_dict = translations[st.session_state.lang]
-
-    # --- レイアウト制御CSS (垂直方向の隙間を詰める) ---
-    st.markdown("""
-        <style>
-            [data-testid="column"] {
-                flex-direction: row !important;
-                flex-basis: auto !important;
-                min-width: 0px !important;
-                flex-grow: 1 !important;
-            }
-            /* 垂直方向のブロック間隔を極限まで詰める */
-            [data-testid="stVerticalBlock"] > div {
-                padding: 0px !important;
-                margin-top: -1px !important;
-                margin-bottom: -2px !important;
-            }
-            /* カラム間の隙間 */
-            [data-testid="stHorizontalBlock"] {
-                gap: 2px !important;
-            }
-            /* ボタンの高さとマージン調整 */
-            .stButton > button {
-                width: 100% !important;
-                padding: 0px 5px !important;
-                min-height: 36px !important; 
-                height: 36px !important;
-                margin-bottom: 2px !important; /* ボタンの下の隙間を最小化 */
-                display: flex !important;
-                align-items: center !important;
-                justify-content: center !important;
-                line-height: 1.2 !important;
-            }
-            /* セレクトボックスの高さ調整 */
-            div[data-testid="stSelectbox"] {
-                margin-bottom: 2px !important;
-            }
-            div[data-testid="stSelectbox"] div[data-baseweb="select"] {
-                min-height: 36px !important;
-                height: 36px !important;
-            }
-        </style>
-    """, unsafe_allow_html=True)
-
-    with st.container():
-        # --- 1. データ準備 ---
-        display_list, total_data = get_combined_location_list(
-            CONFIG["LOCATION_MASTER"], 
-            st.session_state.lat, 
-            st.session_state.lon
-        )
-        favorites = st.session_state.get("user_locations", [])
-        saved_data = next((f for f in favorites if abs(f['lat'] - st.session_state.lat) < 0.0001 and abs(f['lon'] - st.session_state.lon) < 0.0001), None)
-        is_saved = saved_data is not None
-
-        # --- 2. PC横5セルレイアウト (比率維持) ---
-        c1, c2, c3, c4, c5 = st.columns([0.35, 0.15, 0.1, 0.12, 0.28])
-
-        with c1:
-            selected_label = st.selectbox(
-                lang_dict.get("SELECT_PLACE", "地点を選択してください"), 
-                options=display_list, 
-                index=display_list.index(st.session_state.last_basho) if st.session_state.last_basho in display_list else 0,
-                label_visibility="collapsed"
-            )
-
-        with c2:
-            # 前回の決定事項「登録済みは🌟」を維持
-            if is_saved:
-                if st.button("🌟MySpot", key="fav_manage_call", help=lang_dict.get("HELP_FAV_SAVED", "お気に入り登録済み")):
-                    manage_favorites_dialog()
-            else:
-                if st.button("☆MySpot", key="fav_save_action", help=lang_dict.get("HELP_FAV_SAVE", "お気に入りに登録")):
-                    pure_name = st.session_state.last_basho.split(" (")[0]
-                    show_favorite_registration_dialog(pure_name, st.session_state.lat, st.session_state.lon)
-
-        with c3:
-            if st.button(lang_dict.get("BTN_MAP", "🗺️地図"), key="btn_map_open", use_container_width=True):
-                show_location_map_dialog()
-
-        with c4:
-            if st.button(lang_dict.get("BTN_CURRENT_LOC_SHORT", "🔄📍現在地"), key="btn_get_gps", use_container_width=True):
-                st.session_state.waiting_loc = True
-                st.session_state.geo_key = f"geo_{datetime.now().timestamp()}"
-                st.rerun()
-
-        with c5:
-            now_jst = st.session_state.get('now_jst', datetime.now())
-            try:
-                df_tmp = fetch_weather_data(st.session_state.lat, st.session_state.lon, 1)
-                browser_offset_s = now_jst.utcoffset().total_seconds() if now_jst.utcoffset() else 0
-                now_local = now_jst.replace(tzinfo=None) - timedelta(seconds=browser_offset_s) + timedelta(seconds=df_tmp.attrs.get('local_offset_seconds', 0))
-            except:
-                now_local = now_jst.replace(tzinfo=None)
-
-            update_label = f"🔄📊 {now_local.strftime(lang_dict.get('DATETIME_FORMAT', '%Y/%m/%d %H:%M:%S'))}"
-            if st.button(update_label, key="btn_graph_refresh", use_container_width=True):
-                st.cache_data.clear()
-                st.session_state.needs_graph_update = True
-                st.rerun()
-
-    # --- 3. 選択同期ロジック (維持) ---
-    map_select_label = lang_dict.get("MAP_SELECT_LABEL", "地図で指定")
-    if selected_label == map_select_label:
-        show_location_map_dialog()
-    elif selected_label != st.session_state.last_basho:
-        new_lat, new_lon, _ = total_data[selected_label]
-        update_state_and_save({"lat": new_lat, "lon": new_lon, "last_basho": selected_label, "needs_graph_update": True})
-
-    if st.session_state.get("waiting_loc"):
-        handle_current_location_update_integrated()
-        
         
 # ======================================================================================
-# 99. フッター情報表示 (凡例およびクレジット表記)
+# 97. フッター情報表示 (凡例およびクレジット表記)
 # ======================================================================================
 def render_footer_info(danger_v):
     """
@@ -2622,14 +2532,18 @@ def render_footer_info(danger_v):
     
     # --- 2. クレジット表記 (Open-Meteo) ---
     st.caption("Weather data by [Open-Meteo.com](https://open-meteo.com/) (CC BY 4.0)")
+
     
 # ======================================================================================
-# 100. メイン処理 (再構築版・スクロール対応)
+# 100. メイン処理 (サブルーチン96との連携を最適化)
 # ======================================================================================
 def main():
     import os
-    # --- 0. アプリ初期化 (最優先で実行) ---
+    from datetime import datetime, timezone, timedelta
+    
+    # --- 0. アプリ初期化 ---
     initialize_app()
+    sync_all_settings()
 
     if 'lang' not in st.session_state:
         st.session_state.lang = "ja"
@@ -2647,10 +2561,17 @@ def main():
     if 'lon' not in st.session_state: st.session_state.lon = CONFIG["DEFAULT_LON"]
     if 'last_basho' not in st.session_state: st.session_state.last_basho = CONFIG["DEFAULT_BASHO"]
     
-    if 'needs_graph_update' not in st.session_state:
+    # 現在時刻の取得 (判定用)
+    now_jst = datetime.now(timezone(timedelta(hours=9)))
+    
+    # --- 2. 更新判定ロジック (サブルーチン96の変数名 last_graph_time に合わせる) ---
+    if 'last_graph_time' not in st.session_state:
         st.session_state.needs_graph_update = True
+    else:
+        # 30分経過していれば更新
+        if now_jst - st.session_state.last_graph_time >= timedelta(minutes=30):
+            st.session_state.needs_graph_update = True
 
-    sync_all_settings()
     render_custom_css()
     setup_font(st.session_state.get("base_font_size", CONFIG["GRAPH_FONT_SIZE"]))
     
@@ -2661,18 +2582,21 @@ def main():
         st.image(icon_path, width=800) 
     else:
         st.title(lang_dict["⛵Pin_Weather!"])            
-    # st.title("Pin_Weather!")            
          
-    now_jst = datetime.now(timezone(timedelta(hours=9)))
-
-    # --- 2. 各モジュールの描画 ---
+    # --- 3. 各モジュールの描画 ---
+    # 1. パネル描画
     render_compact_control_panel(st.session_state.last_basho)
-    render_graph_area_module(danger_v, sel_dirs, design_params, now_jst)
     
-    # クレジット表示
+    # 2. グラフ描画
+    # キャッシュを効かせるため、更新フラグがFalseの時は「前回の時刻」を、
+    # Trueの時（30分経過時など）は「現在の時刻」を渡すように制御します。
+    calc_time = now_jst if st.session_state.get('needs_graph_update', False) else st.session_state.get('last_graph_time', now_jst)
+    # 常に呼び出すが、渡す時刻を固定することで「生成中」を防ぐ
+    render_graph_area_module(danger_v, sel_dirs, design_params, calc_time)
+    
     render_footer_info(danger_v)
     
-    # --- [追加] APIリンクの表示 ---
+    # APIリンク表示・Beta表示
     lat, lon = st.session_state.lat, st.session_state.lon
     w_url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&hourly=temperature_2m,windspeed_10m,winddirection_10m,precipitation&timezone=auto"
     m_url = f"https://marine-api.open-meteo.com/v1/marine?latitude={lat}&longitude={lon}&hourly=wave_height,sea_surface_temperature,sea_level_height_msl&timezone=auto"
@@ -2688,22 +2612,17 @@ def main():
         unsafe_allow_html=True
     )
     
-    # --- フッター：免責事項の表示 ---
     st.markdown("---")
     st.caption(lang_dict["DISCLAIMER"])
 
-    # URLのホスト名に "-beta-" が含まれているか判定
     host_name = st.context.headers.get("host", "").lower()
-    if "-beta-" in host_name:        # 右寄せで薄く表示し、全体のデザインを邪魔しないように配置
-        st.markdown(
-            f'<div style="text-align: left; color: gray; font-size: 0.8em;">- Beta Version -</div>', 
-            unsafe_allow_html=True
-        )
-    
+    if "-beta-" in host_name:
+        st.markdown(f'<div style="text-align: left; color: gray; font-size: 0.8em;">- Beta Version -</div>', unsafe_allow_html=True)
+
     if st.session_state.get("is_dev_mode"):
         st.divider()
         st.write("Debug: Session State", st.session_state)
-        
+
 if __name__ == "__main__":
     main()
-    
+        
