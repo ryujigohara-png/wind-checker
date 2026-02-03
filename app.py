@@ -1225,13 +1225,12 @@ def generate_weather_icons_html(df, ratio_info, display_width, start_idx):
     return header_html, body_html
 
 # ======================================================================================
-# 20. サイドバーからグラフ表示設定を詳細ダイアログで一括変更するサブルーチン
+# 20. サイドバーからグラフ表示設定を詳細ダイアログで一括変更するサブルーチン (改善版)
 # ======================================================================================
 def show_settings_dialog():
     """
-    保存処理の直後に微小な待機時間を入れ、JS의実行完了を待ってから再読み込みする安全版。
-    要素数が不足している古い設定データが読み込まれた場合のIndexErrorを回避する修正済み。
-    スマホでの「はみ出し」を防止するため、余白と文字サイズを極限まで最適化したダイヤモンド配置版。
+    色付風向選択をボタンからチェックボックスに変更。
+    各項目選択時の即時リランを廃止し、最後に一括で反映する構造に修正。
     """
     import streamlit as st
     import time
@@ -1242,17 +1241,14 @@ def show_settings_dialog():
 
     @st.dialog(lang_dict.get("グラフ表示設定の詳細", "Graph Settings"), dismissible=False)
     def settings_dialog_content():
-        # --- 色付風向選択セクションのみを狙い撃ちするCSS ---
-        # カラム(st.columns)の中にあるボタンだけを38%にし、外にある下部ボタンは無視する設定
+        # --- レイアウト調整CSS ---
         st.markdown("""
             <style>
-            /* st.columnsの中に配置されたボタンのみを対象にする */
-            [data-testid="column"] [data-testid="stButton"] button {
-                width: 38% !important;
-                margin: 0 auto !important;
-                display: block !important;
+            /* チェックボックスの配置を調整 */
+            [data-testid="stCheckbox"] {
+                margin-bottom: 5px !important;
             }
-            /* ダイアログ直下（カラム外）にある下部ボタンは100%幅を維持 */
+            /* 下部一括ボタンの幅 */
             [data-testid="stDialog"] > [data-testid="vertical-block"] > [data-testid="stButton"] button {
                 width: 100% !important;
             }
@@ -1272,51 +1268,40 @@ def show_settings_dialog():
         st.markdown("---")
         d_danger_v = st.number_input(lang_dict["危険風速ライン(m/s)"], value=float(st.session_state.get("danger_v", CONFIG["DEFAULT_DANGER_V"])), step=1.0)
         
-        # --- 3. 色付風向選択 (指示通り：北・南は1列、他は2列) ---
+        # --- 3. 色付風向選択 (チェックボックス形式) ---
         st.subheader(lang_dict["色付風向選択"])
         
-        if "tmp_sel_dirs" not in st.session_state:
-            st.session_state.tmp_sel_dirs = list(st.session_state.get("sel_dirs", CONFIG["DEFAULT_DIRS"]))
-
-        def toggle_dir(dir_name):
-            if dir_name in st.session_state.tmp_sel_dirs:
-                st.session_state.tmp_sel_dirs.remove(dir_name)
-            else:
-                st.session_state.tmp_sel_dirs.append(dir_name)
+        # 現在の選択状態を初期値として取得
+        current_sel = st.session_state.get("sel_dirs", CONFIG["DEFAULT_DIRS"])
+        new_sel_dirs = []
 
         # 1行目: 北
         c1, c2, c3 = st.columns([1, 2, 1])
         with c2:
             d = ALL_DIRECTIONS[0]
-            is_sel = d in st.session_state.tmp_sel_dirs
-            if st.button(lang_dict["ALL_DIRECTIONS"][0], key=f"btn_{d}", type="primary" if is_sel else "secondary"):
-                toggle_dir(d)
-                st.rerun()
+            if st.checkbox(lang_dict["ALL_DIRECTIONS"][0], value=(d in current_sel), key=f"chk_{d}"):
+                new_sel_dirs.append(d)
 
         # 2〜8行目: 西側と東側 (2列)
         pairs = [(15, 1), (14, 2), (13, 3), (12, 4), (11, 5), (10, 6), (9, 7)]
         for w_idx, e_idx in pairs:
             cols = st.columns(2)
-            for i, side_idx in enumerate([w_idx, e_idx]):
+            for i, idx in enumerate([w_idx, e_idx]):
                 with cols[i]:
-                    d = ALL_DIRECTIONS[side_idx]
-                    is_sel = d in st.session_state.tmp_sel_dirs
-                    if st.button(lang_dict["ALL_DIRECTIONS"][side_idx], key=f"btn_{d}", type="primary" if is_sel else "secondary"):
-                        toggle_dir(d)
-                        st.rerun()
+                    d = ALL_DIRECTIONS[idx]
+                    if st.checkbox(lang_dict["ALL_DIRECTIONS"][idx], value=(d in current_sel), key=f"chk_{d}"):
+                        new_sel_dirs.append(d)
 
         # 9行目: 南
         c1, c2, c3 = st.columns([1, 2, 1])
         with c2:
             d = ALL_DIRECTIONS[8]
-            is_sel = d in st.session_state.tmp_sel_dirs
-            if st.button(lang_dict["ALL_DIRECTIONS"][8], key=f"btn_{d}", type="primary" if is_sel else "secondary"):
-                toggle_dir(d)
-                st.rerun()
+            if st.checkbox(lang_dict["ALL_DIRECTIONS"][8], value=(d in current_sel), key=f"chk_{d}"):
+                new_sel_dirs.append(d)
 
         st.markdown("---")
         
-        # --- 4. 開発者用調整 ---
+        # --- 4. 開発者用調整 (省略せず正規版のロジックを維持) ---
         is_dev_url = st.query_params.get("mode") == "dev"
         if is_dev_url:
             st.subheader("開発用詳細設定")
@@ -1326,37 +1311,26 @@ def show_settings_dialog():
             d_base_f = st.number_input(lang_dict["グラフ内文字サイズ"], int(f_cfg["min"]), int(f_cfg["max"]), int(st.session_state.get("base_font_size", CONFIG["GRAPH_FONT_SIZE"])))
             d_label_f = st.number_input(lang_dict["軸ラベル文字サイズ"], int(f_cfg["min"]), int(f_cfg["max"]), int(st.session_state.get("label_font_size", CONFIG["LABEL_SIZE"])))
             d_hspace = st.number_input("グラフ間余白", -0.2, 1.5, float(st.session_state.get("hspace", CONFIG["HSPACE"])), 0.05)
-       
             d_min_w = st.slider("コンテナ最小幅 (px)", 500, 5000, int(st.session_state.get("min_container_width", CONFIG["CONTENA_MIN_W"])), 100)
             d_dpi = st.radio("解像度 (DPI)", [200, 300], index=0 if st.session_state.get("graph_dpi", 200) == 200 else 1, horizontal=True)
             d_label_pad = st.slider("ラベル距離", -5, 10, int(st.session_state.get("label_pad", CONFIG["LABEL_PAD"])))
-            
-            st.subheader("左軸（Y軸）余白追い出し調整")
             d_left_view_w = st.slider("左軸窓の幅 (px)", 30, 200, int(st.session_state.get("left_view_w", CONFIG.get("LEFT_VIEW_W", 116))))
             d_left_shift = st.slider("左軸画像のズレ (px)", -300, -0, int(st.session_state.get("left_shift", CONFIG.get("LEFT_SHIFT", -185))))
-            
-            st.subheader("地図ダイアログ調整")
             d_dial_h = st.slider("地図ダイアログ横余白 (H-Gap)", 0, 20, int(st.session_state.get("dial_h_gap", CONFIG["DIAL_H_GAP"])))
             d_dial_v = st.slider("地図ダイアログ縦余白 (V-Gap)", 0, 20, int(st.session_state.get("dial_v_gap", CONFIG["DIAL_V_GAP"])))
-            
-            st.subheader("MySpot編集ダイアログ調整")
             d_fav_w = st.slider("ボタン幅 (%)", 10, 45, int(st.session_state.get("fav_btn_width", CONFIG.get("FAV_BTN_WIDTH", 30))), 1)
             d_fav_len = st.slider("地名表示制限 (文字)", 5, 25, int(st.session_state.get("fav_name_len", CONFIG.get("FAV_NAME_LEN", 12))), 1)
-                       
-            st.subheader("降水量・アイコン位置調整")
             d_precip_y = st.slider("降水量ラベル高さ", 0.0, 2.0, float(st.session_state.get("precip_y", CONFIG["DEFAULT_PRECIP_Y"])), 0.05)
             d_icon_margin = st.slider("天気アイコン下余白", 0, 100, int(st.session_state.get("icon_margin", CONFIG["DEFAULT_ICON_MARGIN"])), 5)
-            
-            st.subheader("グラフ縦比率設定")
             r = st.session_state.get("ratios", CONFIG["DEFAULT_RATIOS"])
-            d_r = CONFIG["DEFAULT_RATIOS"]
-            r0 = st.number_input("比率:風向", 0.5, 10.0, float(r[0] if len(r) > 0 else d_r[0]), 0.1)
-            r1 = st.number_input("比率:気温", 0.5, 5.0, float(r[1] if len(r) > 1 else d_r[1]), 0.1)
-            r2 = st.number_input("比率:波高", 0.5, 10.0, float(r[2] if len(r) > 2 else d_r[2]), 0.1)
-            r3 = st.number_input("比率:海面水温", 0.5, 5.0, float(r[3] if len(r) > 3 else d_r[3]), 0.1)
-            r4 = st.number_input("比率:潮位", 0.5, 5.0, float(r[4] if len(r) > 4 else d_r[4]), 0.1)
+            r0 = st.number_input("比率:風向", 0.5, 10.0, float(r[0]), 0.1)
+            r1 = st.number_input("比率:気温", 0.5, 5.0, float(r[1]), 0.1)
+            r2 = st.number_input("比率:波高", 0.5, 10.0, float(r[2]), 0.1)
+            r3 = st.number_input("比率:海面水温", 0.5, 5.0, float(r[3]), 0.1)
+            r4 = st.number_input("比率:潮位", 0.5, 5.0, float(r[4]), 0.1)
             d_ratios = [r0, r1, r2, r3, r4]
         else:
+            # 非開発モード時は現在の値を維持
             d_width = st.session_state.get("width", CONFIG["GRAPH_WIDTH"])
             d_base_h = st.session_state.get("base_height", CONFIG["GRAPH_HIGHT"])
             d_base_f = st.session_state.get("base_font_size", CONFIG["GRAPH_FONT_SIZE"])
@@ -1377,8 +1351,8 @@ def show_settings_dialog():
         
         st.markdown("---")
         
-        # --- 5. 保存・キャンセルボタン (CSS干渉から除外されているため、確実に縦並びになる) ---
-        if st.button(lang_dict["初期設定に戻す"], key="reset_all_settings", use_container_width=True):
+        # --- 5. 保存・キャンセル ---
+        if st.button(lang_dict["初期設定に戻す"], key="reset_all_settings"):
             st.session_state.update({
                 "show_wind": CONFIG["SHOW_WIND"], "show_temp": CONFIG["SHOW_TEMP"], "show_tide": CONFIG["SHOW_TIDE"],
                 "show_wave": CONFIG["SHOW_WAVE"], "show_ocean_temp": CONFIG["SHOW_OCEAN_TEMP"],
@@ -1393,30 +1367,28 @@ def show_settings_dialog():
             })
             save_settings_to_browser()
             st.cache_data.clear()
-            time.sleep(0.1)
+            st.session_state.needs_graph_update = True
             st.rerun()
         
-        if st.button(lang_dict["更新"], key="apply_all_settings", use_container_width=True):
+        if st.button(lang_dict["更新"], key="apply_all_settings"):
             st.session_state.update({
                 "show_wind": d_show_wind, "show_temp": d_show_temp, "show_tide": d_show_tide,
                 "show_wave": d_show_wave, "show_ocean_temp": d_show_ocean_temp,
                 "width": d_width, "base_height": d_base_h, "base_font_size": d_base_f,
-                "label_font_size": d_label_f, "danger_v": d_danger_v, "sel_dirs": list(st.session_state.tmp_sel_dirs),
+                "label_font_size": d_label_f, "danger_v": d_danger_v, "sel_dirs": new_sel_dirs,
                 "min_container_width": d_min_w, "graph_dpi": d_dpi,
                 "left_view_w": d_left_view_w, "left_shift": d_left_shift, "show_w_text": d_show_w_text,
                 "show_dir_name": d_show_dir_name, "hspace": d_hspace, "label_pad": d_label_pad,
                 "dial_h_gap": d_dial_h, "dial_v_gap": d_dial_v,
                 "fav_btn_width": d_fav_w, "fav_name_len": d_fav_len,
-                "precip_y": d_precip_y, "icon_margin": d_icon_margin, "ratios": d_ratios
+                "precip_y": d_precip_y, "icon_margin": d_icon_margin, "ratios": d_ratios,
+                "needs_graph_update": True
             })
             save_settings_to_browser()
             st.cache_data.clear()
-            if "tmp_sel_dirs" in st.session_state: del st.session_state.tmp_sel_dirs
-            time.sleep(0.1)
             st.rerun()
         
-        if st.button(lang_dict["キャンセル"], key="cancel_all_settings", use_container_width=True):
-            if "tmp_sel_dirs" in st.session_state: del st.session_state.tmp_sel_dirs
+        if st.button(lang_dict["キャンセル"], key="cancel_all_settings"):
             st.rerun()
                 
     settings_dialog_content()
