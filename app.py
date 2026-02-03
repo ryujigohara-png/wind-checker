@@ -88,10 +88,10 @@ CONFIG = {
     "LABEL_PAD": 0,                     # ラベル距離
     "DIAL_H_GAP": 0,                    # 地図ダイアログ横余白 (H-Gap)
     "DIAL_V_GAP": 0,                    # 地図ダイアログ縦余白（V-Gap）
-    "FAV_BTN_WIDTH": 30,                # MySpot編集ダイアログ ボタン幅(%)
-    "FAV_NAME_LEN": 12,                 # MySpot編集ダイアログ 地名表示制限（文字）
-    "LEFT_VIEW_W": 116,                  # 左軸窓の幅 (px)
-    "LEFT_SHIFT": -185,                  # 左軸画像のズレ (px)
+    "FAV_BTN_WIDTH": 30,                # My Spots 編集ダイアログ ボタン幅(%)
+    "FAV_NAME_LEN": 12,                 # My Spots 編集ダイアログ 地名表示制限（文字）
+    "LEFT_VIEW_W": 116,                 # 左軸窓の幅 (px)
+    "LEFT_SHIFT": -185,                 # 左軸画像のズレ (px)
     "DEFAULT_PRECIP_Y": 1.05,           # 降水量ラベル高さ（グラフ枠を1.0とした相対値）
     "DEFAULT_ICON_MARGIN": 0,           # 天気アイコン下余白(px)
     "DEFAULT_RATIOS": [4.0, 1.0, 1.0, 1.0, 1.0],  # グラフ比率設定
@@ -206,7 +206,7 @@ def get_language_dict():
             "地図ダイアログ調整": "地図ダイアログ調整",
             "地図ダイアログ横余白 (H-Gap)": "地図ダイアログ横余白 (H-Gap)",
             "地図ダイアログ縦余白 (V-Gap)": "地図ダイアログ縦余白 (V-Gap)",
-            "MySpot編集ダイアログ調整": "MySpot編集ダイアログ調整",
+            "My Spots 編集ダイアログ調整": "My Spots 編集ダイアログ調整",
             "ボタン幅 (%)": "ボタン幅 (%)",
             "地名表示制限 (文字)": "地名表示制限 (文字)",
             "降水量・アイコン位置調整": "降水量・アイコン位置調整",
@@ -325,7 +325,7 @@ def get_language_dict():
             "地図ダイアログ調整": "Map Dialog Adjust",
             "地図ダイアログ横余白 (H-Gap)": "Map H-Gap",
             "地図ダイアログ縦余白 (V-Gap)": "Map V-Gap",
-            "MySpot編集ダイアログ調整": "MySpot Edit Adjust",
+            "My Spots 編集ダイアログ調整": "My Spots Edit Adjust",
             "ボタン幅 (%)": "Button Width (%)",
             "地名表示制限 (文字)": "Name Length Limit",
             "降水量・アイコン位置調整": "Precip/Icon Adjust",
@@ -2380,9 +2380,9 @@ def render_compact_control_panel(basho_name):
 
         with c2:
             if is_saved:
-                if st.button("🌟MySpot", key="fav_manage_call"): manage_favorites_dialog()
+                if st.button("🌟 My Spots", key="fav_manage_call"): manage_favorites_dialog()
             else:
-                if st.button("☆MySpot", key="fav_save_action"):
+                if st.button("☆ My Spots", key="fav_save_action"):
                     pure_name = st.session_state.last_basho.split(" (")[0]
                     show_favorite_registration_dialog(pure_name, st.session_state.lat, st.session_state.lon)
 
