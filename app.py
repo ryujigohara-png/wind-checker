@@ -2587,10 +2587,13 @@ def main():
     # 1. パネル描画
     render_compact_control_panel(st.session_state.last_basho)
     
-    # 2. グラフ描画 (サブルーチン96内でフラグ解除・時刻保存が完結)
-    # if st.session_state.get('needs_graph_update', False):
-    #     render_graph_area_module(danger_v, sel_dirs, design_params, now_jst)
-    render_graph_area_module(danger_v, sel_dirs, design_params, now_jst)
+    # 2. グラフ描画
+    # キャッシュを効かせるため、更新フラグがFalseの時は「前回の時刻」を、
+    # Trueの時（30分経過時など）は「現在の時刻」を渡すように制御します。
+    calc_time = now_jst if st.session_state.get('needs_graph_update', False) else st.session_state.get('last_graph_time', now_jst)
+    # 常に呼び出すが、渡す時刻を固定することで「生成中」を防ぐ
+    render_graph_area_module(danger_v, sel_dirs, design_params, calc_time)
+    
     render_footer_info(danger_v)
     
     # APIリンク表示・Beta表示
