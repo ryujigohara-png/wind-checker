@@ -2372,72 +2372,32 @@ def handle_current_location_update_integrated():
 def render_compact_control_panel(basho_name):
     """
     正規版のロジック、比率 [0.35, 0.15, 0.1, 0.12, 0.28] を完全に維持。
-    CSSを調整し、スマホで各要素が縦に並んだ際の垂直方向の隙間を最小限に詰めました。
     """
-
     import streamlit as st
     from datetime import datetime, timedelta
-    
-    # 辞書の取得
+
     translations = get_language_dict()
     lang_dict = translations[st.session_state.lang]
-    
-    # --- レイアウト制御CSS (垂直方向の隙間を詰める) ---
+
     st.markdown("""
         <style>
-            [data-testid="column"] {
-                flex-direction: row !important;
-                flex-basis: auto !important;
-                min-width: 0px !important;
-                flex-grow: 1 !important;
-            }
-            /* 垂直方向のブロック間隔を極限まで詰める */
-            [data-testid="stVerticalBlock"] > div {
-                padding: 0px !important;
-                margin-top: -1px !important;
-                margin-bottom: -2px !important;
-            }
-            /* カラム間の隙間 */
-            [data-testid="stHorizontalBlock"] {
-                gap: 2px !important;
-            }
-            /* ボタンの高さとマージン調整 */
-            .stButton > button {
-                width: 100% !important;
-                padding: 0px 5px !important;
-                min-height: 36px !important; 
-                height: 36px !important;
-                margin-bottom: 2px !important; /* ボタンの下の隙間を最小化 */
-                display: flex !important;
-                align-items: center !important;
-                justify-content: center !important;
-                line-height: 1.2 !important;
-            }
-            /* セレクトボックスの高さ調整 */
-            div[data-testid="stSelectbox"] {
-                margin-bottom: 2px !important;
-            }
-            div[data-testid="stSelectbox"] div[data-baseweb="select"] {
-                min-height: 36px !important;
-                height: 36px !important;
-            }
+            [data-testid="column"] { flex-direction: row !important; min-width: 0px !important; flex-grow: 1 !important; }
+            [data-testid="stVerticalBlock"] > div { padding: 0px !important; margin-top: -1px !important; margin-bottom: -2px !important; }
+            [data-testid="stHorizontalBlock"] { gap: 2px !important; }
+            .stButton > button { width: 100% !important; padding: 0px 5px !important; min-height: 36px !important; height: 36px !important; margin-bottom: 2px !important; display: flex !important; align-items: center !important; justify-content: center !important; line-height: 1.2 !important; }
+            div[data-testid="stSelectbox"] { margin-bottom: 2px !important; }
+            div[data-testid="stSelectbox"] div[data-baseweb="select"] { min-height: 36px !important; height: 36px !important; }
         </style>
     """, unsafe_allow_html=True)
-    
+
     with st.container():
-        # --- 1. データ準備 ---
-        display_list, total_data = get_combined_location_list(
-            CONFIG["LOCATION_MASTER"], 
-            st.session_state.lat, 
-            st.session_state.lon
-        )
+        display_list, total_data = get_combined_location_list(CONFIG["LOCATION_MASTER"], st.session_state.lat, st.session_state.lon)
         favorites = st.session_state.get("user_locations", [])
         saved_data = next((f for f in favorites if abs(f['lat'] - st.session_state.lat) < 0.0001 and abs(f['lon'] - st.session_state.lon) < 0.0001), None)
         is_saved = saved_data is not None
-    
-        # --- 2. PC横5セルレイアウト (比率維持) ---
+
         c1, c2, c3, c4, c5 = st.columns([0.35, 0.15, 0.1, 0.12, 0.28])
-    
+
         with c1:
             selected_label = st.selectbox(
                 lang_dict.get("SELECT_PLACE", "地点を選択してください"), 
@@ -2445,44 +2405,52 @@ def render_compact_control_panel(basho_name):
                 index=display_list.index(st.session_state.last_basho) if st.session_state.last_basho in display_list else 0,
                 label_visibility="collapsed"
             )
-    
+
         with c2:
-            # 前回の決定事項「登録済みは🌟」を維持
             if is_saved:
-                if st.button("🌟MySpot", key="fav_manage_call", help=lang_dict.get("HELP_FAV_SAVED", "お気に入り登録済み")):
-                    manage_favorites_dialog()
+                if st.button("🌟MySpot", key="fav_manage_call"): manage_favorites_dialog()
             else:
-                if st.button("☆MySpot", key="fav_save_action", help=lang_dict.get("HELP_FAV_SAVE", "お気に入りに登録")):
+                if st.button("☆MySpot", key="fav_save_action"):
                     pure_name = st.session_state.last_basho.split(" (")[0]
                     show_favorite_registration_dialog(pure_name, st.session_state.lat, st.session_state.lon)
-    
+
         with c3:
             if st.button(lang_dict.get("BTN_MAP", "🗺️地図"), key="btn_map_open", use_container_width=True):
                 show_location_map_dialog()
-    
+
         with c4:
             if st.button(lang_dict.get("BTN_CURRENT_LOC_SHORT", "🔄📍現在地"), key="btn_get_gps", use_container_width=True):
                 st.session_state.waiting_loc = True
                 st.session_state.geo_key = f"geo_{datetime.now().timestamp()}"
                 st.rerun()
-    
+
         with c5:
-            # 10分単位に丸められた最終更新時刻をボタンに表示
-            last_time = st.session_state.get('last_graph_time', datetime.now())
-            update_label = f"🔄📊 {last_time.strftime(lang_dict.get('DATETIME_FORMAT', '%Y/%m/%d %H:%M'))}"
+            # --- ここを正規版ロジックのまま生かします ---
+            now_jst = st.session_state.get('now_jst', datetime.now(timezone(timedelta(hours=9))))
+            try:
+                # 最小限のデータ取得で時差を取得（fetch_weather_dataは既存のものを利用）
+                df_tmp = fetch_weather_data(st.session_state.lat, st.session_state.lon, 1)
+                browser_offset_s = now_jst.utcoffset().total_seconds() if now_jst.utcoffset() else 0
+                now_local = now_jst.replace(tzinfo=None) - timedelta(seconds=browser_offset_s) + timedelta(seconds=df_tmp.attrs.get('local_offset_seconds', 0))
+                # 確定した現地時間をセッションに保持（グラフ描画用）
+                st.session_state.current_now_local = now_local
+            except:
+                now_local = now_jst.replace(tzinfo=None)
+                st.session_state.current_now_local = now_local
+
+            update_label = f"🔄📊 {now_local.strftime(lang_dict.get('DATETIME_FORMAT', '%Y/%m/%d %H:%M:%S'))}"
             if st.button(update_label, key="btn_graph_refresh", use_container_width=True):
                 st.cache_data.clear()
                 st.session_state.needs_graph_update = True
                 st.rerun()
-    
-    # --- 3. 選択同期ロジック (維持) ---
+
     map_select_label = lang_dict.get("MAP_SELECT_LABEL", "地図で指定")
     if selected_label == map_select_label:
         show_location_map_dialog()
     elif selected_label != st.session_state.last_basho:
         new_lat, new_lon, _ = total_data[selected_label]
         update_state_and_save({"lat": new_lat, "lon": new_lon, "last_basho": selected_label, "needs_graph_update": True})
-    
+
     if st.session_state.get("waiting_loc"):
         handle_current_location_update_integrated()
         
@@ -2593,37 +2561,9 @@ def render_footer_info(danger_v):
     # --- 2. クレジット表記 (Open-Meteo) ---
     st.caption("Weather data by [Open-Meteo.com](https://open-meteo.com/) (CC BY 4.0)")
 
-# ==========================================================================================
-# 座標から現地の現在時刻（datetimeオブジェクト）を取得するサブルーチン
-# ==========================================================================================
-def get_local_now_by_coords(lat, lon):
-    import requests
-    from datetime import datetime, timezone, timedelta
-    
-    # Open-Meteoの軽量なエンドポイントを使用して時差(utc_offset_seconds)のみを取得
-    # forecast_days=0 とすることでデータ取得を最小限にし、レスポンスを高速化
-    url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&timezone=auto&forecast_days=1"
-    
-    try:
-        res = requests.get(url, timeout=3).json()
-        # APIから時差（秒）を取得。取得失敗時はJST(32400秒)をデフォルトとする
-        offset_sec = res.get("utc_offset_seconds", 32400)
-        
-        # 取得した時差をセッションに保存（リロード時の復元および他サブルーチンでの再利用のため）
-        st.session_state.utc_offset_hours = offset_sec / 3600.0
-        
-        # 現在のUTC時刻に時差を適用して現地時刻を生成
-        tz_local = timezone(timedelta(seconds=offset_sec))
-        return datetime.now(tz_local)
-        
-    except Exception:
-        # 通信エラー等の場合は、セッションに保存されている既存の時差、またはJSTを使用
-        current_offset = st.session_state.get("utc_offset_hours", 9.0)
-        return datetime.now(timezone(timedelta(hours=current_offset)))
-    
     
 # ======================================================================================
-# 100. メイン処理 (再構築版・スクロール対応)
+# 100. メイン処理 (正規版ベース・判定フロー修正)
 # ======================================================================================
 def main():
     import os
@@ -2633,45 +2573,30 @@ def main():
     initialize_app()
     sync_all_settings()
 
-    # --- 1. 描画前の「時差」先行確定ロジック ---
-    # グラフを描く前に、座標から現在の正確な時差(UTC Offset)をチェックする
-    if 'lat' not in st.session_state: st.session_state.lat = CONFIG["DEFAULT_LAT"]
-    if 'lon' not in st.session_state: st.session_state.lon = CONFIG["DEFAULT_LON"]
-    
-    # 軽量APIで時差を確認
-    # (内部で st.session_state.utc_offset_hours を更新する)
-    target_now = get_local_now_by_coords(st.session_state.lat, st.session_state.lon)
-    
-    # 前回のAPI取得時の時差と食い違っている場合（またはリロード初回）、
-    # 描画を始める前に一度だけリランして状態を確定させる
-    if st.session_state.get('last_verified_offset') != st.session_state.utc_offset_hours:
-        st.session_state.last_verified_offset = st.session_state.utc_offset_hours
-        st.rerun()
-
-    # 以降、now_local は確実に現地時間として固定される
-    now_local = target_now
-
     if 'lang' not in st.session_state:
         st.session_state.lang = "ja"
     
     translations = get_language_dict()
     lang_dict = translations[st.session_state.lang]
 
-    # --- 2. 状態の初期化 ---
+    # --- 1. 状態と時刻の初期化 ---
     if "mode" in st.query_params and st.query_params["mode"] == "dev":
         st.session_state.is_dev_mode = True
     else:
         st.session_state.is_dev_mode = False
     
-    is_reload = 'needs_graph_update' not in st.session_state
-    if is_reload:
-        st.session_state.needs_graph_update = True
-
-    if 'last_update_time' not in st.session_state:
-        st.session_state.last_update_time = now_local
+    if 'lat' not in st.session_state: st.session_state.lat = CONFIG["DEFAULT_LAT"]
+    if 'lon' not in st.session_state: st.session_state.lon = CONFIG["DEFAULT_LON"]
+    if 'last_basho' not in st.session_state: st.session_state.last_basho = CONFIG["DEFAULT_BASHO"]
     
-    if 'last_update_lat' not in st.session_state: st.session_state.last_update_lat = 0.0
-    if 'last_update_lon' not in st.session_state: st.session_state.last_update_lon = 0.0
+    # 基準となるJST時刻
+    now_jst = datetime.now(timezone(timedelta(hours=9)))
+    st.session_state.now_jst = now_jst
+
+    # --- 2. 更新判定 (白紙案のロジックを最小限に挿入) ---
+    if 'last_update_time' not in st.session_state:
+        st.session_state.needs_graph_update = True
+        st.session_state.last_update_time = now_jst # 初期値
 
     render_custom_css()
     setup_font(st.session_state.get("base_font_size", CONFIG["GRAPH_FONT_SIZE"]))
@@ -2684,33 +2609,20 @@ def main():
     else:
         st.title(lang_dict["⛵Pin_Weather!"])            
          
-    # --- 3. 更新判定ロジック ---
-    location_changed = (abs(st.session_state.lat - st.session_state.last_update_lat) > 0.0001 or 
-                        abs(st.session_state.lon - st.session_state.last_update_lon) > 0.0001)
-    
-    time_elapsed = now_local - st.session_state.last_update_time
-    time_over = time_elapsed >= timedelta(minutes=30)
-    
-    if is_reload or location_changed or time_over:
-        st.session_state.needs_graph_update = True
-
-    # --- 4. 各モジュールの描画 ---
-    # ここに到達した時点で時差は確定しているため、1回で正しく描画される
+    # --- 3. 各モジュールの描画 (上から順に実行) ---
+    # 先にパネルを描画。この中のc5で now_local が確定し session_state に入る
     render_compact_control_panel(st.session_state.last_basho)
     
-    # グラフエリア描画
-    render_graph_area_module(danger_v, sel_dirs, design_params, now_local)
+    # パネルで確定した現地時間、またはJSTを使ってグラフを描画
+    graph_time = st.session_state.get('current_now_local', now_jst.replace(tzinfo=None))
+    render_graph_area_module(danger_v, sel_dirs, design_params, graph_time)
     
-    # 描画が終わったらフラグを更新（ここでのrerunは不要になる）
-    if st.session_state.needs_graph_update:
-        st.session_state.needs_graph_update = False
-        st.session_state.last_update_time = now_local
-        st.session_state.last_update_lat = st.session_state.lat
-        st.session_state.last_update_lon = st.session_state.lon
-
-    # --- 5. 付随情報 ---
+    # 描画が終わったら「更新が必要」フラグを倒す
+    st.session_state.needs_graph_update = False
+    
     render_footer_info(danger_v)
     
+    # APIリンク
     lat, lon = st.session_state.lat, st.session_state.lon
     w_url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&hourly=temperature_2m,windspeed_10m,winddirection_10m,precipitation&timezone=auto"
     m_url = f"https://marine-api.open-meteo.com/v1/marine?latitude={lat}&longitude={lon}&hourly=wave_height,sea_surface_temperature,sea_level_height_msl&timezone=auto"
@@ -2736,7 +2648,7 @@ def main():
     if st.session_state.get("is_dev_mode"):
         st.divider()
         st.write("Debug: Session State", st.session_state)
-
+        
 if __name__ == "__main__":
     main()
     
