@@ -2579,7 +2579,7 @@ def main():
     translations = get_language_dict()
     lang_dict = translations[st.session_state.lang]
 
-    # --- 1. 状態と時刻の初期化 ---
+    # --- 1. 状態の初期化 ---
     if "mode" in st.query_params and st.query_params["mode"] == "dev":
         st.session_state.is_dev_mode = True
     else:
@@ -2589,14 +2589,18 @@ def main():
     if 'lon' not in st.session_state: st.session_state.lon = CONFIG["DEFAULT_LON"]
     if 'last_basho' not in st.session_state: st.session_state.last_basho = CONFIG["DEFAULT_BASHO"]
     
-    # 基準となるJST時刻
+    # 現在時刻の取得 (判定用)
     now_jst = datetime.now(timezone(timedelta(hours=9)))
-    st.session_state.now_jst = now_jst
-
-    # --- 2. 更新判定 (白紙案のロジックを最小限に挿入) ---
+    
+    # --- 2. 更新判定ロジック (①のステップ) ---
     if 'last_update_time' not in st.session_state:
+        # 初回起動時
         st.session_state.needs_graph_update = True
-        st.session_state.last_update_time = now_jst # 初期値
+        # 初回は更新後に時刻を入れるため、ここでは仮置き
+    else:
+        # 30分経過判定
+        if now_jst - st.session_state.last_update_time >= timedelta(minutes=30):
+            st.session_state.needs_graph_update = True
 
     render_custom_css()
     setup_font(st.session_state.get("base_font_size", CONFIG["GRAPH_FONT_SIZE"]))
@@ -2610,19 +2614,14 @@ def main():
         st.title(lang_dict["⛵Pin_Weather!"])            
          
     # --- 3. 各モジュールの描画 (上から順に実行) ---
-    # 先にパネルを描画。この中のc5で now_local が確定し session_state に入る
+    # 1. パネル描画 (サブルーチン95：now_localの計算と表示)
     render_compact_control_panel(st.session_state.last_basho)
     
-    # パネルで確定した現地時間、またはJSTを使ってグラフを描画
-    graph_time = st.session_state.get('current_now_local', now_jst.replace(tzinfo=None))
-    render_graph_area_module(danger_v, sel_dirs, design_params, graph_time)
-    
-    # 描画が終わったら「更新が必要」フラグを倒す
-    st.session_state.needs_graph_update = False
-    
+    # 2. グラフ描画 (②のステップ)
+    render_graph_area_module(danger_v, sel_dirs, design_params, now_jst)
     render_footer_info(danger_v)
     
-    # APIリンク
+    # APIリンク表示
     lat, lon = st.session_state.lat, st.session_state.lon
     w_url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&hourly=temperature_2m,windspeed_10m,winddirection_10m,precipitation&timezone=auto"
     m_url = f"https://marine-api.open-meteo.com/v1/marine?latitude={lat}&longitude={lon}&hourly=wave_height,sea_surface_temperature,sea_level_height_msl&timezone=auto"
