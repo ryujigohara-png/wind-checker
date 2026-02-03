@@ -2588,9 +2588,9 @@ def main():
     render_compact_control_panel(st.session_state.last_basho)
     
     # 2. グラフ描画 (サブルーチン96内でフラグ解除・時刻保存が完結)
-    if st.session_state.get('needs_graph_update', False):
-        render_graph_area_module(danger_v, sel_dirs, design_params, now_jst)
-        
+    # if st.session_state.get('needs_graph_update', False):
+    #     render_graph_area_module(danger_v, sel_dirs, design_params, now_jst)
+    render_graph_area_module(danger_v, sel_dirs, design_params, now_jst)
     render_footer_info(danger_v)
     
     # APIリンク表示・Beta表示
