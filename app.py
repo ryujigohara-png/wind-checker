@@ -431,17 +431,38 @@ def setup_font(font_size=None):
     plt.rc('font', family='Noto Sans JP', size=font_size)
 
 # ======================================================================================
-# 3. 気象データをAPIから取得するサブルーチン
+# 3. 気象データをAPIから取得するサブルーチン（デバッグログ・堅牢化版）
 # ======================================================================================
 def fetch_weather_data(lat, lon, days):
     import requests
     import pandas as pd
+    import streamlit as st
     
+    # 緯度経度のチェック（Noneや空文字を事前に防ぐ）
+    if lat is None or lon is None:
+        st.sidebar.error("❌ APIエラー: 緯度または経度が指定されていません。")
+        return None
+
     # timezone=auto を指定
     url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&hourly=temperature_2m,wind_speed_10m,wind_direction_10m,weather_code,precipitation&timezone=auto&wind_speed_unit=ms&forecast_days={days}"
     
     try:
-        response = requests.get(url).json()
+        # タイムアウトを10秒に設定し、レスポンスを取得
+        res = requests.get(url, timeout=10)
+        
+        # HTTPステータスコードが200（成功）以外の場合はエラーとして扱う
+        if res.status_code != 200:
+            st.sidebar.error(f"❌ APIエラー: ステータスコード {res.status_code}")
+            st.sidebar.write(res.text) # 具体的なエラー理由を表示
+            return None
+            
+        response = res.json()
+        
+        # 期待するデータ構造が含まれているか確認
+        if "hourly" not in response:
+            st.sidebar.error("❌ APIエラー: レスポンスに 'hourly' データが含まれていません。")
+            return None
+
         df = pd.DataFrame(response["hourly"])
         
         # 変数 y: APIが返す現地のUTC時差（秒）
@@ -473,10 +494,15 @@ def fetch_weather_data(lat, lon, days):
             
         df['weather_icon'] = df['weather_code'].apply(get_icon)
         return df
-    except Exception as e:
-        print(f"Error fetching weather data: {e}")
-        return None
 
+    except requests.exceptions.Timeout:
+        st.sidebar.error("❌ APIエラー: 接続タイムアウトが発生しました。")
+        return None
+    except Exception as e:
+        st.sidebar.error(f"❌ APIエラー: 予期せぬエラーが発生しました ({type(e).__name__})")
+        st.sidebar.write(str(e))
+        return None
+        
 # ======================================================================================
 # 4. 海洋データを取得するサブルーチン
 # ======================================================================================
