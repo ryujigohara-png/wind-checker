@@ -2596,6 +2596,14 @@ def main():
     
     render_footer_info(danger_v)
     
+    # --------------------------------------------------------------------------------------
+    # デバッグ用：一時的にメイン処理のどこかに配置してください
+    # --------------------------------------------------------------------------------------
+    if st.button("キャッシュを完全にクリアして再描画"):
+        st.cache_data.clear()
+        st.info("キャッシュをクリアしました。再読み込みしてください。")
+        st.rerun()
+        
     # APIリンク表示・Beta表示
     lat, lon = st.session_state.lat, st.session_state.lon
     w_url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&hourly=temperature_2m,windspeed_10m,winddirection_10m,precipitation&timezone=auto"
