@@ -953,7 +953,7 @@ def render_tide_curve_chart(ax, df, lat, lon, marine_results, res_lat, res_lon, 
         render_ocean_location_info(ax, lat, lon, res_lat, res_lon, label_fs, lang_dict)
         
 # ======================================================================================
-# 12. 高解像度グラフ画像を生成し、左右に分割するサブルーチン
+# 12. 高解像度グラフ画像を生成し、左右に分割するサブルーチン（画面ログ表示版）
 # ======================================================================================
 @st.cache_data(show_spinner=False, ttl=600)
 def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_params, now_jst):
@@ -963,11 +963,22 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
     from datetime import timedelta
     import matplotlib.pyplot as plt
     from PIL import Image
+    import streamlit as st
 
+    # --- 画面デバッグ用コンテナ ---
+    # キャッシュ内では st.write が直接反映されない場合があるため、戻り値でログを渡す構成を検討しますが、
+    # 開発中の特定のため、一時的に sidebar または toast で通知を試みます。
+    def report_step(msg):
+        st.sidebar.write(f"🔍 {msg}")
+
+    report_step("データ取得開始...")
     # 1. データ取得
     df_raw = fetch_weather_data(lat, lon, 9)
-    if df_raw is None: return None, None, (0, 0), 0, None
+    if df_raw is None:
+        report_step("❌ エラー: fetch_weather_data が None です")
+        return None, None, (0, 0), 0, None
     
+    report_step("時刻計算・データ加工中...")
     # 2. ブラウザと現地の時差から、現地の現在時刻を計算
     browser_offset = now_jst.utcoffset()
     browser_offset_s = browser_offset.total_seconds() if browser_offset else 0
@@ -981,6 +992,10 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
     # 4. データの切り出し
     df = df_raw[df_raw['time'] >= padding_start_time].copy().reset_index(drop=True)
     df = df.head(195)
+    if df.empty:
+        report_step("❌ エラー: 切り出したデータ(df)が空です")
+        return None, None, (0, 0), 0, None
+
     start_idx = 3
     df = process_wind_data(df, list(selected_dirs_tuple))
     
@@ -990,86 +1005,91 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
     if design_params.get("show_wave", True): active_plots.append("wave")
     if design_params.get("show_ocean_temp", True): active_plots.append("ocean_temp")
     if design_params.get("show_tide", True): active_plots.append("tide")
-    if not active_plots: return None, None, (0, 0), start_idx, df
+    
+    if not active_plots:
+        report_step("⚠️ 警告: 表示対象(active_plots)が空です")
+        return None, None, (0, 0), start_idx, df
+
+    report_step(f"描画対象: {', '.join(active_plots)}")
 
     marine_results = None
     r_lat, r_lon = lat, lon
     if any(k in active_plots for k in {"wave", "ocean_temp", "tide"}):
         marine_results, r_lat, r_lon = get_marine_data(df['time'], lat, lon)
+        if marine_results is None:
+            report_step("❌ エラー: get_marine_data が失敗しました")
     
-    # --- エラートラップ：ratiosの整合性チェック ---
+    # --- ratiosの整合性チェック ---
     ratios = list(design_params.get("ratios", CONFIG["DEFAULT_RATIOS"]))
     all_possible = ["wind", "temp", "wave", "ocean_temp", "tide"]
-    
-    # 設定されたratiosが足りない場合、デフォルト値で補完するエラートラップ
     if len(ratios) < len(all_possible):
         ratios = list(CONFIG["DEFAULT_RATIOS"])
-        
     current_ratios = [ratios[i] for i, p in enumerate(all_possible) if p in active_plots]
-    # --------------------------------------------
     
     fig_w = design_params.get("width", CONFIG["GRAPH_WIDTH"])
     fig_h = design_params.get("height", CONFIG["GRAPH_HIGHT"])
     dpi_value = design_params.get("graph_dpi", CONFIG.get("DPI", 200))
-    
-    # 分割位置の設定（Y軸部分を10%確保）
     split_ratio = 0.10 
 
-    fig, axes = plt.subplots(len(active_plots), 1, figsize=(fig_w, fig_h), dpi=dpi_value, 
-                             gridspec_kw={'height_ratios': current_ratios})
-    if len(active_plots) == 1: axes = [axes]
-    formatter = get_x_axis_formatter()
-    
-    idx = 0
-    if "wind" in active_plots:
-        render_wind_bar_chart(axes[idx], df, danger_v, start_idx, design_params)
-        idx += 1
-    if "temp" in active_plots:
-        render_temp_line_chart(axes[idx], df)
-        idx += 1
+    report_step(f"Matplotlib描画開始 (DPI: {dpi_value})...")
+    try:
+        fig, axes = plt.subplots(len(active_plots), 1, figsize=(fig_w, fig_h), dpi=dpi_value, 
+                                 gridspec_kw={'height_ratios': current_ratios})
+        if len(active_plots) == 1: axes = [axes]
+        formatter = get_x_axis_formatter()
+        
+        idx = 0
+        if "wind" in active_plots:
+            render_wind_bar_chart(axes[idx], df, danger_v, start_idx, design_params)
+            idx += 1
+        if "temp" in active_plots:
+            render_temp_line_chart(axes[idx], df)
+            idx += 1
 
-    has_wave, has_otemp, has_tide = "wave" in active_plots, "ocean_temp" in active_plots, "tide" in active_plots
-    if has_wave:
-        render_wave_height_chart(axes[idx], df, lat, lon, marine_results, r_lat, r_lon, is_bottom=(not has_otemp and not has_tide))
-        idx += 1
-    if has_otemp:
-        render_ocean_temp_chart(axes[idx], df, lat, lon, marine_results, r_lat, r_lon, is_bottom=(not has_tide))
-        idx += 1
-    if has_tide:
-        render_tide_curve_chart(axes[idx], df, lat, lon, marine_results, r_lat, r_lon, is_bottom=True)
-        idx += 1
+        has_wave, has_otemp, has_tide = "wave" in active_plots, "ocean_temp" in active_plots, "tide" in active_plots
+        if has_wave:
+            render_wave_height_chart(axes[idx], df, lat, lon, marine_results, r_lat, r_lon, is_bottom=(not has_otemp and not has_tide))
+            idx += 1
+        if has_otemp:
+            render_ocean_temp_chart(axes[idx], df, lat, lon, marine_results, r_lat, r_lon, is_bottom=(not has_tide))
+            idx += 1
+        if has_tide:
+            render_tide_curve_chart(axes[idx], df, lat, lon, marine_results, r_lat, r_lon, is_bottom=True)
+            idx += 1
 
-    for ax in axes:
-        apply_common_axis_settings(ax, df, formatter, now_jst, design_params)
+        for ax in axes:
+            apply_common_axis_settings(ax, df, formatter, now_jst, design_params)
 
-    # 余白を厳密に固定
-    plt.subplots_adjust(left=split_ratio, right=0.98, top=0.95, bottom=0.15, hspace=design_params.get("hspace", CONFIG["HSPACE"]))
+        plt.subplots_adjust(left=split_ratio, right=0.98, top=0.95, bottom=0.15, hspace=design_params.get("hspace", CONFIG["HSPACE"]))
 
-    # 座標情報の計算
-    pos = axes[0].get_position() 
-    # 右側エリアにおける開始位置(x=0)からの比率を計算
-    new_hour_w = pos.width / (len(df) - 1) / (1.0 - split_ratio)
-    new_ratio_info = (0.0, new_hour_w) # leftをsplit_ratioに合わせたので、データ開始は右側画像の左端(0.0)になる
-    
-    buf = io.BytesIO()
-    fig.savefig(buf, format="png", bbox_inches=None, pad_inches=0, dpi=dpi_value)
-    plt.close(fig) 
-    
-    buf.seek(0)
-    full_img = Image.open(buf)
-    img_w, img_h = full_img.size
-    split_px = int(img_w * split_ratio)
-    
-    left_part = full_img.crop((0, 0, split_px, img_h))
-    right_part = full_img.crop((split_px, 0, img_w, img_h))
-    
-    def img_to_b64(img):
-        b = io.BytesIO()
-        img.save(b, format="PNG")
-        return base64.b64encode(b.getvalue()).decode()
+        pos = axes[0].get_position() 
+        new_hour_w = pos.width / (len(df) - 1) / (1.0 - split_ratio)
+        new_ratio_info = (0.0, new_hour_w)
+        
+        buf = io.BytesIO()
+        fig.savefig(buf, format="png", bbox_inches=None, pad_inches=0, dpi=dpi_value)
+        plt.close(fig) 
+        
+        buf.seek(0)
+        full_img = Image.open(buf)
+        img_w, img_h = full_img.size
+        split_px = int(img_w * split_ratio)
+        
+        left_part = full_img.crop((0, 0, split_px, img_h))
+        right_part = full_img.crop((split_px, 0, img_w, img_h))
+        
+        def img_to_b64(img):
+            b = io.BytesIO()
+            img.save(b, format="PNG")
+            return base64.b64encode(b.getvalue()).decode()
 
-    return img_to_b64(left_part), img_to_b64(right_part), new_ratio_info, start_idx, df
+        report_step("✅ グラフ生成・変換完了")
+        return img_to_b64(left_part), img_to_b64(right_part), new_ratio_info, start_idx, df
 
+    except Exception as e:
+        report_step(f"❌ 描画中に例外発生: {e}")
+        return None, None, (0, 0), start_idx, df
+        
 # ======================================================================================
 # 13. 波高グラフを描画するサブルーチン
 # ======================================================================================
