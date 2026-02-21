@@ -981,7 +981,7 @@ def render_tide_curve_chart(ax, df, lat, lon, marine_results, res_lat, res_lon, 
 # ======================================================================================
 # 12. 高解像度グラフ画像を生成し、左右に分割するサブルーチン（画面ログ表示版）
 # ======================================================================================
-@st.cache_data(show_spinner=False, ttl=600)
+@st.cache_data(show_spinner=False, ttl=3600)
 def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_params, now_jst):
     import pandas as pd
     import io
