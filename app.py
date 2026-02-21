@@ -431,64 +431,46 @@ def setup_font(font_size=None):
     plt.rc('font', family='Noto Sans JP', size=font_size)
 
 # ======================================================================================
-# 3. 気象データをAPIから取得するサブルーチン（デバッグログ・堅牢化版）
+# 3. 気象データをAPIから取得するサブルーチン
 # ======================================================================================
 def fetch_weather_data(lat, lon, days):
     import requests
     import pandas as pd
     import streamlit as st
     
-    # 緯度経度のチェック（Noneや空文字を事前に防ぐ）
     if lat is None or lon is None:
         st.sidebar.error("❌ APIエラー: 緯度または経度が指定されていません。")
         return None
 
-    # timezone=auto を指定
     url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&hourly=temperature_2m,wind_speed_10m,wind_direction_10m,weather_code,precipitation&timezone=auto&wind_speed_unit=ms&forecast_days={days}"
     
     try:
-        # タイムアウトを10秒に設定し、レスポンスを取得
+        # タイムアウト10秒、ステータスコードチェック付き
         res = requests.get(url, timeout=10)
         
-        # HTTPステータスコードが200（成功）以外の場合はエラーとして扱う
         if res.status_code != 200:
             st.sidebar.error(f"❌ APIエラー: ステータスコード {res.status_code}")
-            st.sidebar.write(res.text) # 具体的なエラー理由を表示
+            st.sidebar.write(res.text) # 429制限などの詳細を表示
             return None
             
         response = res.json()
-        
-        # 期待するデータ構造が含まれているか確認
         if "hourly" not in response:
             st.sidebar.error("❌ APIエラー: レスポンスに 'hourly' データが含まれていません。")
             return None
 
         df = pd.DataFrame(response["hourly"])
-        
-        # 変数 y: APIが返す現地のUTC時差（秒）
         local_offset_s = response.get("utc_offset_seconds", 0)
-        
-        # APIが返した「現地時間の数字」をそのままNaive（時差情報なし）で保持
         df['time'] = pd.to_datetime(df['time']).dt.tz_localize(None)
-        
-        # 現地の時差秒数を属性として保存
         df.attrs['local_offset_seconds'] = local_offset_s
         
         def get_icon(code):
-            # 0: 晴天, 1-3: 晴れ時々曇り
             if code == 0: return "☀️"
             if code <= 3: return "🌤️"
-            # 45, 48: 霧
             if code == 45 or code == 48: return "🌫️"
-            # 51-67: 霧雨・雨
             if code <= 67: return "☔"
-            # 71-77: 雪
             if code <= 77: return "❄️"
-            # 80-82: 俄か雨
             if code <= 82: return "🌦️"
-            # 85-86: 雪（にわか）
             if code <= 86: return "🌨️"
-            # 95-99: 雷雨
             if code <= 99: return "⛈️"
             return "❓"
             
@@ -979,7 +961,7 @@ def render_tide_curve_chart(ax, df, lat, lon, marine_results, res_lat, res_lon, 
         render_ocean_location_info(ax, lat, lon, res_lat, res_lon, label_fs, lang_dict)
         
 # ======================================================================================
-# 12. 高解像度グラフ画像を生成し、左右に分割するサブルーチン（画面ログ表示版）
+# 12. 高解像度グラフ画像を生成し、左右に分割するサブルーチン
 # ======================================================================================
 @st.cache_data(show_spinner=False, ttl=3600)
 def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_params, now_jst):
@@ -991,21 +973,11 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
     from PIL import Image
     import streamlit as st
 
-    # --- 画面デバッグ用コンテナ ---
-    # キャッシュ内では st.write が直接反映されない場合があるため、戻り値でログを渡す構成を検討しますが、
-    # 開発中の特定のため、一時的に sidebar または toast で通知を試みます。
-    def report_step(msg):
-        st.sidebar.write(f"🔍 {msg}")
-
-    report_step("データ取得開始...")
-    # 1. データ取得
+    # 1. データ取得（3番のサブルーチンを呼び出し。エラー時は3番側で表示済み）
     df_raw = fetch_weather_data(lat, lon, 9)
-    if df_raw is None:
-        report_step("❌ エラー: fetch_weather_data が None です")
-        return None, None, (0, 0), 0, None
+    if df_raw is None: return None, None, (0, 0), 0, None
     
-    report_step("時刻計算・データ加工中...")
-    # 2. ブラウザと現地の時差から、現地の現在時刻を計算
+    # 2. 時差計算
     browser_offset = now_jst.utcoffset()
     browser_offset_s = browser_offset.total_seconds() if browser_offset else 0
     local_offset_s = df_raw.attrs.get('local_offset_seconds', 0)
@@ -1019,7 +991,7 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
     df = df_raw[df_raw['time'] >= padding_start_time].copy().reset_index(drop=True)
     df = df.head(195)
     if df.empty:
-        report_step("❌ エラー: 切り出したデータ(df)が空です")
+        st.sidebar.warning("表示期間内の気象データが存在しません。")
         return None, None, (0, 0), 0, None
 
     start_idx = 3
@@ -1031,25 +1003,16 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
     if design_params.get("show_wave", True): active_plots.append("wave")
     if design_params.get("show_ocean_temp", True): active_plots.append("ocean_temp")
     if design_params.get("show_tide", True): active_plots.append("tide")
-    
-    if not active_plots:
-        report_step("⚠️ 警告: 表示対象(active_plots)が空です")
-        return None, None, (0, 0), start_idx, df
-
-    report_step(f"描画対象: {', '.join(active_plots)}")
+    if not active_plots: return None, None, (0, 0), start_idx, df
 
     marine_results = None
     r_lat, r_lon = lat, lon
     if any(k in active_plots for k in {"wave", "ocean_temp", "tide"}):
         marine_results, r_lat, r_lon = get_marine_data(df['time'], lat, lon)
-        if marine_results is None:
-            report_step("❌ エラー: get_marine_data が失敗しました")
     
-    # --- ratiosの整合性チェック ---
     ratios = list(design_params.get("ratios", CONFIG["DEFAULT_RATIOS"]))
     all_possible = ["wind", "temp", "wave", "ocean_temp", "tide"]
-    if len(ratios) < len(all_possible):
-        ratios = list(CONFIG["DEFAULT_RATIOS"])
+    if len(ratios) < len(all_possible): ratios = list(CONFIG["DEFAULT_RATIOS"])
     current_ratios = [ratios[i] for i, p in enumerate(all_possible) if p in active_plots]
     
     fig_w = design_params.get("width", CONFIG["GRAPH_WIDTH"])
@@ -1057,7 +1020,6 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
     dpi_value = design_params.get("graph_dpi", CONFIG.get("DPI", 200))
     split_ratio = 0.10 
 
-    report_step(f"Matplotlib描画開始 (DPI: {dpi_value})...")
     try:
         fig, axes = plt.subplots(len(active_plots), 1, figsize=(fig_w, fig_h), dpi=dpi_value, 
                                  gridspec_kw={'height_ratios': current_ratios})
@@ -1109,11 +1071,10 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
             img.save(b, format="PNG")
             return base64.b64encode(b.getvalue()).decode()
 
-        report_step("✅ グラフ生成・変換完了")
         return img_to_b64(left_part), img_to_b64(right_part), new_ratio_info, start_idx, df
 
     except Exception as e:
-        report_step(f"❌ 描画中に例外発生: {e}")
+        st.sidebar.error(f"❌ グラフ描画エラー: {e}")
         return None, None, (0, 0), start_idx, df
         
 # ======================================================================================
@@ -2642,14 +2603,6 @@ def main():
     
     render_footer_info(danger_v)
     
-    # --------------------------------------------------------------------------------------
-    # デバッグ用：一時的にメイン処理のどこかに配置してください
-    # --------------------------------------------------------------------------------------
-    if st.button("キャッシュを完全にクリアして再描画"):
-        st.cache_data.clear()
-        st.info("キャッシュをクリアしました。再読み込みしてください。")
-        st.rerun()
-        
     # APIリンク表示・Beta表示
     lat, lon = st.session_state.lat, st.session_state.lon
     w_url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&hourly=temperature_2m,windspeed_10m,winddirection_10m,precipitation&timezone=auto"
