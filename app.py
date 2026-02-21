@@ -431,7 +431,7 @@ def setup_font(font_size=None):
     plt.rc('font', family='Noto Sans JP', size=font_size)
 
 # ======================================================================================
-# 3. 気象データをAPIから取得するサブルーチン
+# 3. 気象データをAPIから取得するサブルーチン（キャッシュ上書き保護版）
 # ======================================================================================
 def fetch_weather_data(lat, lon, days):
     import requests
@@ -440,45 +440,38 @@ def fetch_weather_data(lat, lon, days):
     import time
     import streamlit as st
 
-    # --- キャッシュ設定 ---
     CACHE_DIR = "weather_cache"
     if not os.path.exists(CACHE_DIR):
         os.makedirs(CACHE_DIR)
     
     file_id = f"{round(lat, 2)}_{round(lon, 2)}"
     cache_file = os.path.join(CACHE_DIR, f"spot_{file_id}.csv")
-    meta_file = os.path.join(CACHE_DIR, f"spot_{file_id}.meta") # 時差保存用
+    meta_file = os.path.join(CACHE_DIR, f"spot_{file_id}.meta")
     
-    # 1時間以内のキャッシュがあればそれを返す
+    # 1. 1時間以内の有効なキャッシュがあれば復元
     if os.path.exists(cache_file) and os.path.exists(meta_file):
         if (time.time() - os.path.getmtime(cache_file)) < 3600:
             try:
                 df_cache = pd.read_csv(cache_file, parse_dates=['time'])
-                with open(meta_file, "r") as f:
-                    offset = int(f.read())
-                df_cache.attrs['local_offset_seconds'] = offset
-                return df_cache
+                # キャッシュが十分なデータ量を持っている場合はそれを返す
+                # 呼び出し引数が 9 なのにキャッシュが少ない場合は、API取得へ進む
+                if not (days > 1 and len(df_cache) <= 24):
+                    with open(meta_file, "r") as f:
+                        offset = int(f.read())
+                    df_cache.attrs['local_offset_seconds'] = offset
+                    return df_cache
             except:
                 pass
 
-    # --- 以下、元のロジックを厳密に維持 ---
-    # timezone=auto を指定
+    # 2. APIからの新規取得
     url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&hourly=temperature_2m,wind_speed_10m,wind_direction_10m,weather_code,precipitation&timezone=auto&wind_speed_unit=ms&forecast_days={days}"
     
     try:
-        res_raw = requests.get(url)
+        res_raw = requests.get(url, timeout=10)
         
-        # --- 検証用のデバッグ表示 ---
-        st.sidebar.write("### API Response Check")
-        st.sidebar.write(f"Request URL: {url}")
-        if "hourly" in response:
-            st.sidebar.write(f"Hourly data rows: {len(response['hourly']['time'])}")
-        # --------------------------        
-        
-        # API制限(429)などのエラー時のハンドリング（キャッシュがあれば救済）
+        # API制限(429)時などの救済
         if res_raw.status_code != 200:
             if os.path.exists(cache_file) and os.path.exists(meta_file):
-                st.sidebar.warning(f"⚠️ API制限中(Status:{res_raw.status_code})のため、キャッシュを表示します。")
                 df_old = pd.read_csv(cache_file, parse_dates=['time'])
                 with open(meta_file, "r") as f:
                     offset = int(f.read())
@@ -489,52 +482,45 @@ def fetch_weather_data(lat, lon, days):
         response = res_raw.json()
         df = pd.DataFrame(response["hourly"])
         
-        # 変数 y: APIが返す現地のUTC時差（秒）
+        # オリジナル通りの加工プロセス
         local_offset_s = response.get("utc_offset_seconds", 0)
-        
-        # APIが返した「現地時間の数字」をそのままNaive（時差情報なし）で保持
         df['time'] = pd.to_datetime(df['time']).dt.tz_localize(None)
-        
-        # 現地の時差秒数を属性として保存
         df.attrs['local_offset_seconds'] = local_offset_s
         
         def get_icon(code):
-            # 0: 晴天, 1-3: 晴れ時々曇り
             if code == 0: return "☀️"
             if code <= 3: return "🌤️"
-            # 45, 48: 霧
             if code == 45 or code == 48: return "🌫️"
-            # 51-67: 霧雨・雨
             if code <= 67: return "☔"
-            # 71-77: 雪
             if code <= 77: return "❄️"
-            # 80-82: 俄か雨
             if code <= 82: return "🌦️"
-            # 85-86: 雪（にわか）
             if code <= 86: return "🌨️"
-            # 95-99: 雷雨
             if code <= 99: return "⛈️"
             return "❓"
-            
         df['weather_icon'] = df['weather_code'].apply(get_icon)
 
-        # 正常取得できたのでキャッシュを保存（次回以降のため）
-        df.to_csv(cache_file, index=False)
-        with open(meta_file, "w") as f:
-            f.write(str(local_offset_s))
+        # --- 重要：上書き保護ロジック ---
+        # 既存のキャッシュが存在する場合、それより少ない行数のデータでは上書きしない
+        should_update = True
+        if os.path.exists(cache_file):
+            old_len = len(pd.read_csv(cache_file))
+            if len(df) < old_len:
+                should_update = False
+        
+        if should_update:
+            df.to_csv(cache_file, index=False)
+            with open(meta_file, "w") as f:
+                f.write(str(local_offset_s))
 
-        st.sidebar.write(f"DEBUG: 取得データ行数 = {len(df)}")
         return df
 
     except Exception as e:
-        # 通信エラー時もキャッシュがあれば救済
         if os.path.exists(cache_file) and os.path.exists(meta_file):
             df_err = pd.read_csv(cache_file, parse_dates=['time'])
             with open(meta_file, "r") as f:
                 offset = int(f.read())
             df_err.attrs['local_offset_seconds'] = offset
             return df_err
-        print(f"Error fetching weather data: {e}")
         return None
         
 # ======================================================================================
@@ -2485,7 +2471,7 @@ def render_compact_control_panel(basho_name):
             now_jst = st.session_state.get('now_jst', datetime.now(timezone(timedelta(hours=9))))
             try:
                 # 最小限のデータ取得で時差を取得（fetch_weather_dataは既存のものを利用）
-                df_tmp = fetch_weather_data(st.session_state.lat, st.session_state.lon, 1)
+                df_tmp = fetch_weather_data(st.session_state.lat, st.session_state.lon, 9)
                 browser_offset_s = now_jst.utcoffset().total_seconds() if now_jst.utcoffset() else 0
                 now_local = now_jst.replace(tzinfo=None) - timedelta(seconds=browser_offset_s) + timedelta(seconds=df_tmp.attrs.get('local_offset_seconds', 0))
                 # 確定した現地時間をセッションに保持（グラフ描画用）
