@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# 正規版　更新 2026.2.3 2215 グラフ描画制限 コンプリート版
+# 正規版　更新 2026.2.21 1005 気象データCSV保存 コンプリート版
 """
 Pin_Weather! 機能仕様書 2026改訂版
 提供された最新のソースコード（2026.1.22 0100 波高、海面水温 コンプリート版）に基づき、波高および海面水温グラフの追加を反映した最新の機能仕様書を作成しました。
@@ -431,52 +431,119 @@ def setup_font(font_size=None):
     plt.rc('font', family='Noto Sans JP', size=font_size)
 
 # ======================================================================================
-# 3. 気象データをAPIから取得するサブルーチン
+# 3. 気象データをAPIから取得するサブルーチン（キャッシュ上書き保護版）
 # ======================================================================================
 def fetch_weather_data(lat, lon, days):
     import requests
     import pandas as pd
+    import os
+    import time
+    import streamlit as st
+
+    CACHE_DIR = "weather_cache"
+    if not os.path.exists(CACHE_DIR):
+        os.makedirs(CACHE_DIR)
     
-    # timezone=auto を指定
+    file_id = f"{round(lat, 2)}_{round(lon, 2)}"
+    cache_file = os.path.join(CACHE_DIR, f"spot_{file_id}.csv")
+    meta_file = os.path.join(CACHE_DIR, f"spot_{file_id}.meta")
+    
+    # 1. 1時間以内の有効なキャッシュがあれば復元
+    if os.path.exists(cache_file) and os.path.exists(meta_file):
+        if (time.time() - os.path.getmtime(cache_file)) < 3600:
+            try:
+                df_cache = pd.read_csv(cache_file, parse_dates=['time'])
+                # キャッシュが十分なデータ量を持っている場合はそれを返す
+                # 呼び出し引数が 9 なのにキャッシュが少ない場合は、API取得へ進む
+                if not (days > 1 and len(df_cache) <= 24):
+                    with open(meta_file, "r") as f:
+                        offset = int(f.read())
+                    df_cache.attrs['local_offset_seconds'] = offset
+                    return df_cache
+            except:
+                pass
+
+    # 2. APIからの新規取得
     url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&hourly=temperature_2m,wind_speed_10m,wind_direction_10m,weather_code,precipitation&timezone=auto&wind_speed_unit=ms&forecast_days={days}"
     
     try:
-        response = requests.get(url).json()
+        res_raw = requests.get(url, timeout=10)
+        
+        # API制限(429)時などの救済
+        if res_raw.status_code != 200:
+            if os.path.exists(cache_file) and os.path.exists(meta_file):
+                df_old = pd.read_csv(cache_file, parse_dates=['time'])
+                with open(meta_file, "r") as f:
+                    offset = int(f.read())
+                df_old.attrs['local_offset_seconds'] = offset
+                return df_old
+            return None
+
+        response = res_raw.json()
         df = pd.DataFrame(response["hourly"])
         
-        # 変数 y: APIが返す現地のUTC時差（秒）
+        # オリジナル通りの加工プロセス
         local_offset_s = response.get("utc_offset_seconds", 0)
-        
-        # APIが返した「現地時間の数字」をそのままNaive（時差情報なし）で保持
         df['time'] = pd.to_datetime(df['time']).dt.tz_localize(None)
-        
-        # 現地の時差秒数を属性として保存
         df.attrs['local_offset_seconds'] = local_offset_s
         
         def get_icon(code):
-            # 0: 晴天, 1-3: 晴れ時々曇り
             if code == 0: return "☀️"
             if code <= 3: return "🌤️"
-            # 45, 48: 霧
             if code == 45 or code == 48: return "🌫️"
-            # 51-67: 霧雨・雨
             if code <= 67: return "☔"
-            # 71-77: 雪
             if code <= 77: return "❄️"
-            # 80-82: 俄か雨
             if code <= 82: return "🌦️"
-            # 85-86: 雪（にわか）
             if code <= 86: return "🌨️"
-            # 95-99: 雷雨
             if code <= 99: return "⛈️"
             return "❓"
-            
         df['weather_icon'] = df['weather_code'].apply(get_icon)
-        return df
-    except Exception as e:
-        print(f"Error fetching weather data: {e}")
-        return None
 
+        # --- 重要：上書き保護ロジック ---
+        # 既存のキャッシュが存在する場合、それより少ない行数のデータでは上書きしない
+        should_update = True
+        if os.path.exists(cache_file):
+            old_len = len(pd.read_csv(cache_file))
+            if len(df) < old_len:
+                should_update = False
+        
+        if should_update:
+            df.to_csv(cache_file, index=False)
+            with open(meta_file, "w") as f:
+                f.write(str(local_offset_s))
+
+        return df
+
+    except Exception as e:
+        if os.path.exists(cache_file) and os.path.exists(meta_file):
+            df_err = pd.read_csv(cache_file, parse_dates=['time'])
+            with open(meta_file, "r") as f:
+                offset = int(f.read())
+            df_err.attrs['local_offset_seconds'] = offset
+            return df_err
+        return None
+        
+# ======================================================================================
+# 3_1. 気象データキャッシュファイルを物理削除するサブルーチン
+# ======================================================================================
+def clear_weather_cache_files():
+    import shutil
+    import os
+    import streamlit as st
+    
+    CACHE_DIR = "weather_cache"
+    if os.path.exists(CACHE_DIR):
+        try:
+            shutil.rmtree(CACHE_DIR)
+            st.sidebar.success("✅ キャッシュファイルを削除しました。")
+            # 物理削除後、メモリキャッシュもクリアして再実行
+            st.cache_data.clear()
+            st.rerun()
+        except Exception as e:
+            st.sidebar.error(f"❌ 削除失敗: {e}")
+    else:
+        st.sidebar.info("削除対象のキャッシュファイルはありません。")
+        
 # ======================================================================================
 # 4. 海洋データを取得するサブルーチン
 # ======================================================================================
@@ -955,7 +1022,7 @@ def render_tide_curve_chart(ax, df, lat, lon, marine_results, res_lat, res_lon, 
 # ======================================================================================
 # 12. 高解像度グラフ画像を生成し、左右に分割するサブルーチン
 # ======================================================================================
-@st.cache_data(show_spinner=False, ttl=600)
+@st.cache_data(show_spinner=False, ttl=3600)
 def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_params, now_jst):
     import pandas as pd
     import io
@@ -963,12 +1030,13 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
     from datetime import timedelta
     import matplotlib.pyplot as plt
     from PIL import Image
+    import streamlit as st
 
-    # 1. データ取得
+    # 1. データ取得（3番のサブルーチンを呼び出し。エラー時は3番側で表示済み）
     df_raw = fetch_weather_data(lat, lon, 9)
     if df_raw is None: return None, None, (0, 0), 0, None
     
-    # 2. ブラウザと現地の時差から、現地の現在時刻を計算
+    # 2. 時差計算
     browser_offset = now_jst.utcoffset()
     browser_offset_s = browser_offset.total_seconds() if browser_offset else 0
     local_offset_s = df_raw.attrs.get('local_offset_seconds', 0)
@@ -981,6 +1049,10 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
     # 4. データの切り出し
     df = df_raw[df_raw['time'] >= padding_start_time].copy().reset_index(drop=True)
     df = df.head(195)
+    if df.empty:
+        st.sidebar.warning("表示期間内の気象データが存在しません。")
+        return None, None, (0, 0), 0, None
+
     start_idx = 3
     df = process_wind_data(df, list(selected_dirs_tuple))
     
@@ -997,79 +1069,73 @@ def generate_high_res_graph(lat, lon, danger_v, selected_dirs_tuple, design_para
     if any(k in active_plots for k in {"wave", "ocean_temp", "tide"}):
         marine_results, r_lat, r_lon = get_marine_data(df['time'], lat, lon)
     
-    # --- エラートラップ：ratiosの整合性チェック ---
     ratios = list(design_params.get("ratios", CONFIG["DEFAULT_RATIOS"]))
     all_possible = ["wind", "temp", "wave", "ocean_temp", "tide"]
-    
-    # 設定されたratiosが足りない場合、デフォルト値で補完するエラートラップ
-    if len(ratios) < len(all_possible):
-        ratios = list(CONFIG["DEFAULT_RATIOS"])
-        
+    if len(ratios) < len(all_possible): ratios = list(CONFIG["DEFAULT_RATIOS"])
     current_ratios = [ratios[i] for i, p in enumerate(all_possible) if p in active_plots]
-    # --------------------------------------------
     
     fig_w = design_params.get("width", CONFIG["GRAPH_WIDTH"])
     fig_h = design_params.get("height", CONFIG["GRAPH_HIGHT"])
     dpi_value = design_params.get("graph_dpi", CONFIG.get("DPI", 200))
-    
-    # 分割位置の設定（Y軸部分を10%確保）
     split_ratio = 0.10 
 
-    fig, axes = plt.subplots(len(active_plots), 1, figsize=(fig_w, fig_h), dpi=dpi_value, 
-                             gridspec_kw={'height_ratios': current_ratios})
-    if len(active_plots) == 1: axes = [axes]
-    formatter = get_x_axis_formatter()
-    
-    idx = 0
-    if "wind" in active_plots:
-        render_wind_bar_chart(axes[idx], df, danger_v, start_idx, design_params)
-        idx += 1
-    if "temp" in active_plots:
-        render_temp_line_chart(axes[idx], df)
-        idx += 1
+    try:
+        fig, axes = plt.subplots(len(active_plots), 1, figsize=(fig_w, fig_h), dpi=dpi_value, 
+                                 gridspec_kw={'height_ratios': current_ratios})
+        if len(active_plots) == 1: axes = [axes]
+        formatter = get_x_axis_formatter()
+        
+        idx = 0
+        if "wind" in active_plots:
+            render_wind_bar_chart(axes[idx], df, danger_v, start_idx, design_params)
+            idx += 1
+        if "temp" in active_plots:
+            render_temp_line_chart(axes[idx], df)
+            idx += 1
 
-    has_wave, has_otemp, has_tide = "wave" in active_plots, "ocean_temp" in active_plots, "tide" in active_plots
-    if has_wave:
-        render_wave_height_chart(axes[idx], df, lat, lon, marine_results, r_lat, r_lon, is_bottom=(not has_otemp and not has_tide))
-        idx += 1
-    if has_otemp:
-        render_ocean_temp_chart(axes[idx], df, lat, lon, marine_results, r_lat, r_lon, is_bottom=(not has_tide))
-        idx += 1
-    if has_tide:
-        render_tide_curve_chart(axes[idx], df, lat, lon, marine_results, r_lat, r_lon, is_bottom=True)
-        idx += 1
+        has_wave, has_otemp, has_tide = "wave" in active_plots, "ocean_temp" in active_plots, "tide" in active_plots
+        if has_wave:
+            render_wave_height_chart(axes[idx], df, lat, lon, marine_results, r_lat, r_lon, is_bottom=(not has_otemp and not has_tide))
+            idx += 1
+        if has_otemp:
+            render_ocean_temp_chart(axes[idx], df, lat, lon, marine_results, r_lat, r_lon, is_bottom=(not has_tide))
+            idx += 1
+        if has_tide:
+            render_tide_curve_chart(axes[idx], df, lat, lon, marine_results, r_lat, r_lon, is_bottom=True)
+            idx += 1
 
-    for ax in axes:
-        apply_common_axis_settings(ax, df, formatter, now_jst, design_params)
+        for ax in axes:
+            apply_common_axis_settings(ax, df, formatter, now_jst, design_params)
 
-    # 余白を厳密に固定
-    plt.subplots_adjust(left=split_ratio, right=0.98, top=0.95, bottom=0.15, hspace=design_params.get("hspace", CONFIG["HSPACE"]))
+        plt.subplots_adjust(left=split_ratio, right=0.98, top=0.95, bottom=0.15, hspace=design_params.get("hspace", CONFIG["HSPACE"]))
 
-    # 座標情報の計算
-    pos = axes[0].get_position() 
-    # 右側エリアにおける開始位置(x=0)からの比率を計算
-    new_hour_w = pos.width / (len(df) - 1) / (1.0 - split_ratio)
-    new_ratio_info = (0.0, new_hour_w) # leftをsplit_ratioに合わせたので、データ開始は右側画像の左端(0.0)になる
-    
-    buf = io.BytesIO()
-    fig.savefig(buf, format="png", bbox_inches=None, pad_inches=0, dpi=dpi_value)
-    plt.close(fig) 
-    
-    buf.seek(0)
-    full_img = Image.open(buf)
-    img_w, img_h = full_img.size
-    split_px = int(img_w * split_ratio)
-    
-    left_part = full_img.crop((0, 0, split_px, img_h))
-    right_part = full_img.crop((split_px, 0, img_w, img_h))
-    
-    def img_to_b64(img):
-        b = io.BytesIO()
-        img.save(b, format="PNG")
-        return base64.b64encode(b.getvalue()).decode()
+        pos = axes[0].get_position() 
+        new_hour_w = pos.width / (len(df) - 1) / (1.0 - split_ratio)
+        new_ratio_info = (0.0, new_hour_w)
+        
+        buf = io.BytesIO()
+        fig.savefig(buf, format="png", bbox_inches=None, pad_inches=0, dpi=dpi_value)
+        plt.close(fig) 
+        
+        buf.seek(0)
+        full_img = Image.open(buf)
+        img_w, img_h = full_img.size
+        split_px = int(img_w * split_ratio)
+        
+        left_part = full_img.crop((0, 0, split_px, img_h))
+        right_part = full_img.crop((split_px, 0, img_w, img_h))
+        
+        def img_to_b64(img):
+            b = io.BytesIO()
+            img.save(b, format="PNG")
+            return base64.b64encode(b.getvalue()).decode()
 
-    return img_to_b64(left_part), img_to_b64(right_part), new_ratio_info, start_idx, df
+        return img_to_b64(left_part), img_to_b64(right_part), new_ratio_info, start_idx, df
 
+    except Exception as e:
+        st.sidebar.error(f"❌ グラフ描画エラー: {e}")
+        return None, None, (0, 0), start_idx, df
+        
 # ======================================================================================
 # 13. 波高グラフを描画するサブルーチン
 # ======================================================================================
@@ -1421,6 +1487,10 @@ def show_sidebar_controls():
     if st.sidebar.button("🌐 Language / 言語", use_container_width=True):
         show_language_dialog()
 
+    # サイドバー等の適切な場所に配置
+    if st.sidebar.button("気象データの取得をリセット"):
+        clear_weather_cache_files()
+        
     # --- 既存の計算ロジック（一切変更せず維持） ---
     h = calculate_graph_height(
         st.session_state.get("base_height", CONFIG["GRAPH_HIGHT"]),
@@ -2401,7 +2471,7 @@ def render_compact_control_panel(basho_name):
             now_jst = st.session_state.get('now_jst', datetime.now(timezone(timedelta(hours=9))))
             try:
                 # 最小限のデータ取得で時差を取得（fetch_weather_dataは既存のものを利用）
-                df_tmp = fetch_weather_data(st.session_state.lat, st.session_state.lon, 1)
+                df_tmp = fetch_weather_data(st.session_state.lat, st.session_state.lon, 9)
                 browser_offset_s = now_jst.utcoffset().total_seconds() if now_jst.utcoffset() else 0
                 now_local = now_jst.replace(tzinfo=None) - timedelta(seconds=browser_offset_s) + timedelta(seconds=df_tmp.attrs.get('local_offset_seconds', 0))
                 # 確定した現地時間をセッションに保持（グラフ描画用）
