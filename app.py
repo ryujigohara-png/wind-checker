@@ -468,6 +468,13 @@ def fetch_weather_data(lat, lon, days):
     try:
         res_raw = requests.get(url)
         
+        # --- 検証用のデバッグ表示 ---
+        st.sidebar.write("### API Response Check")
+        st.sidebar.write(f"Request URL: {url}")
+        if "hourly" in response:
+            st.sidebar.write(f"Hourly data rows: {len(response['hourly']['time'])}")
+        # --------------------------        
+        
         # API制限(429)などのエラー時のハンドリング（キャッシュがあれば救済）
         if res_raw.status_code != 200:
             if os.path.exists(cache_file) and os.path.exists(meta_file):
