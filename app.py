@@ -431,96 +431,102 @@ def setup_font(font_size=None):
     plt.rc('font', family='Noto Sans JP', size=font_size)
 
 # ======================================================================================
-# 3. 気象データを取得するサブルーチン（地点別ファイルキャッシュ版）
+# 3. 気象データをAPIから取得するサブルーチン
 # ======================================================================================
 def fetch_weather_data(lat, lon, days):
     import requests
     import pandas as pd
-    import streamlit as st
     import os
     import time
-    from datetime import datetime
+    import streamlit as st
 
-    # 1. 保存ディレクトリとファイル名の決定
+    # --- キャッシュ設定 ---
     CACHE_DIR = "weather_cache"
     if not os.path.exists(CACHE_DIR):
         os.makedirs(CACHE_DIR)
     
-    # 緯度・経度から固有IDを作成（小数点2位までで丸める）
     file_id = f"{round(lat, 2)}_{round(lon, 2)}"
     cache_file = os.path.join(CACHE_DIR, f"spot_{file_id}.csv")
+    meta_file = os.path.join(CACHE_DIR, f"spot_{file_id}.meta") # 時差保存用
     
-    # 2. キャッシュの有効性チェック（1時間以内ならAPIを叩かない）
-    use_cache = False
-    if os.path.exists(cache_file):
-        mtime = os.path.getmtime(cache_file)
-        if (time.time() - mtime) < 3600:
-            use_cache = True
+    # 1時間以内のキャッシュがあればそれを返す
+    if os.path.exists(cache_file) and os.path.exists(meta_file):
+        if (time.time() - os.path.getmtime(cache_file)) < 3600:
+            try:
+                df_cache = pd.read_csv(cache_file, parse_dates=['time'])
+                with open(meta_file, "r") as f:
+                    offset = int(f.read())
+                df_cache.attrs['local_offset_seconds'] = offset
+                return df_cache
+            except:
+                pass
 
-    if use_cache:
-        try:
-            df_cache = pd.read_csv(cache_file, parse_dates=['time'])
-            # attrs（時差情報）はCSVに保存されないため、session_stateから復元
-            df_cache.attrs['local_offset_seconds'] = st.session_state.get(f'offset_{file_id}', 32400)
-            return df_cache
-        except Exception:
-            pass # 読み込みエラー時はAPI取得へ
-
-    # 3. APIからの新規取得
+    # --- 以下、元のロジックを厳密に維持 ---
+    # timezone=auto を指定
     url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&hourly=temperature_2m,wind_speed_10m,wind_direction_10m,weather_code,precipitation&timezone=auto&wind_speed_unit=ms&forecast_days={days}"
     
     try:
-        res = requests.get(url, timeout=10)
+        res_raw = requests.get(url)
         
-        # 成功時：データを保存して返す
-        if res.status_code == 200:
-            response = res.json()
-            df = pd.DataFrame(response["hourly"])
-            
-            # 時差・時刻加工
-            local_offset_s = response.get("utc_offset_seconds", 0)
-            df.attrs['local_offset_seconds'] = local_offset_s
-            st.session_state[f'offset_{file_id}'] = local_offset_s # 時差を記録
-            df['time'] = pd.to_datetime(df['time']).dt.tz_localize(None)
-            
-            # 天気アイコン付与
-            def get_icon(code):
-                if code == 0: return "☀️"
-                if code <= 3: return "🌤️"
-                if code == 45 or code == 48: return "🌫️"
-                if code <= 67: return "☔"
-                if code <= 77: return "❄️"
-                if code <= 82: return "🌦️"
-                if code <= 86: return "🌨️"
-                if code <= 99: return "⛈️"
-                return "❓"
-            df['weather_icon'] = df['weather_code'].apply(get_icon)
-
-            # 地点別にキャッシュを保存（上書き更新）
-            df.to_csv(cache_file, index=False)
-            return df
-
-        # API制限(429)時：古いキャッシュがあればそれを返す
-        elif res.status_code == 429:
-            if os.path.exists(cache_file):
-                update_time = datetime.fromtimestamp(os.path.getmtime(cache_file)).strftime('%H:%M')
-                st.sidebar.warning(f"⚠️ API制限中：{update_time}時点のキャッシュを表示します。")
+        # API制限(429)などのエラー時のハンドリング（キャッシュがあれば救済）
+        if res_raw.status_code != 200:
+            if os.path.exists(cache_file) and os.path.exists(meta_file):
+                st.sidebar.warning(f"⚠️ API制限中(Status:{res_raw.status_code})のため、キャッシュを表示します。")
                 df_old = pd.read_csv(cache_file, parse_dates=['time'])
-                df_old.attrs['local_offset_seconds'] = st.session_state.get(f'offset_{file_id}', 32400)
+                with open(meta_file, "r") as f:
+                    offset = int(f.read())
+                df_old.attrs['local_offset_seconds'] = offset
                 return df_old
-            else:
-                st.sidebar.error("❌ API制限中：保存されたキャッシュもありません。")
-                return None
-        
-        else:
-            st.sidebar.error(f"❌ APIステータスエラー: {res.status_code}")
             return None
 
+        response = res_raw.json()
+        df = pd.DataFrame(response["hourly"])
+        
+        # 変数 y: APIが返す現地のUTC時差（秒）
+        local_offset_s = response.get("utc_offset_seconds", 0)
+        
+        # APIが返した「現地時間の数字」をそのままNaive（時差情報なし）で保持
+        df['time'] = pd.to_datetime(df['time']).dt.tz_localize(None)
+        
+        # 現地の時差秒数を属性として保存
+        df.attrs['local_offset_seconds'] = local_offset_s
+        
+        def get_icon(code):
+            # 0: 晴天, 1-3: 晴れ時々曇り
+            if code == 0: return "☀️"
+            if code <= 3: return "🌤️"
+            # 45, 48: 霧
+            if code == 45 or code == 48: return "🌫️"
+            # 51-67: 霧雨・雨
+            if code <= 67: return "☔"
+            # 71-77: 雪
+            if code <= 77: return "❄️"
+            # 80-82: 俄か雨
+            if code <= 82: return "🌦️"
+            # 85-86: 雪（にわか）
+            if code <= 86: return "🌨️"
+            # 95-99: 雷雨
+            if code <= 99: return "⛈️"
+            return "❓"
+            
+        df['weather_icon'] = df['weather_code'].apply(get_icon)
+
+        # 正常取得できたのでキャッシュを保存（次回以降のため）
+        df.to_csv(cache_file, index=False)
+        with open(meta_file, "w") as f:
+            f.write(str(local_offset_s))
+
+        return df
+
     except Exception as e:
-        # 通信エラー時：もしあればキャッシュで救済
-        if os.path.exists(cache_file):
-            return pd.read_csv(cache_file, parse_dates=['time'])
-        st.sidebar.error(f"❌ 通信エラー: {str(e)}")
+        # 通信エラー時もキャッシュがあれば救済
+        if os.path.exists(cache_file) and os.path.exists(meta_file):
+            df_err = pd.read_csv(cache_file, parse_dates=['time'])
+            with open(meta_file, "r") as f:
+                offset = int(f.read())
+            df_err.attrs['local_offset_seconds'] = offset
+            return df_err
+        print(f"Error fetching weather data: {e}")
         return None
         
 # ======================================================================================
