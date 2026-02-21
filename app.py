@@ -516,6 +516,7 @@ def fetch_weather_data(lat, lon, days):
         with open(meta_file, "w") as f:
             f.write(str(local_offset_s))
 
+        st.sidebar.write(f"DEBUG: 取得データ行数 = {len(df)}")
         return df
 
     except Exception as e:
