@@ -531,6 +531,27 @@ def fetch_weather_data(lat, lon, days):
         return None
         
 # ======================================================================================
+# 3_1. 気象データキャッシュファイルを物理削除するサブルーチン
+# ======================================================================================
+def clear_weather_cache_files():
+    import shutil
+    import os
+    import streamlit as st
+    
+    CACHE_DIR = "weather_cache"
+    if os.path.exists(CACHE_DIR):
+        try:
+            shutil.rmtree(CACHE_DIR)
+            st.sidebar.success("✅ キャッシュファイルを削除しました。")
+            # 物理削除後、メモリキャッシュもクリアして再実行
+            st.cache_data.clear()
+            st.rerun()
+        except Exception as e:
+            st.sidebar.error(f"❌ 削除失敗: {e}")
+    else:
+        st.sidebar.info("削除対象のキャッシュファイルはありません。")
+        
+# ======================================================================================
 # 4. 海洋データを取得するサブルーチン
 # ======================================================================================
 def get_marine_data(times, lat, lon):
@@ -1473,6 +1494,10 @@ def show_sidebar_controls():
     if st.sidebar.button("🌐 Language / 言語", use_container_width=True):
         show_language_dialog()
 
+    # サイドバー等の適切な場所に配置
+    if st.sidebar.button("気象データの取得をリセット"):
+        clear_weather_cache_files()
+        
     # --- 既存の計算ロジック（一切変更せず維持） ---
     h = calculate_graph_height(
         st.session_state.get("base_height", CONFIG["GRAPH_HIGHT"]),
