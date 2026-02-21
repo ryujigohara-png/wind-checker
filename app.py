@@ -431,58 +431,96 @@ def setup_font(font_size=None):
     plt.rc('font', family='Noto Sans JP', size=font_size)
 
 # ======================================================================================
-# 3. 気象データをAPIから取得するサブルーチン
+# 3. 気象データを取得するサブルーチン（地点別ファイルキャッシュ版）
 # ======================================================================================
 def fetch_weather_data(lat, lon, days):
     import requests
     import pandas as pd
     import streamlit as st
-    
-    if lat is None or lon is None:
-        st.sidebar.error("❌ APIエラー: 緯度または経度が指定されていません。")
-        return None
+    import os
+    import time
+    from datetime import datetime
 
+    # 1. 保存ディレクトリとファイル名の決定
+    CACHE_DIR = "weather_cache"
+    if not os.path.exists(CACHE_DIR):
+        os.makedirs(CACHE_DIR)
+    
+    # 緯度・経度から固有IDを作成（小数点2位までで丸める）
+    file_id = f"{round(lat, 2)}_{round(lon, 2)}"
+    cache_file = os.path.join(CACHE_DIR, f"spot_{file_id}.csv")
+    
+    # 2. キャッシュの有効性チェック（1時間以内ならAPIを叩かない）
+    use_cache = False
+    if os.path.exists(cache_file):
+        mtime = os.path.getmtime(cache_file)
+        if (time.time() - mtime) < 3600:
+            use_cache = True
+
+    if use_cache:
+        try:
+            df_cache = pd.read_csv(cache_file, parse_dates=['time'])
+            # attrs（時差情報）はCSVに保存されないため、session_stateから復元
+            df_cache.attrs['local_offset_seconds'] = st.session_state.get(f'offset_{file_id}', 32400)
+            return df_cache
+        except Exception:
+            pass # 読み込みエラー時はAPI取得へ
+
+    # 3. APIからの新規取得
     url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&hourly=temperature_2m,wind_speed_10m,wind_direction_10m,weather_code,precipitation&timezone=auto&wind_speed_unit=ms&forecast_days={days}"
     
     try:
-        # タイムアウト10秒、ステータスコードチェック付き
         res = requests.get(url, timeout=10)
         
-        if res.status_code != 200:
-            st.sidebar.error(f"❌ APIエラー: ステータスコード {res.status_code}")
-            st.sidebar.write(res.text) # 429制限などの詳細を表示
-            return None
+        # 成功時：データを保存して返す
+        if res.status_code == 200:
+            response = res.json()
+            df = pd.DataFrame(response["hourly"])
             
-        response = res.json()
-        if "hourly" not in response:
-            st.sidebar.error("❌ APIエラー: レスポンスに 'hourly' データが含まれていません。")
-            return None
+            # 時差・時刻加工
+            local_offset_s = response.get("utc_offset_seconds", 0)
+            df.attrs['local_offset_seconds'] = local_offset_s
+            st.session_state[f'offset_{file_id}'] = local_offset_s # 時差を記録
+            df['time'] = pd.to_datetime(df['time']).dt.tz_localize(None)
+            
+            # 天気アイコン付与
+            def get_icon(code):
+                if code == 0: return "☀️"
+                if code <= 3: return "🌤️"
+                if code == 45 or code == 48: return "🌫️"
+                if code <= 67: return "☔"
+                if code <= 77: return "❄️"
+                if code <= 82: return "🌦️"
+                if code <= 86: return "🌨️"
+                if code <= 99: return "⛈️"
+                return "❓"
+            df['weather_icon'] = df['weather_code'].apply(get_icon)
 
-        df = pd.DataFrame(response["hourly"])
-        local_offset_s = response.get("utc_offset_seconds", 0)
-        df['time'] = pd.to_datetime(df['time']).dt.tz_localize(None)
-        df.attrs['local_offset_seconds'] = local_offset_s
+            # 地点別にキャッシュを保存（上書き更新）
+            df.to_csv(cache_file, index=False)
+            return df
+
+        # API制限(429)時：古いキャッシュがあればそれを返す
+        elif res.status_code == 429:
+            if os.path.exists(cache_file):
+                update_time = datetime.fromtimestamp(os.path.getmtime(cache_file)).strftime('%H:%M')
+                st.sidebar.warning(f"⚠️ API制限中：{update_time}時点のキャッシュを表示します。")
+                df_old = pd.read_csv(cache_file, parse_dates=['time'])
+                df_old.attrs['local_offset_seconds'] = st.session_state.get(f'offset_{file_id}', 32400)
+                return df_old
+            else:
+                st.sidebar.error("❌ API制限中：保存されたキャッシュもありません。")
+                return None
         
-        def get_icon(code):
-            if code == 0: return "☀️"
-            if code <= 3: return "🌤️"
-            if code == 45 or code == 48: return "🌫️"
-            if code <= 67: return "☔"
-            if code <= 77: return "❄️"
-            if code <= 82: return "🌦️"
-            if code <= 86: return "🌨️"
-            if code <= 99: return "⛈️"
-            return "❓"
-            
-        df['weather_icon'] = df['weather_code'].apply(get_icon)
-        return df
+        else:
+            st.sidebar.error(f"❌ APIステータスエラー: {res.status_code}")
+            return None
 
-    except requests.exceptions.Timeout:
-        st.sidebar.error("❌ APIエラー: 接続タイムアウトが発生しました。")
-        return None
     except Exception as e:
-        st.sidebar.error(f"❌ APIエラー: 予期せぬエラーが発生しました ({type(e).__name__})")
-        st.sidebar.write(str(e))
+        # 通信エラー時：もしあればキャッシュで救済
+        if os.path.exists(cache_file):
+            return pd.read_csv(cache_file, parse_dates=['time'])
+        st.sidebar.error(f"❌ 通信エラー: {str(e)}")
         return None
         
 # ======================================================================================
