@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# 正規版　更新 2026.2.23 1135 地名検索とビュー切替 コンプリート版
+# 正規版　更新 2026.2.23 1300 地名検索とビュー切替 コンプリート版
 """
 Pin_Weather! 機能仕様書 2026改訂版
 提供された最新のソースコード（2026.1.22 0100 波高、海面水温 コンプリート版）に基づき、波高および海面水温グラフの追加を反映した最新の機能仕様書を作成しました。
@@ -1646,12 +1646,11 @@ def calculate_graph_height(base_height, ratios, show_wind, show_temp, show_wave,
     return auto_height
 
 # ==========================================================================================
-# 30. 地図UIをダイアログで表示するサブルーチン (Zoom維持・保存対応・完全版)
+# 30. 地図UIをダイアログで表示するサブルーチン (完全版)
 # ==========================================================================================
 def show_location_map_dialog():
     """
-    タイル（ビュー）切り替え時や検索時も、ユーザーが操作したズーム倍率を可能な限り維持します。
-    デフォルト値は CONFIG["MAP_HEIGHT"] (350) を参照します。
+    地図操作中のリライトを完全に排除し、View切替や確定時のみ座標・ズームを同期します。
     """
     import folium
     from streamlit_folium import st_folium
@@ -1668,14 +1667,8 @@ def show_location_map_dialog():
         st.session_state.temp_lon = st.session_state.lon
     if "temp_basho" not in st.session_state:
         st.session_state.temp_basho = st.session_state.last_basho
-    
-    # ズーム倍率の保持
     if "temp_zoom" not in st.session_state:
-        st.session_state.temp_zoom = 13
-
-    # 地図タイル設定の保持
-    if "map_tile" not in st.session_state:
-        st.session_state.map_tile = CONFIG.get("DEFAULT_MAP_TILE", "https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}")
+        st.session_state.temp_zoom = st.session_state.get("map_zoom", 13)
 
     # 表示名とタイルのマッピング
     tile_options = {
@@ -1691,7 +1684,6 @@ def show_location_map_dialog():
     def map_final_fixed_fragment():
         st.markdown(f"📍 **{st.session_state.temp_basho}**")
 
-        # プレースホルダー（後で地図出力を受け取るため）
         # --- 検索およびView切替コントロール ---
         col_s1, col_s2, col_s3 = st.columns([2, 1, 1.2])
         
@@ -1716,6 +1708,30 @@ def show_location_map_dialog():
                         else:
                             st.toast(lang_dict.get("見つかりませんでした", "Not found"))
 
+        # 地図の高さ設定
+        h_px = st.session_state.get("map_h", CONFIG.get("MAP_HEIGHT", 350))
+        attr_str = "Esri" if "http" in st.session_state.get("map_tile", "") else None
+    
+        # 地図オブジェクト作成
+        m = folium.Map(
+            location=[st.session_state.temp_lat, st.session_state.temp_lon], 
+            zoom_start=st.session_state.temp_zoom,
+            tiles=st.session_state.get("map_tile", CONFIG["DEFAULT_MAP_TILE"]),
+            attr=attr_str
+        )
+        
+        folium.Marker(
+            [st.session_state.temp_lat, st.session_state.temp_lon], 
+            icon=folium.Icon(color='red')
+        ).add_to(m)
+        
+        # 描画
+        map_out = st_folium(
+            m, width=None, height=h_px, 
+            key="map_v36_final",
+            returned_objects=["center", "zoom"]
+        )
+
         with col_s3:
             current_label = next((k for k, v in tile_options.items() if v == st.session_state.map_tile), lang_dict.get("道路図", "Streets"))
             selected_label = st.selectbox(
@@ -1728,68 +1744,56 @@ def show_location_map_dialog():
             
             # ビュー切り替え時のロジック
             if tile_options[selected_label] != st.session_state.map_tile:
+                # ユーザーが操作した最新のzoomと中心座標を保持する
+                if map_out:
+                    if map_out.get("zoom") is not None:
+                        st.session_state.temp_zoom = map_out["zoom"]
+                    if map_out.get("center"):
+                        st.session_state.temp_lat = map_out["center"]["lat"]
+                        st.session_state.temp_lon = map_out["center"]["lng"]
+                
                 st.session_state.map_tile = tile_options[selected_label]
-                # 保存してリラン（直前のズームは後述の map_out 処理でセッションに同期される）
+                st.session_state.map_zoom = st.session_state.temp_zoom
                 save_settings_to_browser()
                 st.rerun(scope="fragment")
-    
-        # 地図の高さ設定
-        h_px = st.session_state.get("map_h", CONFIG.get("MAP_HEIGHT", 350))
-        attr_str = "Esri" if "http" in st.session_state.map_tile else None
-    
-        # 地図オブジェクト作成
-        m = folium.Map(
-            location=[st.session_state.temp_lat, st.session_state.temp_lon], 
-            zoom_start=st.session_state.temp_zoom,
-            tiles=st.session_state.map_tile,
-            attr=attr_str
-        )
-        
-        folium.Marker(
-            [st.session_state.temp_lat, st.session_state.temp_lon], 
-            icon=folium.Icon(color='red')
-        ).add_to(m)
-        
-        # 地図の描画
-        map_out = st_folium(
-            m, width=None, height=h_px, 
-            key=f"map_v36_final",
-            returned_objects=["center", "zoom"]
-        )
-
-        # 【重要】ユーザーが地図を操作した際、常に最新のzoomと中心座標を保持する
-        if map_out:
-            if map_out.get("zoom") is not None:
-                st.session_state.temp_zoom = map_out["zoom"]
-            if map_out.get("center"):
-                # ここで保持しておくことで、タイル切り替え時に現在地が維持される
-                st.session_state.temp_lat = map_out["center"]["lat"]
-                st.session_state.temp_lon = map_out["center"]["lng"]
     
         st.write("") 
     
         # 「地図中心に📍」ボタン
         if st.button(lang_dict.get("地図中心に📍", "Set 📍 at Center"), use_container_width=True):
-            # map_out 経由で地名を取得し直す
-            with st.spinner(lang_dict.get("地名取得中...", "Fetching location name...")):
-                raw_name = fetch_location_name(st.session_state.temp_lat, st.session_state.temp_lon)
-                st.session_state.temp_basho = f"{raw_name} ({st.session_state.temp_lat:.4f}, {st.session_state.temp_lon:.4f})"
-            st.rerun(scope="fragment")
+            if map_out:
+                if map_out.get("zoom") is not None:
+                    st.session_state.temp_zoom = map_out["zoom"]
+                if map_out.get("center"):
+                    st.session_state.temp_lat = map_out["center"]["lat"]
+                    st.session_state.temp_lon = map_out["center"]["lng"]
+                
+                with st.spinner(lang_dict.get("地名取得中...", "Fetching location name...")):
+                    raw_name = fetch_location_name(st.session_state.temp_lat, st.session_state.temp_lon)
+                    st.session_state.temp_basho = f"{raw_name} ({st.session_state.temp_lat:.4f}, {st.session_state.temp_lon:.4f})"
+                st.rerun(scope="fragment")
     
         # 確定・中止ボタン
         c1, c2 = st.columns(2)
         with c1:
             if st.button(lang_dict.get("確定", "Confirm"), use_container_width=True, type="primary"):
+                if map_out:
+                    if map_out.get("zoom") is not None:
+                        st.session_state.temp_zoom = map_out["zoom"]
+                    if map_out.get("center"):
+                        st.session_state.temp_lat = map_out["center"]["lat"]
+                        st.session_state.temp_lon = map_out["center"]["lng"]
+
                 st.session_state.lat = st.session_state.temp_lat
                 st.session_state.lon = st.session_state.temp_lon
                 st.session_state.last_basho = st.session_state.temp_basho
                 st.session_state.map_lat = st.session_state.temp_lat
                 st.session_state.map_lon = st.session_state.temp_lon
+                st.session_state.map_zoom = st.session_state.temp_zoom
                 st.session_state.temp_label = st.session_state.temp_basho
                 st.session_state.needs_graph_update = True
                 
-                if "save_settings_to_browser" in globals():
-                    save_settings_to_browser()
+                save_settings_to_browser()
 
                 # 一時変数をクリア
                 for k in ["temp_lat", "temp_lon", "temp_basho", "temp_zoom"]: 
@@ -1899,15 +1903,10 @@ def fetch_coords_from_address(address_query):
 # 82. ブラウザへの保存を実行するサブルーチン (完全版)
 # ======================================================================================
 def save_settings_to_browser():
-    """
-    st.session_state から最新の設定を収集し、localStorage へ保存します。
-    地図のスタイル設定(map_tile)を追加保存項目に含めています。
-    """
     import json
     import streamlit as st
     from streamlit_js_eval import streamlit_js_eval
 
-    # 保存用データのパッキング
     save_data = {
         "lat": st.session_state.lat,
         "lon": st.session_state.lon,
@@ -1932,29 +1931,18 @@ def save_settings_to_browser():
         "user_locations": st.session_state.get("user_locations", []),
         "map_lat": st.session_state.get("map_lat", st.session_state.lat),
         "map_lon": st.session_state.get("map_lon", st.session_state.lon),
+        "map_zoom": st.session_state.get("map_zoom", 13),
         "temp_label": st.session_state.get("temp_label", None),
         "lang": st.session_state.get("lang", "ja"),
-        "map_tile": st.session_state.get("map_tile", CONFIG["DEFAULT_MAP_TILE"]) # 地図デザインの追加
+        "map_tile": st.session_state.get("map_tile", CONFIG["DEFAULT_MAP_TILE"])
     }
     
-    # JSON化とエスケープ
     json_data = json.dumps(save_data, ensure_ascii=False)
     safe_json = json_data.replace('"', '\\"')
     
-    # JavaScript命令の構築
-    js_cmd = f"""
-        try {{
-            localStorage.setItem('{CONFIG['STORAGE_KEY']}', '{safe_json}');
-            console.log("--- SAVE_PROCESS_SUCCESS ---");
-        }} catch (e) {{
-            console.error("--- SAVE_PROCESS_FAILED ---", e);
-        }}
-    """
-    
-    # 実行
+    js_cmd = f"try {{ localStorage.setItem('{CONFIG['STORAGE_KEY']}', '{safe_json}'); }} catch (e) {{}}"
     import time
-    dynamic_key = f"save_exec_{int(time.time() * 1000)}"
-    streamlit_js_eval(js_expressions=js_cmd, key=dynamic_key)
+    streamlit_js_eval(js_expressions=js_cmd, key=f"save_{int(time.time() * 1000)}")
 
 # ==========================================================================================
 # 83. ステート更新・保存・再描画を一本化するサブルーチン (新規追加)
@@ -2013,7 +2001,7 @@ def sync_all_settings():
 
     # LocalStorage から取得
     js_query = f"localStorage.getItem('{STORAGE_KEY}') || 'EMPTY'"
-    stored_data = streamlit_js_eval(js_expressions=js_query, key="init_load_settings_v3")
+    stored_data = streamlit_js_eval(js_expressions=js_query, key="init_load_settings")
 
     if stored_data is None:
         st.stop()
@@ -2031,6 +2019,7 @@ def sync_all_settings():
             st.session_state.user_locations = data.get("user_locations", [])
             st.session_state.map_lat = float(data.get("map_lat", st.session_state.lat))
             st.session_state.map_lon = float(data.get("map_lon", st.session_state.lon))
+            st.session_state.map_zoom = int(data.get("map_zoom", 13)) # map_zoomを追加
             st.session_state.temp_label = data.get("temp_label", None)
             st.session_state.show_wind = data.get("show_wind", CONFIG["SHOW_WIND"])
             st.session_state.show_temp = data.get("show_temp", CONFIG["SHOW_TEMP"])
@@ -2067,6 +2056,7 @@ def sync_all_settings():
         except Exception as e:
             # エラー発生時は初期状態で続行
             st.session_state.initialized = True
+            
 # ======================================================================================
 # 91. アプリ全体の共通スタイルを定義するサブルーチン
 # ======================================================================================
