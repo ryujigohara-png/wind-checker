@@ -68,6 +68,8 @@ CONFIG = {
     "TITLE_SIZE": 20,
     "SUBTITLE_SIZE": 16,
     # 表示設定（ユーザー設定）              
+    "DEFAULT_MAP_TILE": "https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}",
+    "DEFAULT_MAP_TILE_LABEL": "道路図", # 辞書のキーと一致させる
     "MAP_HEIGHT": 350,                  # 地図の高さ
     "SHOW_WIND": True,                  # 風向・風速グラフ表示
     "SHOW_TEMP": True,                  # 気温グラフ表示
@@ -230,6 +232,16 @@ def get_language_dict():
             "地図中心に📍": "地図中心に📍",
             "確定": "確定",
             "中止": "中止",
+            "場所を検索": "場所を検索",
+            "検索": "検索",
+            "検索中...": "検索中...",
+            "見つかりませんでした": "場所が見つかりませんでした",
+            "地図表示切替": "表示切替",
+            "標準": "標準 (OSM)",
+            "シンプル": "シンプル (白)",
+            "ダーク": "ダーク (黒)",
+            "道路図": "道路図",
+            "衛星写真": "衛星写真",
             "地名取得中...": "地名取得中...",
             "指定地点": "指定地点",
             "風速 (m/s)": "風速 (m/s)",
@@ -349,6 +361,16 @@ def get_language_dict():
             "地図中心に📍": "📍 Pin to Center",
             "確定": "Confirm",
             "中止": "Cancel",
+            "場所を検索": "Search location...",
+            "検索": "Search",
+            "検索中...": "Searching...",
+            "見つかりませんでした": "Location not found",
+            "地図表示切替": "Switch View",
+            "標準": "Standard (OSM)",
+            "シンプル": "Simple (White)",
+            "ダーク": "Dark (Black)",
+            "道路図": "Streets",
+            "衛星写真": "Satellite",
             "地名取得中...": "Fetching name...",
             "指定地点": "Custom Location",
             "風速 (m/s)": "Wind Speed (m/s)",
@@ -1429,7 +1451,8 @@ def show_settings_dialog():
                 "show_dir_name": CONFIG["SHOW_DIR_NAME"], "hspace": CONFIG["HSPACE"], "label_pad": CONFIG["LABEL_PAD"],
                 "dial_h_gap": CONFIG["DIAL_H_GAP"], "dial_v_gap": CONFIG["DIAL_V_GAP"],
                 "fav_btn_width": CONFIG.get("FAV_BTN_WIDTH", 30), "fav_name_len": CONFIG.get("FAV_NAME_LEN", 12),
-                "precip_y": CONFIG["DEFAULT_PRECIP_Y"], "icon_margin": CONFIG["DEFAULT_ICON_MARGIN"], "ratios": CONFIG["DEFAULT_RATIOS"]
+                "precip_y": CONFIG["DEFAULT_PRECIP_Y"], "icon_margin": CONFIG["DEFAULT_ICON_MARGIN"], "ratios": CONFIG["DEFAULT_RATIOS"],
+                "map_tile": CONFIG.get("DEFAULT_MAP_TILE", "https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}")
             })
             save_settings_to_browser()
             st.cache_data.clear()
@@ -1623,7 +1646,7 @@ def calculate_graph_height(base_height, ratios, show_wind, show_temp, show_wave,
     return auto_height
 
 # ==========================================================================================
-# 30. 地図UIをダイアログで表示するサブルーチン (検索・View切替追加・完全版)
+# 30. 地図UIをダイアログで表示するサブルーチン (検索・View切替追加・保存対応・完全版)
 # ==========================================================================================
 def show_location_map_dialog():
     """
@@ -1631,7 +1654,7 @@ def show_location_map_dialog():
     「地図中心に📍」ボタン押下時に、マーカーを地図の物理的な中心に確実に表示させる。
     ユーザーが変更した倍率を維持したまま、地図中心を📍に合わせる。
     表示文字列を st.session_state.lang に基づき切り替えます。
-    ※検索テキストボックスと地図スタイル切替機能を追加。
+    ※検索テキストボックスと地図スタイル切替機能を追加し、道路図をデフォルトとしてブラウザ保存します。
     """
     import folium
     from streamlit_folium import st_folium
@@ -1652,15 +1675,16 @@ def show_location_map_dialog():
     if "temp_zoom" not in st.session_state:
         st.session_state.temp_zoom = 13
 
-    # 地図タイル設定の保持
+    # 地図タイル設定の保持（デフォルトはCONFIGの道路図）
     if "map_tile" not in st.session_state:
-        st.session_state.map_tile = "OpenStreetMap"
+        st.session_state.map_tile = CONFIG.get("DEFAULT_MAP_TILE", "https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}")
 
+    # 表示名とタイルのマッピング（辞書から取得）
     tile_options = {
+        lang_dict.get("道路図", "Streets"): "https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}",
         lang_dict.get("標準", "Standard"): "OpenStreetMap",
         lang_dict.get("シンプル", "Simple"): "CartoDB Positron",
         lang_dict.get("ダーク", "Dark"): "CartoDB Dark_Matter",
-        lang_dict.get("道路図", "Streets"): "https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}",
         lang_dict.get("衛星写真", "Satellite"): "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
     }
     
@@ -1670,7 +1694,7 @@ def show_location_map_dialog():
         # 表示整理
         st.markdown(f"📍 **{st.session_state.temp_basho}**")
 
-        # --- 追加：検索およびView切替コントロール ---
+        # --- 検索およびView切替コントロール ---
         col_s1, col_s2, col_s3 = st.columns([2, 1, 1.2])
         with col_s1:
             search_input = st.text_input(
@@ -1695,7 +1719,8 @@ def show_location_map_dialog():
                             st.toast(lang_dict.get("見つかりませんでした", "Not found"))
 
         with col_s3:
-            current_label = next((k for k, v in tile_options.items() if v == st.session_state.map_tile), list(tile_options.keys())[0])
+            # 現在のタイルに対応する表示名を取得
+            current_label = next((k for k, v in tile_options.items() if v == st.session_state.map_tile), lang_dict.get("道路図", "Streets"))
             selected_label = st.selectbox(
                 "View", 
                 options=list(tile_options.keys()), 
@@ -1703,13 +1728,13 @@ def show_location_map_dialog():
                 label_visibility="collapsed",
                 key="tile_selector"
             )
+            # 変更があれば即時反映し、ブラウザへ保存
             if tile_options[selected_label] != st.session_state.map_tile:
                 st.session_state.map_tile = tile_options[selected_label]
+                save_settings_to_browser()
                 st.rerun(scope="fragment")
     
-        h_px = st.session_state.get("map_h", CONFIG["MAP_HEIGHT"])
-        
-        # 外部タイルURL使用時の属性設定
+        h_px = st.session_state.get("map_h", CONFIG.get("MAP_HEIGHT", 450))
         attr_str = "Esri" if "http" in st.session_state.map_tile else None
     
         # 地図オブジェクト作成
@@ -1720,13 +1745,11 @@ def show_location_map_dialog():
             attr=attr_str
         )
         
-        # マーカーを中心座標に設置
         folium.Marker(
             [st.session_state.temp_lat, st.session_state.temp_lon], 
             icon=folium.Icon(color='red')
         ).add_to(m)
         
-        # 地図の描画
         map_out = st_folium(
             m, width=None, height=h_px, 
             key=f"map_v36_final",
@@ -1735,22 +1758,17 @@ def show_location_map_dialog():
     
         st.write("") 
     
-        # 「地図中心に📍」ボタンのロジック
+        # 「地図中心に📍」ボタン
         if st.button(lang_dict.get("地図中心に📍", "Set 📍 at Center"), use_container_width=True):
             if map_out:
                 if map_out.get("zoom") is not None:
                     st.session_state.temp_zoom = map_out["zoom"]
-                
                 if map_out.get("center"):
                     st.session_state.temp_lat = map_out["center"]["lat"]
                     st.session_state.temp_lon = map_out["center"]["lng"]
-                    
                     with st.spinner(lang_dict.get("地名取得中...", "Fetching location name...")):
-                        raw_name = fetch_location_name(
-                            st.session_state.temp_lat, st.session_state.temp_lon
-                        )
+                        raw_name = fetch_location_name(st.session_state.temp_lat, st.session_state.temp_lon)
                         st.session_state.temp_basho = f"{raw_name} ({st.session_state.temp_lat:.4f}, {st.session_state.temp_lon:.4f})"
-                    
                     st.rerun(scope="fragment")
     
         # 確定・中止ボタン
@@ -1760,17 +1778,14 @@ def show_location_map_dialog():
                 st.session_state.lat = st.session_state.temp_lat
                 st.session_state.lon = st.session_state.temp_lon
                 st.session_state.last_basho = st.session_state.temp_basho
-                
                 st.session_state.map_lat = st.session_state.temp_lat
                 st.session_state.map_lon = st.session_state.temp_lon
-                
                 st.session_state.temp_label = st.session_state.temp_basho
                 st.session_state.needs_graph_update = True
                 
+                # ブラウザへの保存（サブルーチン82）
                 if "save_settings_to_browser" in globals():
                     save_settings_to_browser()
-                elif "update_state_and_save" in globals():
-                    update_state_and_save({})
 
                 # 一時変数をクリア
                 for k in ["temp_lat", "temp_lon", "temp_basho", "temp_zoom"]: 
@@ -1878,12 +1893,12 @@ def fetch_coords_from_address(address_query):
     return None, None
 
 # ======================================================================================
-# 82. ブラウザへの保存を実行するサブルーチン
+# 82. ブラウザへの保存を実行するサブルーチン (完全版)
 # ======================================================================================
 def save_settings_to_browser():
     """
     st.session_state から最新の設定を収集し、localStorage へ保存します。
-    無限ループを避けるため JS 側でのリロードは行わず、Python 側で制御します。
+    地図のスタイル設定(map_tile)を追加保存項目に含めています。
     """
     import json
     import streamlit as st
@@ -1915,14 +1930,15 @@ def save_settings_to_browser():
         "map_lat": st.session_state.get("map_lat", st.session_state.lat),
         "map_lon": st.session_state.get("map_lon", st.session_state.lon),
         "temp_label": st.session_state.get("temp_label", None),
-        "lang": st.session_state.get("lang", "ja")
+        "lang": st.session_state.get("lang", "ja"),
+        "map_tile": st.session_state.get("map_tile", CONFIG["DEFAULT_MAP_TILE"]) # 地図デザインの追加
     }
     
     # JSON化とエスケープ
     json_data = json.dumps(save_data, ensure_ascii=False)
     safe_json = json_data.replace('"', '\\"')
     
-    # JavaScript命令の構築（リロード命令を削除し、純粋に保存のみ行う）
+    # JavaScript命令の構築
     js_cmd = f"""
         try {{
             localStorage.setItem('{CONFIG['STORAGE_KEY']}', '{safe_json}');
@@ -1932,7 +1948,7 @@ def save_settings_to_browser():
         }}
     """
     
-    # 実行。実行のたびに新しいキーを発行して確実に JS を動かす
+    # 実行
     import time
     dynamic_key = f"save_exec_{int(time.time() * 1000)}"
     streamlit_js_eval(js_expressions=js_cmd, key=dynamic_key)
@@ -1952,14 +1968,16 @@ def update_state_and_save(updates_dict):
     st.rerun()
 
 # ==========================================================================================
-# 90. ブラウザのlocalStorageと設定を同期するサブルーチン
+# 90. ブラウザのlocalStorageと設定を同期するサブルーチン (完全版)
 # ==========================================================================================
 def sync_all_settings():
     import json
+    import streamlit as st
     from streamlit_js_eval import streamlit_js_eval
+    
     STORAGE_KEY = CONFIG['STORAGE_KEY']
     
-    # 初期化回避
+    # 初期化回避用のデフォルト値リスト
     init_vars = {
         "show_wind": CONFIG["SHOW_WIND"],
         "show_temp": CONFIG["SHOW_TEMP"],
@@ -1978,9 +1996,11 @@ def sync_all_settings():
         "danger_v": CONFIG["DEFAULT_DANGER_V"],
         "sel_dirs": CONFIG["DEFAULT_DIRS"],
         "lang": "ja",
-        "utc_offset_hours": 9.0  # リロード時の現地時間維持のため追加
+        "utc_offset_hours": 9.0,
+        "map_tile": CONFIG["DEFAULT_MAP_TILE"] # 地図デザインの初期値
     }
     
+    # Session State の初期化
     for var_name, default_val in init_vars.items():
         if var_name not in st.session_state:
             st.session_state[var_name] = default_val
@@ -1988,6 +2008,7 @@ def sync_all_settings():
     if st.session_state.get("initialized"):
         return
 
+    # LocalStorage から取得
     js_query = f"localStorage.getItem('{STORAGE_KEY}') || 'EMPTY'"
     stored_data = streamlit_js_eval(js_expressions=js_query, key="init_load_settings_v3")
 
@@ -1999,6 +2020,8 @@ def sync_all_settings():
     else:
         try:
             data = json.loads(stored_data)
+            
+            # 各設定値の復元
             st.session_state.lat = float(data.get("lat", CONFIG["DEFAULT_LAT"]))
             st.session_state.lon = float(data.get("lon", CONFIG["DEFAULT_LON"]))
             st.session_state.last_basho = data.get("basho", CONFIG["DEFAULT_BASHO"])
@@ -2024,20 +2047,23 @@ def sync_all_settings():
             st.session_state.hspace = data.get("hspace", CONFIG["HSPACE"])
             st.session_state.ratios = data.get("ratios", CONFIG["DEFAULT_RATIOS"])
             
+            # 地図デザイン設定の復元
+            st.session_state.map_tile = data.get("map_tile", CONFIG["DEFAULT_MAP_TILE"])
+            
             # 言語設定の復元
             if "lang" in data:
                 st.session_state.lang = data["lang"]
             
-            # 時差情報の復元 (リロード時に現地時間で開始するために必要)
+            # 時差情報の復元
             if "utc_offset_hours" in data:
                 st.session_state.utc_offset_hours = float(data["utc_offset_hours"])
                 
             st.session_state.initialized = True
             st.rerun()
+            
         except Exception as e:
             # エラー発生時は初期状態で続行
             st.session_state.initialized = True
-
 # ======================================================================================
 # 91. アプリ全体の共通スタイルを定義するサブルーチン
 # ======================================================================================
