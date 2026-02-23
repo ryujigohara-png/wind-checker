@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# 正規版　更新 2026.2.23 1000 地名から地図検索 コンプリート版
+# 正規版　更新 2026.2.23 1135 地名検索とビュー切替 コンプリート版
 """
 Pin_Weather! 機能仕様書 2026改訂版
 提供された最新のソースコード（2026.1.22 0100 波高、海面水温 コンプリート版）に基づき、波高および海面水温グラフの追加を反映した最新の機能仕様書を作成しました。
@@ -1712,8 +1712,6 @@ def show_location_map_dialog():
                             st.session_state.temp_lon = new_lon
                             raw_name = fetch_location_name(new_lat, new_lon)
                             st.session_state.temp_basho = f"{raw_name} ({new_lat:.4f}, {new_lon:.4f})"
-                            # 検索時は見やすくするため少しズームイン
-                            # st.session_state.temp_zoom = 15
                             st.rerun(scope="fragment")
                         else:
                             st.toast(lang_dict.get("見つかりませんでした", "Not found"))
