@@ -1679,7 +1679,7 @@ def show_location_map_dialog():
                             raw_name = fetch_location_name(new_lat, new_lon)
                             st.session_state.temp_basho = f"{raw_name} ({new_lat:.4f}, {new_lon:.4f})"
                             # 検索時は少しズームインさせるなどの調整も可能
-                            st.session_state.temp_zoom = 15
+                            # st.session_state.temp_zoom = 15
                             st.rerun(scope="fragment")
                         else:
                             st.warning(lang_dict.get("見つかりませんでした", "Not found"))
@@ -1804,12 +1804,12 @@ def fetch_location_name(lat, lon):
         return default_name
 
 # ==========================================================================================
-# 31. 住所・キーワードから座標を取得するサブルーチン (完全版)
+# 31. 住所・キーワードから座標を取得するサブルーチン (修正版・完全版)
 # ==========================================================================================
 def fetch_coords_from_address(address_query):
     """
-    入力された住所やキーワードから緯度・経度を取得します。
-    取得できない場合は None, None を返します。
+    Nominatim APIを使用して住所文字列から座標(float, float)を取得します。
+    失敗した場合は (None, None) を返します。
     """
     import requests
     
@@ -1822,21 +1822,26 @@ def fetch_coords_from_address(address_query):
         "format": "json",
         "limit": 1
     }
+    # Nominatimの利用規約に基づき、適切なUser-Agentを設定
     headers = {
-        "User-Agent": "MyStreamlitApp/1.0" # 自身のアプリ名などに適宜変更
+        "User-Agent": "Streamlit_Map_App/1.0"
     }
     
     try:
-        response = requests.get(url, params=params, headers=headers, timeout=5)
+        response = requests.get(url, params=params, headers=headers, timeout=10)
+        response.raise_for_status()
         data = response.json()
-        if data:
+        
+        if data and len(data) > 0:
+            # APIは文字列で値を返すため、ここで確実に float に変換
             lat = float(data[0]["lat"])
-            lon = float(data[0]["display_name"].split(',')[0]) # 名称の一部（任意）
-            # 実際には緯度経度のみを返す
-            return float(data[0]["lat"]), float(data[0]["lon"])
+            lon = float(data[0]["lon"])
+            return lat, lon
+            
     except Exception as e:
         import streamlit as st
-        st.error(f"Error fetching coordinates: {e}")
+        # ログ出力やエラー表示（必要に応じて）
+        st.error(f"Geocoding Error: {e}")
         
     return None, None
 
