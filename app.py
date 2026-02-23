@@ -1623,12 +1623,15 @@ def calculate_graph_height(base_height, ratios, show_wind, show_temp, show_wave,
     return auto_height
 
 # ==========================================================================================
-# 30. 地図UIをダイアログで表示するサブルーチン (検索機能追加・完全版)
+# 30. 地図UIをダイアログで表示するサブルーチン (検索・View切替追加・完全版)
 # ==========================================================================================
 def show_location_map_dialog():
     """
-    テキストボックスによる場所検索機能を追加。
-    ユーザーが入力した文字列の場所を地図の中心に表示します。
+    タイトル下の重複表示を整理。
+    「地図中心に📍」ボタン押下時に、マーカーを地図の物理的な中心に確実に表示させる。
+    ユーザーが変更した倍率を維持したまま、地図中心を📍に合わせる。
+    表示文字列を st.session_state.lang に基づき切り替えます。
+    ※検索テキストボックスと地図スタイル切替機能を追加。
     """
     import folium
     from streamlit_folium import st_folium
@@ -1645,58 +1648,85 @@ def show_location_map_dialog():
         st.session_state.temp_lon = st.session_state.lon
     if "temp_basho" not in st.session_state:
         st.session_state.temp_basho = st.session_state.last_basho
+    
     if "temp_zoom" not in st.session_state:
         st.session_state.temp_zoom = 13
-    
-    # 検索用テキストボックスのセッション管理
-    if "search_query" not in st.session_state:
-        st.session_state.search_query = ""
 
+    # 地図タイル設定の保持
+    if "map_tile" not in st.session_state:
+        st.session_state.map_tile = "OpenStreetMap"
+
+    tile_options = {
+        lang_dict.get("標準", "Standard"): "OpenStreetMap",
+        lang_dict.get("シンプル", "Simple"): "CartoDB Positron",
+        lang_dict.get("ダーク", "Dark"): "CartoDB Dark_Matter",
+        lang_dict.get("道路図", "Streets"): "https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}",
+        lang_dict.get("衛星写真", "Satellite"): "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+    }
+    
     # --- 2. メインUI (Fragment構造) ---
     @st.dialog(lang_dict.get("📍 地図で指定", "📍 Select on Map"), dismissible=False)
     def map_final_fixed_fragment():
         # 表示整理
         st.markdown(f"📍 **{st.session_state.temp_basho}**")
-        
-        # --- 追加：検索テキストボックスと検索ボタン ---
-        c_search1, c_search2 = st.columns([3, 1])
-        with c_search1:
+
+        # --- 追加：検索およびView切替コントロール ---
+        col_s1, col_s2, col_s3 = st.columns([2, 1, 1.2])
+        with col_s1:
             search_input = st.text_input(
-                label="Search",
-                placeholder=lang_dict.get("場所を検索", "Search location..."),
-                label_visibility="collapsed",
+                "Search", 
+                placeholder=lang_dict.get("場所を検索", "Search location..."), 
+                label_visibility="collapsed", 
                 key="map_search_input"
             )
-        with c_search2:
+        with col_s2:
             if st.button(lang_dict.get("検索", "Search"), use_container_width=True):
                 if search_input:
                     with st.spinner(lang_dict.get("検索中...", "Searching...")):
                         new_lat, new_lon = fetch_coords_from_address(search_input)
-                        if new_lat and new_lon:
-                            # 座標を更新し、名称も再取得して同期させる
+                        if new_lat is not None and new_lon is not None:
                             st.session_state.temp_lat = new_lat
                             st.session_state.temp_lon = new_lon
                             raw_name = fetch_location_name(new_lat, new_lon)
                             st.session_state.temp_basho = f"{raw_name} ({new_lat:.4f}, {new_lon:.4f})"
-                            # 検索時は少しズームインさせるなどの調整も可能
-                            # st.session_state.temp_zoom = 15
+                            st.session_state.temp_zoom = 15
                             st.rerun(scope="fragment")
                         else:
-                            st.warning(lang_dict.get("見つかりませんでした", "Not found"))
+                            st.toast(lang_dict.get("見つかりませんでした", "Not found"))
 
+        with col_s3:
+            current_label = next((k for k, v in tile_options.items() if v == st.session_state.map_tile), list(tile_options.keys())[0])
+            selected_label = st.selectbox(
+                "View", 
+                options=list(tile_options.keys()), 
+                index=list(tile_options.keys()).index(current_label),
+                label_visibility="collapsed",
+                key="tile_selector"
+            )
+            if tile_options[selected_label] != st.session_state.map_tile:
+                st.session_state.map_tile = tile_options[selected_label]
+                st.rerun(scope="fragment")
+    
         h_px = st.session_state.get("map_h", CONFIG["MAP_HEIGHT"])
+        
+        # 外部タイルURL使用時の属性設定
+        attr_str = "Esri" if "http" in st.session_state.map_tile else None
     
         # 地図オブジェクト作成
         m = folium.Map(
             location=[st.session_state.temp_lat, st.session_state.temp_lon], 
-            zoom_start=st.session_state.temp_zoom
+            zoom_start=st.session_state.temp_zoom,
+            tiles=st.session_state.map_tile,
+            attr=attr_str
         )
         
+        # マーカーを中心座標に設置
         folium.Marker(
             [st.session_state.temp_lat, st.session_state.temp_lon], 
             icon=folium.Icon(color='red')
         ).add_to(m)
         
+        # 地図の描画
         map_out = st_folium(
             m, width=None, height=h_px, 
             key=f"map_v36_final",
@@ -1730,8 +1760,10 @@ def show_location_map_dialog():
                 st.session_state.lat = st.session_state.temp_lat
                 st.session_state.lon = st.session_state.temp_lon
                 st.session_state.last_basho = st.session_state.temp_basho
+                
                 st.session_state.map_lat = st.session_state.temp_lat
                 st.session_state.map_lon = st.session_state.temp_lon
+                
                 st.session_state.temp_label = st.session_state.temp_basho
                 st.session_state.needs_graph_update = True
                 
@@ -1740,6 +1772,7 @@ def show_location_map_dialog():
                 elif "update_state_and_save" in globals():
                     update_state_and_save({})
 
+                # 一時変数をクリア
                 for k in ["temp_lat", "temp_lon", "temp_basho", "temp_zoom"]: 
                     st.session_state.pop(k, None)
                 st.rerun()
@@ -1750,6 +1783,7 @@ def show_location_map_dialog():
                     st.session_state.pop(k, None)
                 st.rerun()
     
+    # フラグメントの実行
     map_final_fixed_fragment()
     
 # ==========================================================================================
@@ -1822,7 +1856,7 @@ def fetch_coords_from_address(address_query):
         "format": "json",
         "limit": 1
     }
-    # Nominatimの利用規約に基づき、適切なUser-Agentを設定
+    # Nominatimの利用規約に基づきUser-Agentを設定
     headers = {
         "User-Agent": "Streamlit_Map_App/1.0"
     }
@@ -1833,15 +1867,13 @@ def fetch_coords_from_address(address_query):
         data = response.json()
         
         if data and len(data) > 0:
-            # APIは文字列で値を返すため、ここで確実に float に変換
+            # APIの返り値(文字列)を確実に float に変換して返す
             lat = float(data[0]["lat"])
             lon = float(data[0]["lon"])
             return lat, lon
             
-    except Exception as e:
-        import streamlit as st
-        # ログ出力やエラー表示（必要に応じて）
-        st.error(f"Geocoding Error: {e}")
+    except Exception:
+        pass
         
     return None, None
 
