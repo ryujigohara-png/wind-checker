@@ -1646,15 +1646,12 @@ def calculate_graph_height(base_height, ratios, show_wind, show_temp, show_wave,
     return auto_height
 
 # ==========================================================================================
-# 30. 地図UIをダイアログで表示するサブルーチン (検索・View切替追加・保存対応・完全版)
+# 30. 地図UIをダイアログで表示するサブルーチン (Zoom維持・保存対応・完全版)
 # ==========================================================================================
 def show_location_map_dialog():
     """
-    タイトル下の重複表示を整理。
-    「地図中心に📍」ボタン押下時に、マーカーを地図の物理的な中心に確実に表示させる。
-    ユーザーが変更した倍率を維持したまま、地図中心を📍に合わせる。
-    表示文字列を st.session_state.lang に基づき切り替えます。
-    ※検索テキストボックスと地図スタイル切替機能を追加し、道路図をデフォルトとしてブラウザ保存します。
+    タイル（ビュー）切り替え時や検索時も、ユーザーが操作したズーム倍率を可能な限り維持します。
+    デフォルト値は CONFIG["MAP_HEIGHT"] (350) を参照します。
     """
     import folium
     from streamlit_folium import st_folium
@@ -1664,7 +1661,7 @@ def show_location_map_dialog():
     translations = get_language_dict()
     lang_dict = translations[st.session_state.lang]
 
-    # --- 1. 座標と名称の初期管理 ---
+    # --- 1. 座標と名称・ズームの初期管理 ---
     if "temp_lat" not in st.session_state:
         st.session_state.temp_lat = st.session_state.lat
     if "temp_lon" not in st.session_state:
@@ -1672,14 +1669,15 @@ def show_location_map_dialog():
     if "temp_basho" not in st.session_state:
         st.session_state.temp_basho = st.session_state.last_basho
     
+    # ズーム倍率の保持
     if "temp_zoom" not in st.session_state:
         st.session_state.temp_zoom = 13
 
-    # 地図タイル設定の保持（デフォルトはCONFIGの道路図）
+    # 地図タイル設定の保持
     if "map_tile" not in st.session_state:
         st.session_state.map_tile = CONFIG.get("DEFAULT_MAP_TILE", "https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}")
 
-    # 表示名とタイルのマッピング（辞書から取得）
+    # 表示名とタイルのマッピング
     tile_options = {
         lang_dict.get("道路図", "Streets"): "https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}",
         lang_dict.get("標準", "Standard"): "OpenStreetMap",
@@ -1691,11 +1689,12 @@ def show_location_map_dialog():
     # --- 2. メインUI (Fragment構造) ---
     @st.dialog(lang_dict.get("📍 地図で指定", "📍 Select on Map"), dismissible=False)
     def map_final_fixed_fragment():
-        # 表示整理
         st.markdown(f"📍 **{st.session_state.temp_basho}**")
 
+        # プレースホルダー（後で地図出力を受け取るため）
         # --- 検索およびView切替コントロール ---
         col_s1, col_s2, col_s3 = st.columns([2, 1, 1.2])
+        
         with col_s1:
             search_input = st.text_input(
                 "Search", 
@@ -1713,13 +1712,13 @@ def show_location_map_dialog():
                             st.session_state.temp_lon = new_lon
                             raw_name = fetch_location_name(new_lat, new_lon)
                             st.session_state.temp_basho = f"{raw_name} ({new_lat:.4f}, {new_lon:.4f})"
+                            # 検索時は見やすくするため少しズームイン
                             st.session_state.temp_zoom = 15
                             st.rerun(scope="fragment")
                         else:
                             st.toast(lang_dict.get("見つかりませんでした", "Not found"))
 
         with col_s3:
-            # 現在のタイルに対応する表示名を取得
             current_label = next((k for k, v in tile_options.items() if v == st.session_state.map_tile), lang_dict.get("道路図", "Streets"))
             selected_label = st.selectbox(
                 "View", 
@@ -1728,13 +1727,16 @@ def show_location_map_dialog():
                 label_visibility="collapsed",
                 key="tile_selector"
             )
-            # 変更があれば即時反映し、ブラウザへ保存
+            
+            # ビュー切り替え時のロジック
             if tile_options[selected_label] != st.session_state.map_tile:
                 st.session_state.map_tile = tile_options[selected_label]
+                # 保存してリラン（直前のズームは後述の map_out 処理でセッションに同期される）
                 save_settings_to_browser()
                 st.rerun(scope="fragment")
     
-        h_px = st.session_state.get("map_h", CONFIG.get("MAP_HEIGHT", 450))
+        # 地図の高さ設定
+        h_px = st.session_state.get("map_h", CONFIG.get("MAP_HEIGHT", 350))
         attr_str = "Esri" if "http" in st.session_state.map_tile else None
     
         # 地図オブジェクト作成
@@ -1750,26 +1752,31 @@ def show_location_map_dialog():
             icon=folium.Icon(color='red')
         ).add_to(m)
         
+        # 地図の描画
         map_out = st_folium(
             m, width=None, height=h_px, 
             key=f"map_v36_final",
             returned_objects=["center", "zoom"]
         )
+
+        # 【重要】ユーザーが地図を操作した際、常に最新のzoomと中心座標を保持する
+        if map_out:
+            if map_out.get("zoom") is not None:
+                st.session_state.temp_zoom = map_out["zoom"]
+            if map_out.get("center"):
+                # ここで保持しておくことで、タイル切り替え時に現在地が維持される
+                st.session_state.temp_lat = map_out["center"]["lat"]
+                st.session_state.temp_lon = map_out["center"]["lng"]
     
         st.write("") 
     
         # 「地図中心に📍」ボタン
         if st.button(lang_dict.get("地図中心に📍", "Set 📍 at Center"), use_container_width=True):
-            if map_out:
-                if map_out.get("zoom") is not None:
-                    st.session_state.temp_zoom = map_out["zoom"]
-                if map_out.get("center"):
-                    st.session_state.temp_lat = map_out["center"]["lat"]
-                    st.session_state.temp_lon = map_out["center"]["lng"]
-                    with st.spinner(lang_dict.get("地名取得中...", "Fetching location name...")):
-                        raw_name = fetch_location_name(st.session_state.temp_lat, st.session_state.temp_lon)
-                        st.session_state.temp_basho = f"{raw_name} ({st.session_state.temp_lat:.4f}, {st.session_state.temp_lon:.4f})"
-                    st.rerun(scope="fragment")
+            # map_out 経由で地名を取得し直す
+            with st.spinner(lang_dict.get("地名取得中...", "Fetching location name...")):
+                raw_name = fetch_location_name(st.session_state.temp_lat, st.session_state.temp_lon)
+                st.session_state.temp_basho = f"{raw_name} ({st.session_state.temp_lat:.4f}, {st.session_state.temp_lon:.4f})"
+            st.rerun(scope="fragment")
     
         # 確定・中止ボタン
         c1, c2 = st.columns(2)
@@ -1783,7 +1790,6 @@ def show_location_map_dialog():
                 st.session_state.temp_label = st.session_state.temp_basho
                 st.session_state.needs_graph_update = True
                 
-                # ブラウザへの保存（サブルーチン82）
                 if "save_settings_to_browser" in globals():
                     save_settings_to_browser()
 
@@ -1798,7 +1804,6 @@ def show_location_map_dialog():
                     st.session_state.pop(k, None)
                 st.rerun()
     
-    # フラグメントの実行
     map_final_fixed_fragment()
     
 # ==========================================================================================
