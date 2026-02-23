@@ -1623,14 +1623,12 @@ def calculate_graph_height(base_height, ratios, show_wind, show_temp, show_wave,
     return auto_height
 
 # ==========================================================================================
-# 30. 地図UIをダイアログで表示するサブルーチン (倍率維持・完全版・多言語対応)
+# 30. 地図UIをダイアログで表示するサブルーチン (検索機能追加・完全版)
 # ==========================================================================================
 def show_location_map_dialog():
     """
-    タイトル下の重複表示を整理。
-    「地図中心に📍」ボタン押下時に、マーカーを地図の物理的な中心に確実に表示させる。
-    ユーザーが変更した倍率を維持したまま、地図中心を📍に合わせる。
-    表示文字列を st.session_state.lang に基づき切り替えます。
+    テキストボックスによる場所検索機能を追加。
+    ユーザーが入力した文字列の場所を地図の中心に表示します。
     """
     import folium
     from streamlit_folium import st_folium
@@ -1646,20 +1644,46 @@ def show_location_map_dialog():
     if "temp_lon" not in st.session_state:
         st.session_state.temp_lon = st.session_state.lon
     if "temp_basho" not in st.session_state:
-        # 初回表示時は現在の地名を表示
         st.session_state.temp_basho = st.session_state.last_basho
-    
-    # 現在の倍率を管理する変数（初期値は13）
     if "temp_zoom" not in st.session_state:
         st.session_state.temp_zoom = 13
     
+    # 検索用テキストボックスのセッション管理
+    if "search_query" not in st.session_state:
+        st.session_state.search_query = ""
+
     # --- 2. メインUI (Fragment構造) ---
-    # ダイアログのタイトルを辞書から取得
     @st.dialog(lang_dict.get("📍 地図で指定", "📍 Select on Map"), dismissible=False)
     def map_final_fixed_fragment():
         # 表示整理
         st.markdown(f"📍 **{st.session_state.temp_basho}**")
-    
+        
+        # --- 追加：検索テキストボックスと検索ボタン ---
+        c_search1, c_search2 = st.columns([3, 1])
+        with c_search1:
+            search_input = st.text_input(
+                label="Search",
+                placeholder=lang_dict.get("場所を検索", "Search location..."),
+                label_visibility="collapsed",
+                key="map_search_input"
+            )
+        with c_search2:
+            if st.button(lang_dict.get("検索", "Search"), use_container_width=True):
+                if search_input:
+                    with st.spinner(lang_dict.get("検索中...", "Searching...")):
+                        new_lat, new_lon = fetch_coords_from_address(search_input)
+                        if new_lat and new_lon:
+                            # 座標を更新し、名称も再取得して同期させる
+                            st.session_state.temp_lat = new_lat
+                            st.session_state.temp_lon = new_lon
+                            raw_name = fetch_location_name(new_lat, new_lon)
+                            st.session_state.temp_basho = f"{raw_name} ({new_lat:.4f}, {new_lon:.4f})"
+                            # 検索時は少しズームインさせるなどの調整も可能
+                            st.session_state.temp_zoom = 15
+                            st.rerun(scope="fragment")
+                        else:
+                            st.warning(lang_dict.get("見つかりませんでした", "Not found"))
+
         h_px = st.session_state.get("map_h", CONFIG["MAP_HEIGHT"])
     
         # 地図オブジェクト作成
@@ -1668,13 +1692,11 @@ def show_location_map_dialog():
             zoom_start=st.session_state.temp_zoom
         )
         
-        # マーカーを中心座標に設置
         folium.Marker(
             [st.session_state.temp_lat, st.session_state.temp_lon], 
             icon=folium.Icon(color='red')
         ).add_to(m)
         
-        # 地図の描画
         map_out = st_folium(
             m, width=None, height=h_px, 
             key=f"map_v36_final",
@@ -1683,67 +1705,51 @@ def show_location_map_dialog():
     
         st.write("") 
     
-        # 「地図中心に📍」ボタンのロジック (ラベルを辞書化)
+        # 「地図中心に📍」ボタンのロジック
         if st.button(lang_dict.get("地図中心に📍", "Set 📍 at Center"), use_container_width=True):
             if map_out:
-                # ユーザーが変更した「今の倍率」を保存
                 if map_out.get("zoom") is not None:
                     st.session_state.temp_zoom = map_out["zoom"]
                 
-                # 地図の「現在の中心」を temp に保存
                 if map_out.get("center"):
                     st.session_state.temp_lat = map_out["center"]["lat"]
                     st.session_state.temp_lon = map_out["center"]["lng"]
                     
-                    # 名称を更新 (スピナーのメッセージを辞書化)
                     with st.spinner(lang_dict.get("地名取得中...", "Fetching location name...")):
                         raw_name = fetch_location_name(
                             st.session_state.temp_lat, st.session_state.temp_lon
                         )
                         st.session_state.temp_basho = f"{raw_name} ({st.session_state.temp_lat:.4f}, {st.session_state.temp_lon:.4f})"
                     
-                    # フラグメント内を再描画して、テキスト・地図中心・📍をすべて同期
                     st.rerun(scope="fragment")
     
-        # 確定・中止ボタン (ラベルを辞書化)
+        # 確定・中止ボタン
         c1, c2 = st.columns(2)
         with c1:
             if st.button(lang_dict.get("確定", "Confirm"), use_container_width=True, type="primary"):
-                # メインの状態を更新
                 st.session_state.lat = st.session_state.temp_lat
                 st.session_state.lon = st.session_state.temp_lon
                 st.session_state.last_basho = st.session_state.temp_basho
-                
-                # 【重要】不整合解消：地図座標と作業座標をメイン座標に完全同期させる
                 st.session_state.map_lat = st.session_state.temp_lat
                 st.session_state.map_lon = st.session_state.temp_lon
-                
-                # コンボボックスの選択肢に表示させるため temp_label に格納
                 st.session_state.temp_label = st.session_state.temp_basho
-                
-                # グラフ描画を行うフラグを立てる
                 st.session_state.needs_graph_update = True
                 
-                # --- 【重要】ここが不足していました：確定直後にブラウザへ保存 ---
                 if "save_settings_to_browser" in globals():
                     save_settings_to_browser()
                 elif "update_state_and_save" in globals():
                     update_state_and_save({})
-                # --------------------------------------------------------
 
-                # 一時変数をクリア
                 for k in ["temp_lat", "temp_lon", "temp_basho", "temp_zoom"]: 
                     st.session_state.pop(k, None)
                 st.rerun()
     
         with c2:
             if st.button(lang_dict.get("中止", "Cancel"), use_container_width=True):
-                # グラフ描画を行わずに閉じる
                 for k in ["temp_lat", "temp_lon", "temp_basho", "temp_zoom"]: 
                     st.session_state.pop(k, None)
                 st.rerun()
     
-    # フラグメントの実行
     map_final_fixed_fragment()
     
 # ==========================================================================================
@@ -1796,6 +1802,43 @@ def fetch_location_name(lat, lon):
         return default_name
     except:
         return default_name
+
+# ==========================================================================================
+# 31. 住所・キーワードから座標を取得するサブルーチン (完全版)
+# ==========================================================================================
+def fetch_coords_from_address(address_query):
+    """
+    入力された住所やキーワードから緯度・経度を取得します。
+    取得できない場合は None, None を返します。
+    """
+    import requests
+    
+    if not address_query:
+        return None, None
+        
+    url = "https://nominatim.openstreetmap.org/search"
+    params = {
+        "q": address_query,
+        "format": "json",
+        "limit": 1
+    }
+    headers = {
+        "User-Agent": "MyStreamlitApp/1.0" # 自身のアプリ名などに適宜変更
+    }
+    
+    try:
+        response = requests.get(url, params=params, headers=headers, timeout=5)
+        data = response.json()
+        if data:
+            lat = float(data[0]["lat"])
+            lon = float(data[0]["display_name"].split(',')[0]) # 名称の一部（任意）
+            # 実際には緯度経度のみを返す
+            return float(data[0]["lat"]), float(data[0]["lon"])
+    except Exception as e:
+        import streamlit as st
+        st.error(f"Error fetching coordinates: {e}")
+        
+    return None, None
 
 # ======================================================================================
 # 82. ブラウザへの保存を実行するサブルーチン
