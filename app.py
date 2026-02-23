@@ -1713,7 +1713,7 @@ def show_location_map_dialog():
                             raw_name = fetch_location_name(new_lat, new_lon)
                             st.session_state.temp_basho = f"{raw_name} ({new_lat:.4f}, {new_lon:.4f})"
                             # 検索時は見やすくするため少しズームイン
-                            st.session_state.temp_zoom = 15
+                            # st.session_state.temp_zoom = 15
                             st.rerun(scope="fragment")
                         else:
                             st.toast(lang_dict.get("見つかりませんでした", "Not found"))
