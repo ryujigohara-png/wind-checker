@@ -2596,14 +2596,19 @@ def render_compact_control_panel(basho_name):
         handle_current_location_update_integrated()
         
 # ======================================================================================
-# 96. 【main機能分離】⑤グラフ描画エリアモジュール
+# 96. 【main機能分離】⑤グラフ描画エリアモジュール (完全版)
 # ======================================================================================
 def render_graph_area_module(danger_v, sel_dirs, design_params, now_jst):
     import streamlit as st
     translations = get_language_dict()
     lang_dict = translations[st.session_state.lang]
 
-    # --- 1. グラフ生成（辞書に基づいたスピナーを表示） ---
+    # --- 更新不要かつキャッシュ済みHTMLがある場合は即座に表示して終了 ---
+    if not st.session_state.get("needs_graph_update", True) and "cached_graph_html" in st.session_state:
+        st.markdown(st.session_state.cached_graph_html, unsafe_allow_html=True)
+        return
+
+    # --- 1. グラフ生成（更新が必要な場合のみスピナーを表示） ---
     msg_gen = lang_dict.get("MSG_GEN_GRAPH", "グラフを生成中...")
     with st.spinner(msg_gen):
         # サブルーチン12を呼び出し
@@ -2652,6 +2657,8 @@ def render_graph_area_module(danger_v, sel_dirs, design_params, now_jst):
         f'</div>'
     )
     
+    # 生成したHTMLをキャッシュに保存して表示
+    st.session_state.cached_graph_html = html_str
     st.markdown(html_str, unsafe_allow_html=True)
     
         
@@ -2709,6 +2716,7 @@ def render_footer_info(danger_v):
 def main():
     import os
     from datetime import datetime, timezone, timedelta
+    import streamlit as st
     
     # --- 0. アプリ初期化 ---
     initialize_app()
@@ -2733,7 +2741,7 @@ def main():
     # 現在時刻の取得 (判定用)
     now_jst = datetime.now(timezone(timedelta(hours=9)))
     
-    # --- 2. 更新判定ロジック (サブルーチン96の変数名 last_graph_time に合わせる) ---
+    # --- 2. 更新判定ロジック ---
     if 'last_graph_time' not in st.session_state:
         st.session_state.needs_graph_update = True
     else:
@@ -2760,7 +2768,8 @@ def main():
     # キャッシュを効かせるため、更新フラグがFalseの時は「前回の時刻」を、
     # Trueの時（30分経過時など）は「現在の時刻」を渡すように制御します。
     calc_time = now_jst if st.session_state.get('needs_graph_update', False) else st.session_state.get('last_graph_time', now_jst)
-    # 常に呼び出すが、渡す時刻を固定することで「生成中」を防ぐ
+    
+    # 常に呼び出すが、96番内部でキャッシュされたHTMLの利用判定を行う
     render_graph_area_module(danger_v, sel_dirs, design_params, calc_time)
     
     render_footer_info(danger_v)
