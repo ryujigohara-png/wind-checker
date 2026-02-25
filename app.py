@@ -2596,19 +2596,20 @@ def render_compact_control_panel(basho_name):
         handle_current_location_update_integrated()
         
 # ======================================================================================
-# 96. 【main機能分離】⑤グラフ描画エリアモジュール (完全版)
+# 96. 【main機能分離】⑤グラフ描画エリアモジュール (Fragment対応版)
 # ======================================================================================
+@st.fragment
 def render_graph_area_module(danger_v, sel_dirs, design_params, now_jst):
     import streamlit as st
     translations = get_language_dict()
     lang_dict = translations[st.session_state.lang]
 
-    # --- 更新不要かつキャッシュ済みHTMLがある場合は即座に表示して終了 ---
+    # --- 1. フラグ確認：更新不要かつキャッシュ済みHTMLがある場合は、描画処理をスキップ ---
     if not st.session_state.get("needs_graph_update", True) and "cached_graph_html" in st.session_state:
         st.markdown(st.session_state.cached_graph_html, unsafe_allow_html=True)
         return
 
-    # --- 1. グラフ生成（更新が必要な場合のみスピナーを表示） ---
+    # --- 2. グラフ生成（更新が必要な場合のみ実行） ---
     msg_gen = lang_dict.get("MSG_GEN_GRAPH", "グラフを生成中...")
     with st.spinner(msg_gen):
         # サブルーチン12を呼び出し
@@ -2625,7 +2626,7 @@ def render_graph_area_module(danger_v, sel_dirs, design_params, now_jst):
     st.session_state.last_update_lon = st.session_state.lon
     st.session_state.last_graph_time = now_jst
     
-    # --- 2. パラメータ取得（CONFIGおよびsession_stateから） ---
+    # --- 3. パラメータ取得（CONFIGおよびsession_stateから） ---
     dpi = design_params.get("graph_dpi", CONFIG.get("DPI", 200))
     fig_h_px = int(design_params.get("height", CONFIG["GRAPH_HIGHT"]) * dpi)
     total_w = int(design_params.get("width", CONFIG["GRAPH_WIDTH"]) * dpi)
@@ -2638,10 +2639,10 @@ def render_graph_area_module(danger_v, sel_dirs, design_params, now_jst):
     orig_left_w = int(total_w * 0.10)
     w_right_px = int(total_w * 0.90)
     
-    # --- 3. アイコン・ラベルHTMLの取得 ---
+    # --- 4. アイコン・ラベルHTMLの取得 ---
     header_h, body_h = generate_weather_icons_html(df_graph, ratio_info, w_right_px, start_idx)
     
-    # --- 4. HTML構築（確実にレンダリング） ---
+    # --- 5. HTML構築 ---
     html_str = (
         f'<div style="display:flex; width:100%; background:white; border:1px solid #ddd; overflow:hidden;">'
         f'  <div style="width:{v_width}px; min-width:{v_width}px; flex-shrink:0; overflow:hidden; border-right:1px solid #eee; z-index:10; background:white;">'
@@ -2657,7 +2658,7 @@ def render_graph_area_module(danger_v, sel_dirs, design_params, now_jst):
         f'</div>'
     )
     
-    # 生成したHTMLをキャッシュに保存して表示
+    # キャッシュに保存して表示
     st.session_state.cached_graph_html = html_str
     st.markdown(html_str, unsafe_allow_html=True)
     
