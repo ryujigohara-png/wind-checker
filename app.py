@@ -1400,7 +1400,7 @@ def show_settings_dialog():
             d_label_f = st.number_input(lang_dict["軸ラベル文字サイズ"], int(f_cfg["min"]), int(f_cfg["max"]), int(st.session_state.get("label_font_size", CONFIG["LABEL_SIZE"])))
             d_hspace = st.number_input("グラフ間余白", -0.2, 1.5, float(st.session_state.get("hspace", CONFIG["HSPACE"])), 0.05)
             d_min_w = st.slider("コンテナ最小幅 (px)", 500, 5000, int(st.session_state.get("min_container_width", CONFIG["CONTENA_MIN_W"])), 100)
-            d_dpi = st.radio("解像度 (DPI)", [200, 300], index=0 if st.session_state.get("graph_dpi", 200) == 200 else 1, horizontal=True)
+            d_dpi = st.radio("解像度 (DPI)", [50, 100, 200, 300], index=0 if st.session_state.get("graph_dpi", 200) == 200 else 1, horizontal=True)
             d_label_pad = st.slider("ラベル距離", -5, 10, int(st.session_state.get("label_pad", CONFIG["LABEL_PAD"])))
             d_left_view_w = st.slider("左軸窓の幅 (px)", 30, 200, int(st.session_state.get("left_view_w", CONFIG.get("LEFT_VIEW_W", 116))))
             d_left_shift = st.slider("左軸画像のズレ (px)", -300, -0, int(st.session_state.get("left_shift", CONFIG.get("LEFT_SHIFT", -185))))
